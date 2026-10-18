@@ -1,0 +1,15 @@
+export type AppError = { code: string; message: string };
+export type DiskDocument = { path: string; text: string; revision: string; encoding: string; eol: string };
+export type Mirror = { id: string; path: string | null; text: string; version: number; revision: string | null; encoding: string; dirty: boolean; language?: string; name?: string; searchQuery?: Query };
+export type Doc = Omit<Mirror, 'text'> & { name: string; language: string; eol: string; large?: boolean; conflict?: boolean; deleted?: boolean; searchQuery?: Query };
+export type Group = { id: string; tabs: string[]; active: string | null; preview: string | null; views: Record<string, unknown> };
+export type Location = { id: string; path?: string | null; line: number; column: number };
+export type Session = { groups: Group[]; activeGroup: string; sidebar: string; sidebarWidth: number; history: Location[]; historyIndex: number; query?: Query; searchHistory?: string[] };
+export type Keybinding = { key: string; command: string; when?: string };
+export type Bootstrap = { root: string | null; documents: Mirror[]; session: Partial<Session>; recent: string[]; settings: Record<string, unknown>; keybindings: Keybinding[] | null; warnings: string[]; dataDir: string };
+export type GitEntry = { path: string; status: 'added' | 'deleted' | 'ignored' | 'modified' | 'renamed' | 'untracked' | 'conflicted' };
+export type TreeSnapshot = { paths: string[]; git: GitEntry[]; branch: string | null; warnings: string[]; truncated: boolean };
+export type Query = { text: string; caseSensitive: boolean; wholeWord: boolean; regex: boolean; include: string; exclude: string; useIgnore: boolean; openOnly: boolean; changedOnly: boolean; followSymlinks: boolean; encoding?: string; context: number };
+export type SearchMatch = { path: string; documentId: string | null; version: number | null; line: number; column: number; endLine: number; endColumn: number; preview: string; matched: string };
+export type SearchBatch = { requestId: string; sequence: number; matches: SearchMatch[]; done: boolean; limited: boolean; cancelled: boolean; errors: string[] };
+export const defaultQuery: Query = { text: '', caseSensitive: false, wholeWord: false, regex: false, include: '', exclude: '', useIgnore: true, openOnly: false, changedOnly: false, followSymlinks: false, context: 1 };

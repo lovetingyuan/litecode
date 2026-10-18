@@ -1,0 +1,167 @@
+[
+  {
+    "language": "json",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": [
+          "\"",
+          ":",
+          ".",
+          "/",
+          "-",
+          "@"
+        ],
+        "resolveProvider": false
+      },
+      "hoverProvider": true,
+      "documentSymbolProvider": true,
+      "foldingRangeProvider": true,
+      "selectionRangeProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": false,
+      "renameProvider": false,
+      "definitionProvider": false,
+      "referencesProvider": false,
+      "documentLinkProvider": {
+        "resolveProvider": false
+      },
+      "colorProvider": true,
+      "codeActionProvider": false
+    }
+  },
+  {
+    "language": "jsonc",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": [
+          "\"",
+          ":",
+          ".",
+          "/",
+          "-",
+          "@"
+        ],
+        "resolveProvider": false
+      },
+      "hoverProvider": true,
+      "documentSymbolProvider": true,
+      "foldingRangeProvider": true,
+      "selectionRangeProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": false,
+      "renameProvider": false,
+      "definitionProvider": false,
+      "referencesProvider": false,
+      "documentLinkProvider": {
+        "resolveProvider": false
+      },
+      "colorProvider": true,
+      "codeActionProvider": false
+    }
+  },
+  {
+    "language": "json",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": [
+          "\"",
+          ":",
+          ".",
+          "/",
+          "-",
+          "@"
+        ],
+        "resolveProvider": false
+      },
+      "hoverProvider": true,
+      "documentSymbolProvider": true,
+      "foldingRangeProvider": true,
+      "selectionRangeProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": false,
+      "renameProvider": false,
+      "definitionProvider": false,
+      "referencesProvider": false,
+      "documentLinkProvider": {
+        "resolveProvider": false
+      },
+      "colorProvider": true,
+      "codeActionProvider": false
+    }
+  },
+  {
+    "language": "html",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": [
+          "<",
+          "/",
+          " ",
+          "=",
+          "\"",
+          "."
+        ],
+        "resolveProvider": false
+      },
+      "hoverProvider": true,
+      "documentSymbolProvider": true,
+      "foldingRangeProvider": true,
+      "selectionRangeProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": true,
+      "renameProvider": true,
+      "definitionProvider": false,
+      "referencesProvider": false,
+      "documentLinkProvider": {
+        "resolveProvider": false
+      },
+      "colorProvider": false,
+      "codeActionProvider": false
+    }
+  },
+  {
+    "language": "css",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": [
+          "\"",
+          ":",
+          ".",
+          "/",
+          "-",
+          "@"
+        ],
+        "resolveProvider": false
+      },
+      "hoverProvider": true,
+      "documentSymbolProvider": true,
+      "foldingRangeProvider": true,
+      "selectionRangeProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": true,
+      "renameProvider": true,
+      "definitionProvider": true,
+      "referencesProvider": true,
+      "documentLinkProvider": {
+        "resolveProvider": false
+      },
+      "colorProvider": true,
+      "codeActionProvider": true
+    }
+  }
+]

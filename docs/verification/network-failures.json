@@ -1,0 +1,20 @@
+{
+  "recordedDate": "2026-10-17",
+  "failures": [
+    {
+      "operation": "Download fixed VS Code 1.142.0 Windows x64 reference",
+      "url": "https://vscode.download.prss.microsoft.com/dbazure/download/stable/6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1/VSCode-win32-x64-1.142.0.zip",
+      "result": "curl (35): schannel: failed to receive handshake, SSL/TLS connection failed",
+      "certificateVerificationDisabled": false,
+      "locallyVerified": false
+    },
+    {
+      "operation": "In-app install_tools languages, initial Node archive download",
+      "url": "https://nodejs.org/dist/v24.12.0/node-v24.12.0-win-x64.zip",
+      "run": ".verification/desktop-1792242840153",
+      "result": { "code": "download", "message": "error decoding response body" },
+      "runtimeInstalledByFailedAttempt": false,
+      "successPathVerified": false
+    }
+  ]
+}

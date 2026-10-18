@@ -1,0 +1,14 @@
+{
+  "capturedAt": "2026-10-17T13:25:22.2380112Z",
+  "os": {
+    "Caption": "Microsoft Windows 11 专业版",
+    "Version": "10.0.22631",
+    "BuildNumber": "22631"
+  },
+  "cpu": [
+    {
+      "Name": "AMD Ryzen 7 8845H w/ Radeon 780M Graphics"
+    }
+  ],
+  "memoryBytes": 29860155392
+}

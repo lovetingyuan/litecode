@@ -1,0 +1,284 @@
+{
+  "release": false,
+  "run": "D:\\lovetingyuan\\litecode\\.verification\\desktop-1792243202140",
+  "fixture": "D:\\lovetingyuan\\litecode\\.verification\\desktop-1792243202140\\fixture",
+  "startupMs": 4865,
+  "elapsedMs": 22891,
+  "capabilities": {
+    "acceptInsecureCerts": false,
+    "browserName": "webview2",
+    "browserVersion": "155.0.4283.60",
+    "fedcm:accounts": true,
+    "goog:processID": 42144,
+    "ms:edgeOptions": {
+      "debuggerAddress": "localhost:52913"
+    },
+    "msedge": {
+      "msedgedriverVersion": "155.0.4283.45 (50f24ef2aa5369a074b8888b7db82d9c0652d642)",
+      "userDataDir": ""
+    },
+    "networkConnectionEnabled": false,
+    "pageLoadStrategy": "normal",
+    "platformName": "windows",
+    "proxy": {},
+    "setWindowRect": true,
+    "strictFileInteractability": false,
+    "timeouts": {
+      "implicit": 0,
+      "pageLoad": 300000,
+      "script": 30000
+    },
+    "unhandledPromptBehavior": "dismiss and notify",
+    "webauthn:extension:cmtgKey": true,
+    "webauthn:extension:credBlob": true,
+    "webauthn:extension:largeBlob": true,
+    "webauthn:extension:minPinLength": true,
+    "webauthn:extension:prf": true,
+    "webauthn:virtualAuthenticators": true
+  },
+  "environment": {
+    "devicePixelRatio": 2.2200000286102295,
+    "innerHeight": 739,
+    "innerWidth": 1154,
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0"
+  },
+  "measurements": [
+    {
+      "windows": 1,
+      "capturedAt": "2026-10-17T13:20:13.3550106Z",
+      "application": "D:\\lovetingyuan\\litecode\\.verification\\desktop-1792243202140\\app\\LiteCode.exe",
+      "roots": [
+        42144
+      ],
+      "processes": [
+        {
+          "pid": 42144,
+          "parent": 102128,
+          "name": "LiteCode.exe",
+          "workingSetBytes": 44789760,
+          "privateBytes": 8056832,
+          "cpuSeconds": 0.046875
+        },
+        {
+          "pid": 63656,
+          "parent": 42144,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 136126464,
+          "privateBytes": 63614976,
+          "cpuSeconds": 0.546875
+        },
+        {
+          "pid": 111760,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 8990720,
+          "privateBytes": 2482176,
+          "cpuSeconds": 0
+        },
+        {
+          "pid": 109324,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 157708288,
+          "privateBytes": 400551936,
+          "cpuSeconds": 0.40625
+        },
+        {
+          "pid": 100228,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 52051968,
+          "privateBytes": 27115520,
+          "cpuSeconds": 0.015625
+        },
+        {
+          "pid": 85820,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 19451904,
+          "privateBytes": 7557120,
+          "cpuSeconds": 0
+        },
+        {
+          "pid": 111600,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 620642304,
+          "privateBytes": 596086784,
+          "cpuSeconds": 1.9375
+        },
+        {
+          "pid": 110152,
+          "parent": 42144,
+          "name": "node.exe",
+          "workingSetBytes": 80756736,
+          "privateBytes": 43618304,
+          "cpuSeconds": 0.015625
+        },
+        {
+          "pid": 100608,
+          "parent": 110152,
+          "name": "conhost.exe",
+          "workingSetBytes": 12029952,
+          "privateBytes": 5582848,
+          "cpuSeconds": 0
+        },
+        {
+          "pid": 94496,
+          "parent": 42144,
+          "name": "tsgo.exe",
+          "workingSetBytes": 646410240,
+          "privateBytes": 684507136,
+          "cpuSeconds": 1.546875
+        },
+        {
+          "pid": 109960,
+          "parent": 94496,
+          "name": "conhost.exe",
+          "workingSetBytes": 11911168,
+          "privateBytes": 5586944,
+          "cpuSeconds": 0
+        }
+      ],
+      "workingSetBytes": 1790869504,
+      "privateBytes": 1844760576,
+      "note": "Sum of process working sets may double-count shared pages. Includes WebView2 and language-server descendants present at capture time; CPU is cumulative."
+    },
+    {
+      "windows": 3,
+      "capturedAt": "2026-10-17T13:20:18.0773232Z",
+      "application": "D:\\lovetingyuan\\litecode\\.verification\\desktop-1792243202140\\app\\LiteCode.exe",
+      "roots": [
+        42144
+      ],
+      "processes": [
+        {
+          "pid": 42144,
+          "parent": 102128,
+          "name": "LiteCode.exe",
+          "workingSetBytes": 45146112,
+          "privateBytes": 8261632,
+          "cpuSeconds": 0.0625
+        },
+        {
+          "pid": 63656,
+          "parent": 42144,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 226476032,
+          "privateBytes": 109441024,
+          "cpuSeconds": 1.703125
+        },
+        {
+          "pid": 111760,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 8994816,
+          "privateBytes": 2486272,
+          "cpuSeconds": 0
+        },
+        {
+          "pid": 109324,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 133070848,
+          "privateBytes": 458752000,
+          "cpuSeconds": 0.4375
+        },
+        {
+          "pid": 100228,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 57151488,
+          "privateBytes": 30666752,
+          "cpuSeconds": 0.578125
+        },
+        {
+          "pid": 85820,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 19492864,
+          "privateBytes": 7581696,
+          "cpuSeconds": 0
+        },
+        {
+          "pid": 111600,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 620572672,
+          "privateBytes": 595988480,
+          "cpuSeconds": 1.953125
+        },
+        {
+          "pid": 110152,
+          "parent": 42144,
+          "name": "node.exe",
+          "workingSetBytes": 76038144,
+          "privateBytes": 35966976,
+          "cpuSeconds": 0.015625
+        },
+        {
+          "pid": 100608,
+          "parent": 110152,
+          "name": "conhost.exe",
+          "workingSetBytes": 12029952,
+          "privateBytes": 5582848,
+          "cpuSeconds": 0
+        },
+        {
+          "pid": 94496,
+          "parent": 42144,
+          "name": "tsgo.exe",
+          "workingSetBytes": 646410240,
+          "privateBytes": 684507136,
+          "cpuSeconds": 1.546875
+        },
+        {
+          "pid": 109960,
+          "parent": 94496,
+          "name": "conhost.exe",
+          "workingSetBytes": 11911168,
+          "privateBytes": 5586944,
+          "cpuSeconds": 0
+        },
+        {
+          "pid": 87676,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 570830848,
+          "privateBytes": 571985920,
+          "cpuSeconds": 0.125
+        },
+        {
+          "pid": 103720,
+          "parent": 63656,
+          "name": "msedgewebview2.exe",
+          "workingSetBytes": 562876416,
+          "privateBytes": 578564096,
+          "cpuSeconds": 0.3125
+        }
+      ],
+      "workingSetBytes": 2991001600,
+      "privateBytes": 3095371776,
+      "note": "Sum of process working sets may double-count shared pages. Includes WebView2 and language-server descendants present at capture time; CPU is cumulative."
+    }
+  ],
+  "checks": [
+    "Real Tauri bootstrap, portable data directory and Trees mounting",
+    "Quick Open selects workspace file and mounts Monaco",
+    "Monaco editor find widget",
+    "Split editor groups",
+    "Streaming PCRE2 search, CRLF/Unicode positions, Git ignore",
+    "Official JSON language service diagnostics through stdio IPC and Monaco Language Client",
+    "Real editor typing and Ctrl+S persist the buffer",
+    "TypeScript Native LSP diagnostics in the real editor",
+    "User keyboard shortcut JSON activates immediately with editorTextFocus context",
+    "Untitled unsaved-buffer overlay participates in workspace search",
+    "UTF-8/CRLF file read and window path authorization",
+    "Conflict rejects stale disk writes without data loss",
+    "Journaled disk replacement and version-checked undo/redo preserve CRLF and Unicode",
+    "Three native workspace windows in one application process",
+    "Forced process-tree termination restores unsaved buffers without overwriting disk"
+  ],
+  "screenshotsAreAcceptance": false,
+  "referenceComparison": "NOT PERFORMED: fixed-reference binary download failed TLS handshake"
+}

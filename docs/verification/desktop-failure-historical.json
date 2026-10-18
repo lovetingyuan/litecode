@@ -1,0 +1,16 @@
+{
+  "release": false,
+  "run": "D:\\lovetingyuan\\litecode\\.verification\\desktop-1792242963958",
+  "checks": [
+    "Real Tauri bootstrap, portable data directory and Trees mounting",
+    "Quick Open selects workspace file and mounts Monaco",
+    "Monaco editor find widget",
+    "Split editor groups",
+    "Streaming PCRE2 search, CRLF/Unicode positions, Git ignore",
+    "Official JSON language service diagnostics through stdio IPC and Monaco Language Client",
+    "Real editor typing and Ctrl+S persist the buffer",
+    "TypeScript Native LSP diagnostics in the real editor"
+  ],
+  "error": "Error: Saved custom keyboard binding was not activated",
+  "languageStatus": "{\n  \"services\": [],\n  \"starting\": [],\n  \"failures\": {\n    \"json\": \"Language service already running\\n\",\n    \"typescript\": \"Language service already running\\n\"\n  },\n  \"references\": [\n    \"file:///d%3A/lovetingyuan/litecode/.verification/desktop-1792242963958/app/data/keybindings.json\",\n    \"file:///d%3A/lovetingyuan/litecode/.verification/desktop-1792242963958/fixture/config.json\",\n    \"file:///d%3A/lovetingyuan/litecode/.verification/desktop-1792242963958/fixture/src/main.ts\"\n  ],\n  \"documents\": [\n    {\n      \"uri\": \"file:///d%3A/lovetingyuan/litecode/.verification/desktop-1792242963958/fixture/README.md\",\n      \"language\": \"markdown\",\n      \"version\": 1\n    },\n    {\n      \"uri\": \"file:///d%3A/lovetingyuan/litecode/.verification/desktop-1792242963958/app/data/keybindings.json\",\n      \"language\": \"json\",\n      \"version\": 1\n    },\n    {\n      \"uri\": \"file:///d%3A/lovetingyuan/litecode/.verification/desktop-1792242963958/fixture/config.json\",\n      \"language\": \"json\",\n      \"version\": 1\n    },\n    {\n      \"uri\": \"file:///d%3A/lovetingyuan/litecode/.verification/desktop-1792242963958/fixture/src/main.ts\",\n      \"language\": \"typescript\",\n      \"version\": 1\n    }\n  ]\n}"
+}

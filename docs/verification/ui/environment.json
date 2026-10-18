@@ -1,0 +1,78 @@
+{
+  "build": "202314481181",
+  "executableSha256": "202314481181078f3412d2ed8920c238f38125047313cbb42e2dfa92e81e652d",
+  "machine": {
+    "capturedAt": "2026-10-17T13:25:22.2380112Z",
+    "os": {
+      "Caption": "Microsoft Windows 11 专业版",
+      "Version": "10.0.22631",
+      "BuildNumber": "22631"
+    },
+    "cpu": [
+      {
+        "Name": "AMD Ryzen 7 8845H w/ Radeon 780M Graphics"
+      }
+    ],
+    "memoryBytes": 29860155392
+  },
+  "browserVersion": "155.0.4283.60",
+  "captures": {
+    "01-explorer": {
+      "devicePixelRatio": 2.2200000286102295,
+      "innerHeight": 739,
+      "innerWidth": 1154,
+      "outerHeight": 739,
+      "outerWidth": 1154
+    },
+    "02-editor": {
+      "devicePixelRatio": 2.2200000286102295,
+      "innerHeight": 739,
+      "innerWidth": 1154,
+      "outerHeight": 739,
+      "outerWidth": 1154
+    },
+    "03-find": {
+      "devicePixelRatio": 2.2200000286102295,
+      "innerHeight": 739,
+      "innerWidth": 1154,
+      "outerHeight": 739,
+      "outerWidth": 1154
+    },
+    "04-split": {
+      "devicePixelRatio": 2.2200000286102295,
+      "innerHeight": 739,
+      "innerWidth": 1154,
+      "outerHeight": 739,
+      "outerWidth": 1154
+    },
+    "05-search": {
+      "devicePixelRatio": 2.2200000286102295,
+      "innerHeight": 739,
+      "innerWidth": 1154,
+      "outerHeight": 739,
+      "outerWidth": 1154
+    },
+    "06-json-diagnostics": {
+      "devicePixelRatio": 2.2200000286102295,
+      "innerHeight": 739,
+      "innerWidth": 1154,
+      "outerHeight": 739,
+      "outerWidth": 1154
+    },
+    "07-typescript-diagnostics": {
+      "devicePixelRatio": 2.2200000286102295,
+      "innerHeight": 739,
+      "innerWidth": 1154,
+      "outerHeight": 739,
+      "outerWidth": 1154
+    },
+    "08-crash-recovery": {
+      "devicePixelRatio": 2.2200000286102295,
+      "innerHeight": 739,
+      "innerWidth": 1154,
+      "outerHeight": 739,
+      "outerWidth": 1154
+    }
+  },
+  "referenceVerified": false
+}

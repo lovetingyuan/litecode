@@ -1,0 +1,21 @@
+{
+  "version": "0.1.0",
+  "build": "202314481181",
+  "generatedAt": "2026-10-17T13:34:29.180Z",
+  "platform": "Windows x64",
+  "executableSha256": "202314481181078f3412d2ed8920c238f38125047313cbb42e2dfa92e81e652d",
+  "packageLockSha256": "45b8b3cbc0d88b8af3e8b4f5c51caaf310505e8e3ecca5bc0884009db9bc0ca9",
+  "cargoLockSha256": "4b7e5ff08be6961ecba6824ce2052e909e9ebb48d0c101c09a7524abd17c1bfc",
+  "artifacts": [
+    {
+      "name": "LiteCode-0.1.0-202314481181-win-x64-portable.zip",
+      "bytes": 13299442,
+      "sha256": "79b1f3bd3f31ceb539bca28cfb5a03d79304129b87a8e10fb81404779c255ca6"
+    },
+    {
+      "name": "LiteCode_0.1.0_x64-setup.exe",
+      "bytes": 9589474,
+      "sha256": "05b46e0308d5943fa4789899e3b05ee66fd59fe0122670a3af3bfb5de9b6c7ad"
+    }
+  ]
+}

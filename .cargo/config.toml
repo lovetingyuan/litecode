@@ -1,0 +1,3 @@
+# Give first-time dependency downloads more time on slower connections.
+[http]
+timeout = 120

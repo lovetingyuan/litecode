@@ -1,0 +1,86 @@
+mod commands;
+mod configuration;
+mod error;
+mod files;
+mod lsp;
+mod replacement;
+mod search;
+mod state;
+mod tools;
+mod transactions;
+mod workspace;
+
+use tauri::Manager;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .setup(|app| {
+            let portable = std::env::current_exe()?.parent().unwrap().join("data");
+            let data_dir = if portable.is_dir() {
+                portable
+            } else {
+                app.path().app_data_dir()?
+            };
+            std::fs::create_dir_all(&data_dir)?;
+            app.manage(state::AppState {
+                data_dir,
+                ..Default::default()
+            });
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                let state = window.state::<state::AppState>();
+                for (key, task) in state.searches.lock().unwrap().iter() {
+                    if key.starts_with(&format!("{}/", window.label())) {
+                        task.cancelled
+                            .store(true, std::sync::atomic::Ordering::Release);
+                    }
+                }
+                let _ = state.checkpoint(window.label());
+                state.servers.lock().unwrap().retain(|key, server| {
+                    if key.starts_with(&format!("{}/", window.label())) {
+                        lsp::kill_tree(server.pid);
+                        false
+                    } else {
+                        true
+                    }
+                });
+                state.windows.lock().unwrap().remove(window.label());
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::bootstrap,
+            commands::configuration,
+            commands::pick_path,
+            commands::open_workspace,
+            commands::scan_workspace,
+            commands::read_document,
+            commands::save_document,
+            commands::sync_documents,
+            commands::file_operation,
+            commands::reveal_path,
+            commands::settings_path,
+            commands::explicit_open,
+            search::search_start,
+            search::search_ack,
+            search::search_cancel,
+            lsp::lsp_start,
+            lsp::lsp_send,
+            lsp::lsp_ack,
+            lsp::lsp_stop,
+            tools::tool_status,
+            tools::format_document,
+            tools::install_tools,
+            commands::language_document,
+            replacement::replacement_plan,
+            transactions::replace_disk,
+            transactions::replay_replacement,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
