@@ -43,7 +43,15 @@ const syntaxes = import.meta.glob<{ language: monaco.languages.IMonarchLanguage;
 export async function loadSyntax(language: string) {
   if (loaded.has(language) || language === 'plaintext') return;
   loaded.add(language);
-  const id = language === 'javascript' ? 'typescript' : language === 'jsonc' ? 'json' : language;
+  if (language === 'json' || language === 'jsonc') {
+    // JSON's tokenizer lives outside Monaco's Monarch language definitions.
+    const loaders = import.meta.glob<{ createTokenizationSupport(comments: boolean): monaco.languages.TokensProvider }>('/node_modules/monaco-languages/esm/vs/languages/features/json/tokenization.js');
+    const { createTokenizationSupport } = await loaders['/node_modules/monaco-languages/esm/vs/languages/features/json/tokenization.js']();
+    monaco.languages.register({ id: language });
+    monaco.languages.setTokensProvider(language, createTokenizationSupport(language === 'jsonc'));
+    return;
+  }
+  const id = language === 'javascript' ? 'typescript' : language;
   const loader = syntaxes[`/node_modules/monaco-languages/esm/vs/languages/definitions/${id}/${id}.js`];
   if (!loader) return;
   const module = await loader();

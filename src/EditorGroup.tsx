@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useApp, setApp, notify } from './store';
 import { monaco } from './monaco';
-import { models, editors, closeDocument, showDocument, pin, relative, addHistory, moveTab, splitGroup, scheduleBackup, resolveConflict, patchDoc, openPath, checkpoint } from './documents';
+import { models, editors, closeDocument, showDocument, pin, relative, addHistory, moveTab, splitGroup, scheduleBackup, resolveConflict, patchDoc, openPath, checkpoint, autoSave } from './documents';
 import { errorMessage, call, channel } from './bridge';
 import { Icon, IconButton } from './ui';
 import { revealInTree } from './Explorer';
@@ -35,6 +35,7 @@ export function EditorGroup({ group }: { group: Group }) {
     instance.current = e; editors.set(group.id, e);
     const subscriptions = [
       e.onDidFocusEditorText(() => setApp({ activeGroup: group.id })),
+      e.onDidBlurEditorWidget(() => { void autoSave('onFocusChange', previous.current ?? undefined); }),
       e.onDidChangeCursorSelection(event => {
         const id = useApp.getState().groups.find(g => g.id === group.id)?.active;
         if (!id || useApp.getState().activeGroup !== group.id) return;
@@ -58,7 +59,10 @@ export function EditorGroup({ group }: { group: Group }) {
   }, [group.id]);
   useEffect(() => {
     const e = instance.current; if (!e) return;
-    if (previous.current && previous.current !== group.active) group.views[previous.current] = e.saveViewState();
+    if (previous.current && previous.current !== group.active) {
+      group.views[previous.current] = e.saveViewState();
+      void autoSave('onFocusChange', previous.current);
+    }
     e.setModel(group.active ? models.get(group.active) ?? null : null);
     if (group.active && previous.current !== group.active) {
       const state = group.views[group.active]; if (state) e.restoreViewState(state as monaco.editor.ICodeEditorViewState);

@@ -69,7 +69,7 @@ export function attachDocument(doc: Doc, text: string, initiallyDirty = false) {
     clearTimeout(autoTimers.get(doc.id));
     const s = useApp.getState();
     if (s.settings['files.autoSave'] === 'afterDelay' && latest.path && !latest.conflict) {
-      autoTimers.set(doc.id, setTimeout(() => void save(doc.id).catch(e => notify(errorMessage(e))), Number(s.settings['files.autoSaveDelay'] ?? 1000)));
+      autoTimers.set(doc.id, setTimeout(() => void autoSave('afterDelay', doc.id), Number(s.settings['files.autoSaveDelay'] ?? 1000)));
     }
   }));
   scheduleBackup();
@@ -144,13 +144,29 @@ export function showDocument(id: string, options: { pinned?: boolean; group?: st
   scheduleBackup();
 }
 
-export async function save(id = activeDoc()?.id, saveAs = false) {
+type AutoSaveMode = 'afterDelay' | 'onFocusChange' | 'onWindowChange';
+
+export async function autoSave(reason: AutoSaveMode, id?: string) {
+  const current = useApp.getState().settings['files.autoSave'];
+  const mode = reason === 'onWindowChange' && current === 'onFocusChange' ? 'onFocusChange' : reason;
+  if (current !== mode) return;
+  const ids = reason === 'onWindowChange' ? Object.keys(useApp.getState().docs) : id ? [id] : [];
+  for (const documentId of ids) {
+    try { await saveDocument(documentId, false, mode); }
+    catch (e) { notify(errorMessage(e)); }
+  }
+}
+
+export async function save(id = activeDoc()?.id, saveAs = false) { await saveDocument(id, saveAs); }
+
+async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMode?: AutoSaveMode) {
   if (!id) return;
   const previous = saveQueues.get(id) ?? Promise.resolve();
   const current = previous.catch(() => {}).then(async () => {
     let doc = useApp.getState().docs[id];
     let m = models.get(id);
     if (!doc || !m) return;
+    if (autoSaveMode && (useApp.getState().settings['files.autoSave'] !== autoSaveMode || !doc.path || !doc.dirty || doc.conflict)) return;
     let path = doc.path;
     let revision = doc.revision;
     if (!path || saveAs) {

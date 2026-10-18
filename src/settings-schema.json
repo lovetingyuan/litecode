@@ -10,7 +10,7 @@
     "editor.minimap.enabled": { "type": "boolean", "default": true, "description": "是否显示代码缩略图；大文件模式下始终关闭。" },
     "editor.formatOnSave": { "type": "boolean", "default": false, "description": "保存时是否格式化文档，需要已安装对应语言的格式化工具。" },
     "editor.defaultFormatter": { "type": ["string", "null"], "enum": [null, "esbenp.prettier-vscode", "oxc.oxc-vscode", "rust-lang.rust-analyzer"], "default": null, "description": "默认格式化工具。null 表示自动选择：Rust 使用 rustfmt；HTML 使用 Prettier；其他文件根据项目配置选择 Prettier 或 Oxfmt。也可填写列出的工具标识。" },
-    "files.autoSave": { "enum": ["off", "afterDelay", "onFocusChange", "onWindowChange"], "default": "off", "description": "自动保存模式：off 关闭；afterDelay 在停止编辑后延迟保存。当前版本尚未实现 onFocusChange 和 onWindowChange。" },
+    "files.autoSave": { "enum": ["off", "afterDelay", "onFocusChange", "onWindowChange"], "default": "off", "description": "自动保存模式：off 关闭；afterDelay 在停止编辑后延迟保存；onFocusChange 在离开当前编辑器时保存；onWindowChange 在窗口失去焦点时保存。自动保存仅处理有文件路径、已修改且无冲突的文档。" },
     "files.autoSaveDelay": { "type": "number", "minimum": 0, "default": 1000, "description": "afterDelay 自动保存的等待时间，单位为毫秒。" },
     "files.exclude": { "type": "object", "additionalProperties": { "type": "boolean" }, "default": {}, "description": "文件隐藏规则，键为 glob 模式，值为是否隐藏。当前为兼容导入保留，尚未用于文件树过滤。" },
     "search.exclude": { "type": "object", "additionalProperties": { "type": "boolean" }, "default": {}, "description": "搜索排除规则，键为 glob 模式，值为是否排除。当前为兼容导入保留；实际排除条件请在搜索面板填写。" },

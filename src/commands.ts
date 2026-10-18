@@ -46,7 +46,7 @@ export const commands: Command[] = [
   { id: 'workbench.action.files.saveAll', label: 'Save All', key: 'Ctrl+K S', menu: 'File', run: saveAll },
   { id: 'workbench.action.closeActiveEditor', label: 'Close Editor', key: 'Ctrl+W', menu: 'File', run: () => { const id = activeDoc()?.id; if (id) return closeDocument(id); } },
   { id: 'workbench.action.toggleAutoSave', label: 'Toggle Auto Save', menu: 'File', run: async () => {
-    const s = useApp.getState(); const enabled = s.settings['files.autoSave'] === 'afterDelay';
+    const s = useApp.getState(); const enabled = ['afterDelay', 'onFocusChange', 'onWindowChange'].some(mode => s.settings['files.autoSave'] === mode);
     const id = await openSettings();
     if (id) { const m = models.get(id)!; m.pushEditOperations([], [{ range: m.getFullModelRange(), text: updateSetting(m.getValue(), 'files.autoSave', enabled ? 'off' : 'afterDelay') }], () => null); await save(id); }
   } },

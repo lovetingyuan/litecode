@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { bootstrap, call, desktop, errorMessage } from './bridge';
 import { initializeEditor, monaco } from './monaco';
 import { useApp, setApp, notify, activeDoc } from './store';
-import { checkpoint, restoreDocument, refreshDocuments, basename, editor, models, patchDoc, scheduleBackup } from './documents';
+import { checkpoint, restoreDocument, refreshDocuments, basename, editor, models, patchDoc, scheduleBackup, autoSave } from './documents';
 import { commands, execute, installKeys, openFolder } from './commands';
 import { Explorer, refreshTree } from './Explorer';
 import { SearchView } from './SearchView';
@@ -53,6 +53,8 @@ export default function App() {
       const onConfig = await listen('configuration-changed', () => { void call<{ settings: Record<string, unknown>; keybindings: import('./types').Keybinding[] | null }>('configuration').then(config => setApp({ settings: config.settings, keybindings: config.keybindings ?? [] })).catch(e => notify(errorMessage(e))); });
       if (disposed) onConfig(); else cleanups.push(onConfig);
       const win = getCurrentWindow();
+      const onFocus = await win.onFocusChanged(({ payload: focused }) => { if (!disposed && !focused) void autoSave('onWindowChange'); });
+      if (disposed) onFocus(); else cleanups.push(onFocus);
       const onClose = await win.onCloseRequested(async event => { event.preventDefault(); try { await checkpoint(); await win.destroy(); } catch (e) { notify(`Could not save recovery data. Window remains open: ${errorMessage(e)}`); } });
       if (disposed) onClose(); else cleanups.push(onClose);
     })().catch(e => notify(errorMessage(e)));

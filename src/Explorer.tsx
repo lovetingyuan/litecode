@@ -72,6 +72,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     search: false,
     unsafeCSS: `
       svg[data-icon-name]{width:var(--trees-icon-width);height:var(--trees-icon-width)}
+      [data-item-section="git"] [data-icon-name="file-tree-icon-dot"]{transform:none}
       /* Keep each level at 14px and its guide centered under the parent icon. */
       [data-item-section="spacing"]{padding-left:0;margin-right:calc(-1 * var(--trees-item-row-gap))}
       [data-item-section="spacing"] > [data-item-section="spacing-item"]{
@@ -248,6 +249,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     '--trees-font-size-override': '15px',
     '--trees-icon-width-override': '18px',
     '--trees-item-row-gap-override': '5px',
+    '--trees-padding-inline-override': '0px',
   }
   return (
     <section className="explorer view" aria-label="Explorer">
