@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Dialog } from '@base-ui/react/dialog';
 import { useApp, setApp, notify } from './store';
 import { commands, execute, openFolder } from './commands';
-import { basename, editor, join, openPath, relative, showDocument, splitGroup, session, checkpoint } from './documents';
-import { rankPath, parseLocation } from './fuzzy';
+import { basename, editor, openPath, relative, showDocument, splitGroup, session, checkpoint } from './documents';
+import { parseLocation } from './fuzzy';
+import { useQuickFiles } from './useQuickFiles';
 import { call, channel, errorMessage } from './bridge';
 import { runSearch, openMatch } from './search';
 import { FileIcon } from './EditorGroup';
@@ -13,17 +14,36 @@ import { symbols, type SymbolItem } from './languages';
 import type { SearchMatch } from './types';
 
 type Item = { id: string; label: string; description?: string; key?: string; path?: string; positions?: number[]; run: (side: boolean, background: boolean) => unknown };
+const emptyPaths: string[] = [];
 export function QuickOpen() {
-  const value = useApp(s => s.quick); const docs = useApp(s => s.docs); const tree = useApp(s => s.tree); const root = useApp(s => s.root); const recent = useApp(s => s.recent);
+  const prefill = useApp(s => s.quick); const docs = useApp(s => s.docs); const paths = useApp(s => s.tree.paths); const treeRoot = useApp(s => s.treeRoot); const root = useApp(s => s.root); const recent = useApp(s => s.recent);
+  const [value, setValue] = useState(prefill); const [previousPrefill, setPreviousPrefill] = useState(prefill);
   const [results, setResults] = useState<SearchMatch[]>([]);
   const [selected, setSelected] = useState(0); const input = useRef<HTMLInputElement>(null); const list = useRef<HTMLDivElement>(null);
   const [symbolItems, setSymbolItems] = useState<SymbolItem[]>([]);
   const saved = useRef<ReturnType<typeof session> | null>(null); const activePosition = useRef<{ lineNumber: number; column: number } | null>(null); const committed = useRef(false);
+  const pendingChoice = useRef<{ index: number; side: boolean; background: boolean } | null>(null);
+  const composing = useRef(false);
+  if (previousPrefill !== prefill) { setPreviousPrefill(prefill); setValue(prefill); setSelected(0); }
+  const text = value?.trim() ?? '';
+  const fileMode = value !== null && !/^[>?:@#%]/.test(text) && !text.startsWith('view ') && text !== 'recent' && !text.startsWith('recent ') && !text.startsWith('edt ');
+  const parsed = parseLocation(fileMode ? text : '');
+  const openPathsKey = useMemo(() => JSON.stringify(Object.values(docs).flatMap(d => d.path ? [d.path] : [])), [docs]);
+  const { files, busy } = useQuickFiles(fileMode ? parsed.query : null, root, treeRoot === root ? paths : emptyPaths, openPathsKey);
+  const busyRef = useRef(busy);
+  useLayoutEffect(() => { busyRef.current = busy; }, [busy]);
+  const fileItems = useMemo<Item[]>(() => files.map(file => ({
+    id: file.path, ...file,
+    run: (side, background) => openPath(file.path, { pinned: true, group: side ? splitGroup() : undefined, background, line: parsed.line, column: parsed.column }),
+  })), [files, parsed.line, parsed.column]);
+  function update(next: string) { pendingChoice.current = null; setValue(next); setSelected(0); }
+  useEffect(() => { pendingChoice.current = null; }, [root, paths, openPathsKey]);
   useEffect(() => {
-    if (value === null) return;
+    pendingChoice.current = null;
+    if (prefill === null) return;
     if (!saved.current) { saved.current = structuredClone(session()); activePosition.current = editor()?.getPosition() ?? null; committed.current = false; }
     input.current?.focus();
-  }, [value]);
+  }, [prefill]);
   useEffect(() => {
     if (!value || !['@', '#'].includes(value[0])) return;
     let cancelled = false;
@@ -47,7 +67,7 @@ export function QuickOpen() {
     if (value === null) return [];
     const query = value.trim();
     if (query.startsWith('>')) return commands.filter(c => c.label.toLowerCase().includes(query.slice(1).trim().toLowerCase())).map(c => ({ id: c.id, label: c.label, key: c.key, run: () => execute(c.id) }));
-    if (query.startsWith('?')) return [['>', 'Show and Run Commands'], [':', 'Go to Line/Column'], [':offset ', 'Go to Character Offset'], ['@', 'Go to Symbol in Editor'], ['#', 'Go to Symbol in Workspace'], ['%', 'Quick Search'], ['edt ', 'Show Open Editors'], ['view ', 'Open a View'], ['recent ', 'Open Recent Folder']].map(([prefix, label]) => ({ id: prefix, label: prefix, description: label, run: () => { setApp({ quick: prefix }); return 'keep'; } }));
+    if (query.startsWith('?')) return [['>', 'Show and Run Commands'], [':', 'Go to Line/Column'], [':offset ', 'Go to Character Offset'], ['@', 'Go to Symbol in Editor'], ['#', 'Go to Symbol in Workspace'], ['%', 'Quick Search'], ['edt ', 'Show Open Editors'], ['view ', 'Open a View'], ['recent ', 'Open Recent Folder']].map(([prefix, label]) => ({ id: prefix, label: prefix, description: label, run: () => { update(prefix); return 'keep'; } }));
     if (query.startsWith(':')) {
       const offset = query.startsWith(':offset'); const values = query.replace(offset ? ':offset' : ':', '').trim().split(/[,:]/).map(Number);
       return [{ id: 'line', label: offset ? `Go to offset ${values[0] || 0}` : `Go to line ${values[0] || 1}, column ${values[1] || 1}`, run: () => {
@@ -61,40 +81,53 @@ export function QuickOpen() {
     if (query.startsWith('edt ')) return Object.values(docs).filter(d => d.name.toLowerCase().includes(query.slice(4).toLowerCase())).map(d => ({ id: d.id, label: d.name, description: d.path ? relative(d.path) : 'Untitled', path: d.path ?? undefined, run: () => showDocument(d.id, { pinned: true }) }));
     if (query.startsWith('%')) return results.slice(0, 100).map((m, i) => ({ id: `${i}`, label: m.preview, description: `${relative(m.path)}:${m.line}:${m.column}`, path: m.path, run: (side: boolean) => openMatch(m, side, side ? splitGroup() : undefined) }));
     const parsed = parseLocation(query);
-    const paths = [...new Set([...Object.values(docs).flatMap(d => d.path ? [d.path] : []), ...(root ? tree.paths.filter(p => !p.endsWith('/')).map(p => join(root, p)) : [])])];
-    const ranked = paths.map(path => rankPath(relative(path), parsed.query, Object.values(docs).some(d => d.path === path))).filter((r): r is NonNullable<typeof r> => r !== null).sort((a, b) => b.score - a.score).slice(0, 100);
-    const list: Item[] = ranked.map(r => {
-      const path = paths.find(p => relative(p) === r.path)!;
-      const label = basename(path); const offset = r.path.length - label.length;
-      return { id: path, path, label, description: relative(path).split('/').slice(0, -1).join('/'), positions: r.positions.filter(p => p >= offset).map(p => p - offset), run: (side, background) => openPath(path, { pinned: true, group: side ? splitGroup() : undefined, background, line: parsed.line, column: parsed.column }) };
-    });
-    if (!list.length && /^(?:[a-z]:[\\/]|\\\\)/i.test(parsed.query)) list.push({ id: 'absolute', label: `Open ${parsed.query}`, run: async side => { const path = await call<string>('explicit_open', { path: parsed.query }); await openPath(path, { pinned: true, group: side ? splitGroup() : undefined, line: parsed.line, column: parsed.column }); } });
+    const list = fileItems;
+    if (!list.length && /^(?:[a-z]:[\\/]|\\\\)/i.test(parsed.query)) return [{ id: 'absolute', label: `Open ${parsed.query}`, run: async (side: boolean) => { const path = await call<string>('explicit_open', { path: parsed.query }); await openPath(path, { pinned: true, group: side ? splitGroup() : undefined, line: parsed.line, column: parsed.column }); } }];
     return list;
-  }, [value, docs, tree.paths, root, recent, results, symbolItems]);
-  useEffect(() => { setSelected(0); }, [value]);
+  }, [value, docs, recent, results, symbolItems, fileItems]);
   useEffect(() => { list.current?.querySelector(`[data-index="${selected}"]`)?.scrollIntoView({ block: 'nearest' }); }, [selected]);
-  function close(accept: boolean) {
+  const close = useCallback((accept: boolean) => {
+    pendingChoice.current = null;
+    composing.current = false;
     if (!accept && saved.current && !committed.current) {
       setApp({ groups: saved.current.groups, activeGroup: saved.current.activeGroup, history: saved.current.history, historyIndex: saved.current.historyIndex });
       const position = activePosition.current; requestAnimationFrame(() => { if (position) editor()?.setPosition(position); editor()?.focus(); });
     }
-    saved.current = null; setApp({ quick: null });
+    saved.current = null; setValue(null); setApp({ quick: null });
     if (accept) requestAnimationFrame(() => editor()?.focus());
-  }
-  async function choose(index: number, side = false, background = false) {
-    const item = items[index]; if (!item) return;
-    if (value?.startsWith('?')) { await item.run(side, background); return; }
+  }, []);
+  const help = text.startsWith('?');
+  const choose = useCallback(async (index: number, side = false, background = false) => {
+    if (busyRef.current) return;
+    const item = items[Math.min(index, items.length - 1)]; if (!item) return;
+    if (help) { await item.run(side, background); return; }
     committed.current = true; close(true);
     try { await item.run(side, background); } catch (e) { notify(errorMessage(e)); }
-  }
+  }, [items, help, close]);
+  const select = useCallback((index: number) => { if (!busyRef.current) setSelected(index); }, []);
+  useEffect(() => {
+    if (busy || value === null || !pendingChoice.current) return;
+    const { index, side, background } = pendingChoice.current; pendingChoice.current = null;
+    void choose(index, side, background);
+  }, [busy, value, choose]);
   return <Dialog.Root open={value !== null} onOpenChange={open => { if (!open) close(false); }}><Dialog.Portal><Dialog.Backdrop className="quick-backdrop" /><Dialog.Popup className="quick-open" initialFocus={input}>
     <Dialog.Title className="sr-only">Quick Access</Dialog.Title><Dialog.Description className="sr-only">Type a file name, command prefix, line number or search query.</Dialog.Description>
-    <input ref={input} aria-label="Quick Access" role="combobox" aria-autocomplete="list" aria-expanded aria-controls="quick-results" aria-activedescendant={`quick-option-${selected}`} value={value ?? ''} placeholder="Search files by name (append : to go to line or @ to go to symbol)" onChange={e => setApp({ quick: e.target.value })} onKeyDown={e => {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setSelected(i => (i + items.length + (e.key === 'ArrowDown' ? 1 : -1)) % Math.max(1, items.length)); }
-      if (e.key === 'Enter') { e.preventDefault(); void choose(selected, e.ctrlKey, e.altKey); }
+    <input ref={input} aria-label="Quick Access" role="combobox" aria-autocomplete="list" aria-expanded aria-controls="quick-results" aria-busy={busy} aria-activedescendant={!busy && items.length ? `quick-option-${Math.min(selected, items.length - 1)}` : undefined} value={value ?? ''} placeholder="Search files by name (append : to go to line or @ to go to symbol)" onChange={e => update(e.target.value)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} onKeyDown={e => {
+      if (composing.current || e.nativeEvent.isComposing || e.keyCode === 229) { e.stopPropagation(); return; }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (!busy) setSelected(i => (i + items.length + (e.key === 'ArrowDown' ? 1 : -1)) % Math.max(1, items.length)); }
+      if (e.key === 'Enter') { e.preventDefault(); if (busy) pendingChoice.current = { index: selected, side: e.ctrlKey, background: e.altKey }; else void choose(selected, e.ctrlKey, e.altKey); }
       if (e.key === 'Escape') { e.preventDefault(); close(false); }
     }} />
     {value?.startsWith('%') && <button className="quick-handoff" onClick={() => { const text = value.slice(1).trim(); committed.current = true; close(true); setApp({ sidebar: 'search' }); void runSearch({ ...useApp.getState().query, text }); }}>Open in Search View <Icon name="arrow-right" /></button>}
-    <div ref={list} className="quick-results" role="listbox" id="quick-results">{items.length ? items.map((item, i) => <div id={`quick-option-${i}`} data-index={i} role="option" aria-selected={selected === i} className={`quick-item ${selected === i ? 'selected' : ''}`} key={item.id} onMouseMove={() => setSelected(i)} onClick={() => void choose(i)}>{item.path ? <FileIcon language={languageFor(item.path)} /> : <Icon name={value?.startsWith('>') ? 'terminal' : 'arrow-right'} />}<span className="quick-label">{item.positions ? [...item.label].map((char, index) => item.positions!.includes(index) ? <mark key={index}>{char}</mark> : char) : item.label}</span><span className="muted quick-description">{item.description}</span>{item.key && <kbd>{item.key}</kbd>}</div>) : <div className="quick-empty">No matching results</div>}</div>
+    <div ref={list} className="quick-results" role="listbox" id="quick-results" aria-busy={busy}>
+      <QuickResults items={items} selected={Math.min(selected, Math.max(0, items.length - 1))} command={text.startsWith('>')} onSelect={select} onChoose={choose} />
+      {!items.length && <div className="quick-empty">{busy ? 'Searching…' : 'No matching results'}</div>}
+    </div>
   </Dialog.Popup></Dialog.Portal></Dialog.Root>;
 }
+
+const QuickResults = memo(function QuickResults({ items, selected, command, onSelect, onChoose }: {
+  items: Item[]; selected: number; command: boolean; onSelect: (index: number) => void; onChoose: (index: number) => Promise<void>;
+}) {
+  return items.map((item, i) => <div id={`quick-option-${i}`} data-index={i} role="option" aria-selected={selected === i} className={`quick-item ${selected === i ? 'selected' : ''}`} key={item.id} onMouseMove={() => onSelect(i)} onClick={() => void onChoose(i)}>{item.path ? <FileIcon language={languageFor(item.path)} /> : <Icon name={command ? 'terminal' : 'arrow-right'} />}<span className="quick-label">{item.positions ? [...item.label].map((char, index) => item.positions!.includes(index) ? <mark key={index}>{char}</mark> : char) : item.label}</span><span className="muted quick-description">{item.description}</span>{item.key && <kbd>{item.key}</kbd>}</div>);
+});
