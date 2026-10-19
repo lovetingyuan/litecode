@@ -217,7 +217,9 @@ pub async fn format_document(
     } else {
         let extension = match language.as_str() {
             "typescript" => "ts",
+            "typescriptreact" => "tsx",
             "javascript" => "js",
+            "javascriptreact" => "jsx",
             "rust" => "rs",
             "jsonc" => "jsonc",
             "html" => "html",
@@ -316,7 +318,10 @@ pub async fn format_document(
             ));
         }
         command = Command::new(node(&window, &state)?);
-        command.arg(script).arg("--stdin-filepath").arg(&path);
+        command
+            .arg(process_path(&script))
+            .arg("--stdin-filepath")
+            .arg(&path);
     } else {
         let local_script = root.join("node_modules/oxfmt/bin/oxfmt");
         let installed = state
@@ -330,11 +335,11 @@ pub async fn format_document(
             command = Command::new(executable);
         } else if local_script.is_file() || installed.is_file() {
             command = Command::new(node(&window, &state)?);
-            command.arg(if local_script.is_file() {
+            command.arg(process_path(&if local_script.is_file() {
                 local_script
             } else {
                 installed
-            });
+            }));
         } else {
             return Err(AppError::new(
                 "missingTool",
@@ -519,4 +524,26 @@ pub async fn install_tools(
         return Err(e.into());
     }
     Ok("Pinned TypeScript Native, TypeScript compatibility server and Prettier installed. npm verified package integrity against the bundled lockfile.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn process_paths_remove_windows_verbatim_prefixes() {
+        for (input, expected) in [
+            (
+                r"\\?\D:\project with spaces\格式化\prettier.cjs",
+                r"D:\project with spaces\格式化\prettier.cjs",
+            ),
+            (r"\\?\UNC\server\share\oxfmt", r"\\server\share\oxfmt"),
+            (r"D:\project\prettier.cjs", r"D:\project\prettier.cjs"),
+            (r"\\server\share\oxfmt", r"\\server\share\oxfmt"),
+            ("--stdio", "--stdio"),
+        ] {
+            assert_eq!(process_path(Path::new(input)), PathBuf::from(expected));
+        }
+    }
 }

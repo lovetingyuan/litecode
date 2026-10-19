@@ -7,7 +7,7 @@ import { createModelReference } from '@codingame/monaco-vscode-api/monaco';
 import { call, desktop, errorMessage } from './bridge';
 import { useApp, setApp, notify } from './store';
 import { monaco } from './monaco';
-import { models, openPath, normalize, checkpoint } from './documents';
+import { models, openPath, normalize, visiblePath, checkpoint } from './documents';
 import type { DiskDocument } from './types';
 import { settingsSchema } from './settings';
 import { applyEdits, format } from 'jsonc-parser';
@@ -31,9 +31,9 @@ const starting = new Map<string, Promise<void>>();
 const failures = new Set<string>();
 const failureDetails = new Map<string, string>();
 const references = new Map<string, { dispose(): void }>();
-const supported = new Set(['typescript', 'javascript', 'html', 'css', 'scss', 'less', 'json', 'jsonc', 'rust']);
+const supported = new Set(['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'html', 'css', 'scss', 'less', 'json', 'jsonc', 'rust']);
 export const canFormat = (language: string) => supported.has(language);
-function key(language: string) { return language === 'javascript' ? 'typescript' : language; }
+function key(language: string) { return ['typescriptreact', 'javascript', 'javascriptreact'].includes(language) ? 'typescript' : language; }
 
 class NativeFiles extends RegisteredFileSystemProvider {
   constructor() { super(false); this.capabilities = FileSystemProviderCapabilities.FileReadWrite; }
@@ -117,12 +117,12 @@ export async function ensureLanguage(id: string, language: string) {
       else notify(`${serverId}: ${String(event.message)}`);
     };
     try {
-      const description = await call<string>('lsp_start', { serverId, language, onEvent });
+      const description = await call<string>('lsp_start', { serverId, language: serverId, onEvent });
       const root = useApp.getState().root;
-      const selector = language === 'typescript' || language === 'javascript' ? ['typescript', 'javascript', 'typescriptreact', 'javascriptreact'] : [language];
+      const selector = serverId === 'typescript' ? ['typescript', 'javascript', 'typescriptreact', 'javascriptreact'] : [language];
       const client = new MonacoLanguageClient({ id: serverId, name: description, messageTransports: { reader, writer }, clientOptions: {
         documentSelector: selector,
-        workspaceFolder: root ? { uri: vscode.Uri.file(root), name: root.split(/[\\/]/).pop() ?? root, index: 0 } : undefined,
+        workspaceFolder: root ? { uri: vscode.Uri.file(visiblePath(root)), name: root.split(/[\\/]/).pop() ?? root, index: 0 } : undefined,
         initializationOptions: { schemas: settingsSchemas() },
         middleware: { workspace: { configuration: async params => params.items.map(item => item.section ? useApp.getState().settings[item.section] ?? {} : useApp.getState().settings), handleApplyEdit: async params => applyWorkspaceEdit(params.edit) } },
         errorHandler: { error: () => ({ action: 1 }), closed: () => ({ action: 1 }) },

@@ -192,6 +192,6 @@ export async function compareDisk(id: string) {
 
 export function FileIcon({ language }: { language: string }) {
   const icons: Record<string, [string, string]> = { typescript: ['symbol-color', '#519aba'], javascript: ['symbol-color', '#cbcb41'], rust: ['settings-gear', '#dea584'], json: ['json', '#cbcb41'], css: ['symbol-color', '#519aba'], html: ['code', '#e37933'], markdown: ['markdown', '#519aba'] };
-  const [name, color] = icons[language] ?? ['file', '#a6a6a6'];
+  const [name, color] = icons[language.replace(/react$/, '')] ?? ['file', '#a6a6a6'];
   return <span style={{ color }}><Icon name={name} /></span>;
 }

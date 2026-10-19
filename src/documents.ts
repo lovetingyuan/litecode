@@ -16,7 +16,7 @@ let backupTimer: ReturnType<typeof setTimeout>;
 let autoTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let checkpointQueue = Promise.resolve();
 export const basename = (path: string) => path.replace(/\\/g, '/').split('/').pop() || path;
-export const normalize = (path: string) => path.replace(/^\\\\\?\\/, '').replace(/\\/g, '/').toLowerCase();
+export const normalize = (path: string) => visiblePath(path).replace(/\\/g, '/').toLowerCase();
 export const join = (root: string, path: string) => `${root.replace(/[\\/]$/, '')}/${path.replace(/\/$/, '')}`;
 export const visiblePath = (path: string) => path.replace(/^\\\\\?\\UNC\\/, '\\\\').replace(/^\\\\\?\\/, '');
 export const pathTitle = (path: string) => visiblePath(path).replace(/\//g, '\\');
@@ -54,7 +54,7 @@ export function scheduleBackup() { clearTimeout(backupTimer); backupTimer = setT
 
 export function attachDocument(doc: Doc, text: string, initiallyDirty = false) {
   if (!monaco.languages.getLanguages().some(l => l.id === doc.language)) monaco.languages.register({ id: doc.language });
-  const uri = doc.path ? monaco.Uri.file(doc.path) : monaco.Uri.parse(doc.id);
+  const uri = doc.path ? monaco.Uri.file(visiblePath(doc.path)) : monaco.Uri.parse(doc.id);
   const m = monaco.editor.getModel(uri) ?? monaco.editor.createModel(text, doc.language, uri);
   models.set(doc.id, m);
   if (!initiallyDirty) { savedVersions.set(doc.id, m.getAlternativeVersionId()); savedEncodings.set(doc.id, doc.encoding); }
@@ -80,7 +80,9 @@ export function attachDocument(doc: Doc, text: string, initiallyDirty = false) {
 
 export function restoreDocument(mirror: Mirror) {
   const detected = languageFor(mirror.path ?? '');
-  const doc: Doc = { ...mirror, name: mirror.name ?? (mirror.path ? basename(mirror.path) : 'Untitled'), language: detected === 'jsonc' ? detected : mirror.language ?? detected, eol: mirror.text.includes('\r\n') ? 'CRLF' : 'LF' };
+  // Older sessions stored JSX files as plain TypeScript/JavaScript.
+  const language = detected === 'jsonc' || detected === 'typescriptreact' && mirror.language === 'typescript' || detected === 'javascriptreact' && mirror.language === 'javascript' ? detected : mirror.language ?? detected;
+  const doc: Doc = { ...mirror, name: mirror.name ?? (mirror.path ? basename(mirror.path) : 'Untitled'), language, eol: mirror.text.includes('\r\n') ? 'CRLF' : 'LF' };
   attachDocument(doc, mirror.text, mirror.dirty);
 }
 
@@ -97,7 +99,7 @@ export async function openPath(path: string, options: { pinned?: boolean; group?
     const duplicate = Object.values(useApp.getState().docs).find(d => d.path && normalize(d.path) === normalize(path));
     if (duplicate) id = duplicate.id;
     else {
-      id = monaco.Uri.file(path).toString();
+      id = monaco.Uri.file(visiblePath(path)).toString();
       const language = languageFor(path);
       attachDocument({ id, path, name: basename(path), language, encoding: disk.encoding, eol: disk.eol, dirty: false, version: 1, revision: disk.revision, large: options.force }, disk.text);
       if (path.endsWith('.code-search')) {
@@ -317,7 +319,7 @@ export async function renameDocumentPaths(from: string, to: string) {
 
 function rebindDocument(id: string, path: string) {
   const doc = useApp.getState().docs[id]; const old = models.get(id); if (!doc || !old) return;
-  const uri = monaco.Uri.file(path); if (old.uri.toString() === uri.toString()) return;
+  const uri = monaco.Uri.file(visiblePath(path)); if (old.uri.toString() === uri.toString()) return;
   const views = [...editors.values()].filter(e => e.getModel() === old).map(e => ({ e, view: e.saveViewState() }));
   const text = old.getValue(); releaseLanguageDocument(id); subscriptions.get(id)?.dispose(); subscriptions.delete(id);
   savedVersions.delete(id); savedEncodings.delete(id);

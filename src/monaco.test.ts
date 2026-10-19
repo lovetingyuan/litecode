@@ -1,11 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('monaco-editor', () => ({ languages: { register: vi.fn(), setTokensProvider: vi.fn() } }));
+vi.mock('monaco-editor', () => ({ languages: { register: vi.fn(), setTokensProvider: vi.fn(), setMonarchTokensProvider: vi.fn(), setLanguageConfiguration: vi.fn(), IndentAction: { None: 0, IndentOutdent: 2 } } }));
 vi.mock('@codingame/monaco-vscode-api/workers/editor.worker?worker', () => ({ default: vi.fn() }));
 vi.mock('monaco-languageclient/vscodeApiWrapper', () => ({ MonacoVscodeApiWrapper: vi.fn() }));
 vi.mock('./editor-features', () => ({}));
 
 import { languageFor, loadSyntax, monaco } from './monaco';
+
+describe('React language modes', () => {
+  it.each([['App.tsx', 'typescriptreact'], ['App.JSX', 'javascriptreact'], ['main.ts', 'typescript'], ['main.js', 'javascript']])('identifies %s as %s', (path, language) => {
+    expect(languageFor(path)).toBe(language);
+  });
+
+  it.each(['typescriptreact', 'javascriptreact'])('loads syntax and editing rules for %s', async language => {
+    await loadSyntax(language);
+    expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith(language, expect.objectContaining({ tokenizer: expect.any(Object) }));
+    expect(monaco.languages.setLanguageConfiguration).toHaveBeenCalledWith(language, expect.objectContaining({ brackets: expect.any(Array) }));
+  });
+});
 
 describe('JSON syntax loading', () => {
   it('registers and reuses tokenizers for JSON and JSONC documents', async () => {

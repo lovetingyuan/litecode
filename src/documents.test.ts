@@ -4,21 +4,21 @@ import type { Doc } from './types';
 
 vi.mock('./monaco', () => ({
   monaco: {
-    languages: { getLanguages: () => [{ id: 'plaintext' }] },
+    languages: { getLanguages: () => [{ id: 'plaintext' }], register: vi.fn() },
     Uri: { file: (path: string) => path, parse: (id: string) => id },
-    editor: { getModel: () => null, createModel: vi.fn() },
+    editor: { getModel: () => null, createModel: vi.fn(), setModelLanguage: vi.fn() },
   },
   loadSyntax: vi.fn().mockResolvedValue(undefined),
-  languageFor: () => 'plaintext',
+  languageFor: vi.fn(() => 'plaintext'),
 }));
 vi.mock('./bridge', () => ({ call: vi.fn(), desktop: true, errorMessage: (e: { message: string }) => e.message }));
 vi.mock('./dialog', () => ({ ask: vi.fn() }));
 vi.mock('./languages', () => ({ ensureLanguage: vi.fn(), releaseLanguageDocument: vi.fn(), canFormat: vi.fn(), formatModel: vi.fn() }));
 
 import { call } from './bridge';
-import { monaco } from './monaco';
+import { monaco, languageFor } from './monaco';
 import { canFormat, formatModel } from './languages';
-import { attachDocument, autoSave, editors, models, openPath, patchDoc, save, session, showDocument } from './documents';
+import { attachDocument, autoSave, editors, models, normalize, openPath, patchDoc, restoreDocument, save, session, showDocument, visiblePath } from './documents';
 import { setApp, useApp } from './store';
 
 class Buffer {
@@ -53,6 +53,7 @@ const writes = () => vi.mocked(call).mock.calls.filter(([command]) => command ==
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
+  vi.mocked(languageFor).mockReturnValue('plaintext');
   vi.mocked(call).mockImplementation(async command => command === 'save_document' ? 'new-revision' : undefined as never);
   vi.mocked(canFormat).mockReturnValue(false);
   setApp({ docs: {}, groups: [], tabRevealRequests: {}, settings: { 'files.autoSave': 'onFocusChange' }, notice: null });
@@ -66,6 +67,25 @@ afterEach(() => {
 });
 
 describe('Opening documents', () => {
+  it.each([['App.tsx', 'typescript', 'typescriptreact'], ['App.jsx', 'javascript', 'javascriptreact']])('repairs the saved language mode for %s without changing its buffer', (name, oldLanguage, language) => {
+    vi.mocked(languageFor).mockReturnValue(language);
+    const text = 'unsaved JSX edits';
+    vi.mocked(monaco.editor.createModel).mockReturnValueOnce(new Buffer(text) as unknown as Monaco.editor.ITextModel);
+    restoreDocument({ id: 'restored', path: `C:/workspace/${name}`, language: oldLanguage, text, dirty: true, version: 3, revision: 'revision', encoding: 'utf8' });
+    expect(useApp.getState().docs.restored).toMatchObject({ language, dirty: true, version: 3 });
+    expect(models.get('restored')!.getValue()).toBe(text);
+  });
+
+  it.each([
+    ['\\\\?\\D:\\project\\App.tsx', 'D:\\project\\App.tsx'],
+    ['\\\\?\\UNC\\server\\share\\App.tsx', '\\\\server\\share\\App.tsx'],
+  ])('uses a standard file path for model URIs: %s', (path, expected) => {
+    addDocument({ path });
+    expect(visiblePath(path)).toBe(expected);
+    expect(normalize(path)).toBe(normalize(expected));
+    expect(monaco.editor.createModel).toHaveBeenLastCalledWith('edited', 'plaintext', expected);
+  });
+
   function setup() {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 0; });
     const { id } = addDocument();
