@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { useApp, setApp, notify } from './store';
 import { monaco } from './monaco';
-import { models, editors, closeDocument, showDocument, pin, relative, addHistory, moveTab, splitGroup, scheduleBackup, resolveConflict, patchDoc, openPath, checkpoint, autoSave, pathTitle } from './documents';
+import { models, editors, closeDocument, showDocument, keepOpen, relative, addHistory, moveTab, splitGroup, scheduleBackup, resolveConflict, patchDoc, openPath, checkpoint, autoSave, pathTitle, setSticky, normalizeGroup } from './documents';
 import { errorMessage, call, channel } from './bridge';
 import { Icon, IconButton } from './ui';
 import { revealInTree } from './Explorer';
 import { createSearchEditor } from './search';
+import { EditorTabMenu } from './EditorTabMenu';
 import type { Group, DiskDocument, Query, SearchMatch } from './types';
 
 export function EditorGroup({ group }: { group: Group }) {
@@ -91,20 +92,21 @@ export function EditorGroup({ group }: { group: Group }) {
   useEffect(() => {
     instance.current?.updateOptions({ fontSize: Number(settings['editor.fontSize'] ?? 14), fontFamily: String(settings['editor.fontFamily'] ?? 'Consolas, "Courier New", monospace'), lineHeight: Number(settings['editor.lineHeight'] ?? 20), tabSize: Number(settings['editor.tabSize'] ?? 4), wordWrap: settings['editor.wordWrap'] === 'on' ? 'on' : 'off', minimap: { enabled: !doc?.large && settings['editor.minimap.enabled'] !== false }, folding: !doc?.large, readOnly: false });
   }, [settings, doc?.large]);
-  return <section className={`editor-group ${activeGroup === group.id ? 'focused' : ''}`} aria-label="Editor group" onFocus={() => setApp({ activeGroup: group.id })} onDragOver={e => e.preventDefault()} onDrop={e => {
+  return <section className={`editor-group ${activeGroup === group.id ? 'focused' : ''}`} aria-label="Editor group" onFocus={e => { if (e.currentTarget.contains(e.target)) setApp({ activeGroup: group.id }); }} onDragOver={e => e.preventDefault()} onDrop={e => {
     e.preventDefault(); const raw = e.dataTransfer.getData('application/litecode-tab'); if (!raw) return;
     const { id, from } = JSON.parse(raw); moveTab(id, from, group.id);
   }}>
     <div className="tabs-toolbar"><div className="editor-tabs" ref={tabs} role="tablist" aria-label="Open editors">{group.tabs.map(id => {
       const tab = docs[id]; if (!tab) return null;
-      return <div role="tab" title={tab.path ? pathTitle(tab.path) : tab.name} tabIndex={group.active === id ? 0 : -1} aria-selected={group.active === id} aria-label={`${tab.name}${tab.dirty ? ', unsaved' : ''}`} key={id} className={`editor-tab ${group.active === id ? 'active' : ''} ${group.preview === id ? 'preview' : ''}`} draggable onDragStart={e => e.dataTransfer.setData('application/litecode-tab', JSON.stringify({ id, from: group.id }))} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); e.stopPropagation(); const raw = e.dataTransfer.getData('application/litecode-tab'); if (raw) { const t = JSON.parse(raw); moveTab(t.id, t.from, group.id, id); } }} onClick={() => showDocument(id, { group: group.id })} onDoubleClick={() => pin(id)} onAuxClick={e => { if (e.button === 1) void closeDocument(id, group.id).catch(e => notify(errorMessage(e))); }} onKeyDown={e => {
+      const sticky = !!group.sticky?.includes(id);
+      return <EditorTabMenu key={id} group={group} documentId={id}><div role="tab" title={tab.path ? pathTitle(tab.path) : tab.name} tabIndex={group.active === id ? 0 : -1} aria-selected={group.active === id} aria-label={`${tab.name}${tab.dirty ? ', unsaved' : ''}`} className={`editor-tab ${group.active === id ? 'active' : ''} ${group.preview === id ? 'preview' : ''} ${sticky ? 'pinned' : ''}`} draggable onDragStart={e => e.dataTransfer.setData('application/litecode-tab', JSON.stringify({ id, from: group.id }))} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); e.stopPropagation(); const raw = e.dataTransfer.getData('application/litecode-tab'); if (raw) { const t = JSON.parse(raw); moveTab(t.id, t.from, group.id, id); } }} onClick={() => showDocument(id, { group: group.id })} onDoubleClick={() => keepOpen(id, group.id)} onAuxClick={e => { if (e.button === 1 && !sticky) void closeDocument(id, group.id).catch(e => notify(errorMessage(e))); }} onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showDocument(id, { group: group.id }); }
-        if (e.key === 'Delete') void closeDocument(id, group.id);
+        if (e.key === 'Delete' && !sticky) void closeDocument(id, group.id).catch(e => notify(errorMessage(e)));
         if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const index = group.tabs.indexOf(id); const next = group.tabs[(index + group.tabs.length + (e.key === 'ArrowRight' ? 1 : -1)) % group.tabs.length]; if (next) showDocument(next, { group: group.id }); }
-      }}><FileIcon language={tab.language} /><span>{tab.name}</span>{tab.conflict && <Icon name="warning" />}<button className={`tab-close ${tab.dirty ? 'dirty' : ''}`} title={`Close ${tab.name}`} aria-label={`Close ${tab.name}`} onClick={e => { e.stopPropagation(); void closeDocument(id, group.id).catch(e => notify(errorMessage(e))); }}><Icon name={tab.dirty ? 'primitive-dot' : 'close'} /></button></div>;
-    })}</div><EditorTabsScrollbar viewport={tabs} tabIds={group.tabs} /><div className="actions"><IconButton icon="split-horizontal" label="Split Editor Right (Ctrl+\\)" onClick={splitGroup} />{useApp.getState().groups.length > 1 && <IconButton icon="close" label="Close Editor Group" onClick={() => {
+      }}><FileIcon language={tab.language} /><span>{tab.name}</span>{tab.conflict && <Icon name="warning" />}<button className={`tab-close ${tab.dirty ? 'dirty' : ''} ${sticky ? 'tab-unpin' : ''}`} title={`${sticky ? 'Unpin' : 'Close'} ${tab.name}`} aria-label={`${sticky ? 'Unpin' : 'Close'} ${tab.name}`} onClick={e => { e.stopPropagation(); if (sticky) setSticky(id, group.id, false); else void closeDocument(id, group.id).catch(e => notify(errorMessage(e))); }}><Icon name={sticky ? 'pinned' : tab.dirty ? 'primitive-dot' : 'close'} /></button></div></EditorTabMenu>;
+    })}</div><EditorTabsScrollbar viewport={tabs} tabIds={group.tabs} /><div className="actions"><IconButton icon="split-horizontal" label="Split Editor Right (Ctrl+\\)" onClick={() => splitGroup(group.id)} />{useApp.getState().groups.length > 1 && <IconButton icon="close" label="Close Editor Group" onClick={() => {
       const s = useApp.getState(); const target = s.groups.find(g => g.id !== group.id)!;
-      setApp({ groups: s.groups.filter(g => g.id !== group.id).map(g => g.id === target.id ? { ...g, tabs: [...new Set([...g.tabs, ...group.tabs])], active: g.active ?? group.active } : g), activeGroup: target.id }); scheduleBackup();
+      setApp({ groups: s.groups.filter(g => g.id !== group.id).map(g => g.id === target.id ? normalizeGroup({ ...g, views: { ...group.views, ...g.views }, sticky: [...(g.sticky ?? []), ...(group.sticky ?? [])], tabs: [...new Set([...g.tabs, ...group.tabs])], active: g.active ?? group.active }) : g), activeGroup: target.id }); scheduleBackup();
     }} />}</div></div>
     {doc && <div className="breadcrumbs">{relative(doc.path ?? doc.name).split('/').map((segment, i, all) => {
       const remaining = all.length - i - 1;

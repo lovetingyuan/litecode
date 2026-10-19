@@ -18,7 +18,8 @@ vi.mock('./languages', () => ({ ensureLanguage: vi.fn(), releaseLanguageDocument
 import { call } from './bridge';
 import { monaco, languageFor } from './monaco';
 import { canFormat, formatModel } from './languages';
-import { attachDocument, autoSave, editors, models, normalize, openPath, patchDoc, restoreDocument, save, session, showDocument, visiblePath } from './documents';
+import { attachDocument, autoSave, editors, models, normalize, openPath, patchDoc, restoreDocument, save, session, showDocument, visiblePath, closeDocument, closeTabs, tabsToClose, keepOpen, normalizeGroup, setSticky, moveTab, splitGroup } from './documents';
+import { ask } from './dialog';
 import { setApp, useApp } from './store';
 
 class Buffer {
@@ -30,6 +31,7 @@ class Buffer {
   getEOL() { return '\n'; }
   getLanguageId() { return 'plaintext'; }
   isDisposed() { return false; }
+  dispose() {}
   onDidChangeContent(listener: () => void) { this.listeners.add(listener); return { dispose: () => this.listeners.delete(listener) }; }
   edit(text: string) { this.text = text; this.version++; for (const listener of this.listeners) listener(); }
 }
@@ -56,7 +58,104 @@ beforeEach(() => {
   vi.mocked(languageFor).mockReturnValue('plaintext');
   vi.mocked(call).mockImplementation(async command => command === 'save_document' ? 'new-revision' : undefined as never);
   vi.mocked(canFormat).mockReturnValue(false);
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 0; });
   setApp({ docs: {}, groups: [], tabRevealRequests: {}, settings: { 'files.autoSave': 'onFocusChange' }, notice: null });
+});
+
+describe('Editor tab actions', () => {
+  function setup() {
+    const ids = Array.from({ length: 4 }, () => addDocument({ dirty: false }).id);
+    setApp({ activeGroup: 'one', groups: [
+      { id: 'one', tabs: ids, active: ids[1], preview: ids[3], views: {} },
+      { id: 'two', tabs: [ids[0]], active: ids[0], preview: null, views: {} },
+    ] });
+    return ids;
+  }
+
+  it('keeps preview persistence separate from group-local pinning', () => {
+    const ids = setup();
+    keepOpen(ids[3], 'one');
+    expect(useApp.getState().groups[0].preview).toBeNull();
+    expect(useApp.getState().groups[0].sticky).toBeUndefined();
+    setSticky(ids[2], 'one', true);
+    setSticky(ids[0], 'one', true);
+    expect(useApp.getState().groups[0]).toMatchObject({ tabs: [ids[2], ids[0], ids[1], ids[3]], sticky: [ids[2], ids[0]] });
+    expect(useApp.getState().groups[1].sticky).toBeUndefined();
+    setSticky(ids[2], 'one', false);
+    expect(useApp.getState().groups[0]).toMatchObject({ tabs: [ids[0], ids[2], ids[1], ids[3]], sticky: [ids[0]] });
+    expect(session().groups[0].sticky).toEqual([ids[0]]);
+  });
+
+  it('normalizes legacy and stale restored fixed tabs', () => {
+    const group = { id: 'one', tabs: ['a', 'b'], active: 'a', preview: 'b', views: {} };
+    expect(normalizeGroup(group)).toMatchObject({ sticky: [], tabs: ['a', 'b'], preview: 'b' });
+    expect(normalizeGroup({ ...group, sticky: ['missing', 'b', 'b'] })).toMatchObject({ sticky: ['b'], tabs: ['b', 'a'], preview: null });
+  });
+
+  it('selects group-local close targets and protects fixed and dirty tabs', () => {
+    const ids = setup();
+    setSticky(ids[0], 'one', true); patchDoc(ids[2], { dirty: true });
+    const group = useApp.getState().groups[0];
+    expect(tabsToClose(group, ids[1], 'others')).toEqual([ids[2], ids[3]]);
+    expect(tabsToClose(group, ids[1], 'right')).toEqual([ids[2], ids[3]]);
+    expect(tabsToClose(group, ids[1], 'saved')).toEqual([ids[1], ids[3]]);
+    expect(tabsToClose(group, ids[1], 'all')).toEqual(ids.slice(1));
+  });
+
+  it('stops a batch on cancellation without closing later tabs', async () => {
+    const ids = setup(); patchDoc(ids[2], { dirty: true });
+    vi.mocked(ask).mockResolvedValueOnce('Cancel');
+    await closeTabs(ids[0], 'one', 'others');
+    expect(useApp.getState().groups[0].tabs).toEqual([ids[0], ids[2], ids[3]]);
+    expect(ask).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops a batch on cancelled Save As or failed saving', async () => {
+    const ids = setup(); patchDoc(ids[1], { path: null, dirty: true });
+    vi.mocked(ask).mockResolvedValueOnce('Save');
+    vi.mocked(call).mockResolvedValueOnce(null);
+    await closeTabs(ids[0], 'one', 'others');
+    expect(useApp.getState().groups[0].tabs).toEqual(ids);
+    patchDoc(ids[1], { path: 'C:/workspace/file.txt' });
+    vi.mocked(ask).mockResolvedValueOnce('Save');
+    vi.mocked(call).mockRejectedValueOnce(new Error('Write failed'));
+    await expect(closeTabs(ids[0], 'one', 'others')).rejects.toThrow('Write failed');
+    expect(useApp.getState().groups[0].tabs).toEqual(ids);
+  });
+
+  it('retains shared models, removes empty groups and keeps the last group', async () => {
+    const ids = setup(); patchDoc(ids[0], { dirty: true });
+    await closeTabs(ids[1], 'one', 'all');
+    expect(ask).not.toHaveBeenCalled();
+    expect(useApp.getState().groups.map(g => g.id)).toEqual(['two']);
+    expect(useApp.getState().activeGroup).toBe('two');
+    expect(models.has(ids[0])).toBe(true);
+    vi.mocked(ask).mockResolvedValueOnce("Don't Save");
+    expect(await closeDocument(ids[0], 'two')).toBe(true);
+    expect(models.has(ids[0])).toBe(false);
+    expect(useApp.getState().groups).toHaveLength(1);
+    expect(useApp.getState().groups[0].tabs).toEqual([]);
+  });
+
+  it('retains fixed order during reorder and cross-group moves', () => {
+    const ids = setup(); setSticky(ids[0], 'one', true); setSticky(ids[2], 'one', true);
+    moveTab(ids[3], 'one', 'one', ids[0]);
+    expect(useApp.getState().groups[0].tabs).toEqual([ids[0], ids[2], ids[3], ids[1]]);
+    moveTab(ids[2], 'one', 'two');
+    expect(useApp.getState().groups[0].sticky).toEqual([ids[0]]);
+    expect(useApp.getState().groups[1]).toMatchObject({ tabs: [ids[2], ids[0]], sticky: [ids[2]], active: ids[2] });
+  });
+
+  it('splits the specified inactive tab immediately right of its source', () => {
+    const ids = setup(); const view = { cursor: 8 };
+    setApp(s => ({ groups: s.groups.map(g => g.id === 'one' ? { ...g, views: { [ids[3]]: view } } : g), activeGroup: 'two' }));
+    const id = splitGroup('one', ids[3]);
+    const state = useApp.getState();
+    expect(state.groups.map(g => g.id)).toEqual(['one', id, 'two']);
+    expect(state.groups[1]).toMatchObject({ active: ids[3], tabs: [ids[3]], views: { [ids[3]]: view } });
+    expect(state.activeGroup).toBe(id);
+    expect(state.groups[0].tabs).toEqual(ids);
+  });
 });
 afterEach(() => {
   vi.clearAllTimers();

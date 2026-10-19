@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { bootstrap, call, desktop, errorMessage } from './bridge';
 import { initializeEditor, monaco } from './monaco';
 import { useApp, setApp, notify, activeDoc } from './store';
-import { checkpoint, restoreDocument, refreshDocuments, basename, editor, models, patchDoc, scheduleBackup, autoSave } from './documents';
+import { checkpoint, restoreDocument, refreshDocuments, basename, editor, models, patchDoc, scheduleBackup, autoSave, normalizeGroup } from './documents';
 import { commands, execute, installKeys, openFolder } from './commands';
 import { Explorer, refreshTree } from './Explorer';
 import { SearchView } from './SearchView';
@@ -28,7 +28,7 @@ function start() {
     for (const mirror of boot.documents) restoreDocument(mirror);
     const session = boot.session ?? {};
     if (session.query) setApp({ query: session.query, searchHistory: session.searchHistory ?? [] });
-    const valid = session.groups?.map(g => ({ ...g, tabs: g.tabs.filter(id => models.has(id)), active: g.active && models.has(g.active) ? g.active : g.tabs.find(id => models.has(id)) ?? null, views: g.views ?? {} }));
+    const valid = session.groups?.map(g => normalizeGroup({ ...g, tabs: g.tabs.filter(id => models.has(id)), active: g.active && models.has(g.active) ? g.active : g.tabs.find(id => models.has(id)) ?? null, views: g.views ?? {} }));
     setApp({ ready: true, ...(valid?.length ? { groups: valid, activeGroup: session.activeGroup && valid.some(g => g.id === session.activeGroup) ? session.activeGroup : valid[0].id } : {}), sidebarWidth: session.sidebarWidth ?? 260, sidebar: session.sidebar === 'search' ? 'search' : 'explorer', history: session.history ?? [], historyIndex: session.historyIndex ?? -1 });
     if (boot.warnings.length) notify(boot.warnings.join('\n'));
     if (boot.root) await refreshTree();

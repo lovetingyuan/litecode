@@ -1,14 +1,40 @@
-import { call, errorMessage } from './bridge';
+import { call, desktop, errorMessage } from './bridge';
 import { activeDoc, useApp, setApp, notify } from './store';
-import { checkpoint, closeDocument, editor, models, navigate, newDocument, openPath, save, saveAll, showDocument, splitGroup, scheduleBackup, join } from './documents';
-import { refreshTree } from './Explorer';
+import { checkpoint, closeDocument, closeTabs, editor, models, navigate, newDocument, openPath, save, saveAll, showDocument, splitGroup, scheduleBackup, join, normalize, relative, pathTitle, setSticky } from './documents';
+import { refreshTree, revealInTree } from './Explorer';
 import { createSearchEditor, undoReplacement, nextSearchResult } from './search';
 import { input } from './dialog';
 import { restartLanguages, languageReport } from './languages';
 import { normalizeKey, resolveBinding } from './keybindings';
 import { completeSettings, parseConfiguration, updateSetting } from './settings';
 
-export type Command = { id: string; label: string; key?: string; menu?: string; run: () => unknown };
+export type EditorContext = { groupId: string; documentId: string };
+export type Command = { id: string; label: string; key?: string; aliases?: string[]; menu?: string; run: (context?: EditorContext) => unknown };
+export function editorTarget(context?: EditorContext) {
+  const s = useApp.getState();
+  const group = s.groups.find(g => g.id === (context?.groupId ?? s.activeGroup));
+  const id = context?.documentId ?? group?.active;
+  return group && id && group.tabs.includes(id) && s.docs[id] ? { group, doc: s.docs[id] } : undefined;
+}
+export function canRevealInExplorer(path: string | null) {
+  const root = useApp.getState().root;
+  return !!path && !!root && normalize(path).startsWith(normalize(root).replace(/\/$/, '') + '/');
+}
+async function copyEditorPath(context: EditorContext | undefined, useRelative: boolean) {
+  const path = editorTarget(context)?.doc.path;
+  if (!path) return;
+  const text = useRelative && canRevealInExplorer(path) ? relative(path).replace(/\//g, '\\') : pathTitle(path);
+  if (desktop) await (await import('@tauri-apps/plugin-clipboard-manager')).writeText(text);
+  else await navigator.clipboard.writeText(text);
+}
+function closeEditorTabs(context: EditorContext | undefined, mode: Parameters<typeof closeTabs>[2]) {
+  const target = editorTarget(context);
+  if (target) return closeTabs(target.doc.id, target.group.id, mode);
+}
+function pinEditor(context: EditorContext | undefined, sticky: boolean) {
+  const target = editorTarget(context);
+  if (target) setSticky(target.doc.id, target.group.id, sticky);
+}
 export function quick(value: string) { setApp({ quick: value }); }
 export async function openFolder(newWindow = false, recentPath?: string) {
   const path = recentPath ?? await call<string | null>('pick_path', { kind: 'folder' }); if (!path) return;
@@ -44,7 +70,29 @@ export const commands: Command[] = [
   { id: 'workbench.action.files.save', label: 'Save', key: 'Ctrl+S', menu: 'File', run: () => save() },
   { id: 'workbench.action.files.saveAs', label: 'Save As…', key: 'Ctrl+Shift+S', menu: 'File', run: () => save(activeDoc()?.id, true) },
   { id: 'workbench.action.files.saveAll', label: 'Save All', key: 'Ctrl+K S', menu: 'File', run: saveAll },
-  { id: 'workbench.action.closeActiveEditor', label: 'Close Editor', key: 'Ctrl+W', menu: 'File', run: () => { const id = activeDoc()?.id; if (id) return closeDocument(id); } },
+  { id: 'workbench.action.closeActiveEditor', label: 'Close Editor', key: 'Ctrl+F4', aliases: ['Ctrl+W'], menu: 'File', run: context => {
+    const target = editorTarget(context); if (!target) return;
+    if (!context && target.group.sticky?.includes(target.doc.id)) {
+      const next = target.group.tabs.find(id => !target.group.sticky?.includes(id));
+      if (next) showDocument(next, { group: target.group.id });
+      return;
+    }
+    return closeDocument(target.doc.id, target.group.id);
+  } },
+  { id: 'workbench.action.closeOtherEditors', label: 'Close Others', run: context => closeEditorTabs(context, 'others') },
+  { id: 'workbench.action.closeEditorsToTheRight', label: 'Close to the Right', run: context => closeEditorTabs(context, 'right') },
+  { id: 'workbench.action.closeUnmodifiedEditors', label: 'Close Saved', key: 'Ctrl+K U', run: context => closeEditorTabs(context, 'saved') },
+  { id: 'workbench.action.closeEditorsInGroup', label: 'Close All', key: 'Ctrl+K W', run: context => closeEditorTabs(context, 'all') },
+  { id: 'copyFilePath', label: 'Copy Path', key: 'Shift+Alt+C', run: context => copyEditorPath(context, false) },
+  { id: 'copyRelativeFilePath', label: 'Copy Relative Path', key: 'Ctrl+K Ctrl+Shift+C', run: context => copyEditorPath(context, true) },
+  { id: 'revealFileInOS', label: 'Reveal in File Explorer', key: 'Shift+Alt+R', run: context => {
+    const path = editorTarget(context)?.doc.path; if (path) return call('reveal_path', { path });
+  } },
+  { id: 'workbench.files.action.showActiveFileInExplorer', label: 'Reveal in Explorer View', run: context => {
+    const path = editorTarget(context)?.doc.path; if (path && canRevealInExplorer(path)) revealInTree(path);
+  } },
+  { id: 'workbench.action.pinEditor', label: 'Pin', key: 'Ctrl+K Shift+Enter', run: context => pinEditor(context, true) },
+  { id: 'workbench.action.unpinEditor', label: 'Unpin', key: 'Ctrl+K Shift+Enter', run: context => pinEditor(context, false) },
   { id: 'workbench.action.toggleAutoSave', label: 'Toggle Auto Save', menu: 'File', run: async () => {
     const s = useApp.getState(); const enabled = ['afterDelay', 'onFocusChange', 'onWindowChange'].some(mode => s.settings['files.autoSave'] === mode);
     const id = await openSettings();
@@ -68,7 +116,10 @@ export const commands: Command[] = [
   { id: 'workbench.action.showCommands', label: 'Command Palette…', key: 'Ctrl+Shift+P', menu: 'View', run: () => quick('>') },
   { id: 'workbench.view.explorer', label: 'Explorer', key: 'Ctrl+Shift+E', menu: 'View', run: () => setApp({ sidebar: 'explorer' }) },
   { id: 'workbench.action.toggleSidebarVisibility', label: 'Toggle Primary Side Bar', key: 'Ctrl+B', menu: 'View', run: () => setApp({ sidebar: useApp.getState().sidebar ? null : 'explorer' }) },
-  { id: 'workbench.action.splitEditorRight', label: 'Split Editor Right', key: 'Ctrl+\\', menu: 'View', run: splitGroup },
+  { id: 'workbench.action.splitEditorRight', label: 'Split Editor Right', key: 'Ctrl+\\', menu: 'View', run: context => {
+    const target = editorTarget(context); if (target) return splitGroup(target.group.id, target.doc.id);
+    if (!context) return splitGroup();
+  } },
   { id: 'editor.action.toggleWordWrap', label: 'Toggle Word Wrap', key: 'Alt+Z', menu: 'View', run: () => setApp(s => ({ settings: { ...s.settings, 'editor.wordWrap': s.settings['editor.wordWrap'] === 'on' ? 'off' : 'on' } })) },
   { id: 'workbench.action.navigateBack', label: 'Back', key: 'Alt+Left', menu: 'Go', run: () => navigate(-1) },
   { id: 'workbench.action.navigateForward', label: 'Forward', key: 'Alt+Right', menu: 'Go', run: () => navigate(1) },
@@ -101,38 +152,56 @@ export const commands: Command[] = [
   } },
   { id: 'litecode.about', label: 'About LiteCode', menu: 'Help', run: () => notify('LiteCode 0.1.0 · Tauri 2 / React / Monaco\nWindows x64 · Dark Modern\nSee docs/verification/MATRIX.md for implementation and verification status.') },
 ];
-export async function execute(id: string) {
+export async function execute(id: string, context?: EditorContext) {
   const command = commands.find(c => c.id === id); if (!command) { notify(`Unknown command: ${id}`); return; }
-  try { await command.run(); scheduleBackup(); } catch (e) { notify(errorMessage(e)); }
+  try { await command.run(context); scheduleBackup(); } catch (e) { notify(errorMessage(e)); }
+}
+
+export function keyContext(target: HTMLElement, editorContext?: EditorContext) {
+  const state = useApp.getState(); const current = editorTarget(editorContext); const doc = current?.doc;
+  const typing = ['INPUT', 'TEXTAREA'].includes(target.tagName) && !target.closest('.monaco-editor');
+  return { editorTextFocus: !!target.closest('.monaco-editor'), editorFocus: !!target.closest('.editor-group'), inputFocus: typing,
+    textInputFocus: typing || !!target.closest('.monaco-editor'), explorerViewletFocus: !!target.closest('.explorer-view'),
+    searchViewletFocus: !!target.closest('.search-view'), resourceLangId: doc?.language ?? '', resourceScheme: doc?.path ? 'file' : 'untitled',
+    activeEditorIsPinned: !!current?.group.sticky?.includes(doc?.id ?? ''),
+    editorHasSelection: state.cursor.selected > 0, workspaceFolderCount: state.root ? '1' : '0', isWindows: true };
+}
+function defaultBindings(context: Record<string, string | boolean>, bindings = useApp.getState().keybindings) {
+  return commands.filter(command => command.id !== (context.activeEditorIsPinned ? 'workbench.action.pinEditor' : 'workbench.action.unpinEditor'))
+    .flatMap(command => [command.key, ...(command.aliases ?? [])].filter((key): key is string => !!key).map(key => ({ command, key })))
+    .filter(({ command, key }) => !resolveBinding(bindings, key, context).removed.has(command.id));
+}
+export function commandShortcut(id: string, context: Record<string, string | boolean>, bindings = useApp.getState().keybindings) {
+  const custom = [...bindings].reverse().find(binding => binding.command === id && resolveBinding(bindings, binding.key, context).command === id);
+  if (custom) return custom.key;
+  return defaultBindings(context, bindings).find(binding => binding.command.id === id && !resolveBinding(bindings, binding.key, context).command)?.key;
 }
 
 let chord = '';
 export function installKeys() {
   function handler(e: KeyboardEvent) {
-    if (e.isComposing || useApp.getState().quick !== null || document.querySelector('.modal-panel, .diff-panel')) return;
+    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
+    if (e.isComposing || useApp.getState().quick !== null || document.querySelector('.modal-panel, .diff-panel, .editor-tab-menu')) { chord = ''; return; }
     const target = e.target as HTMLElement;
     const typing = ['INPUT', 'TEXTAREA'].includes(target.tagName) && !target.closest('.monaco-editor');
     const key = `${e.ctrlKey ? 'Ctrl+' : ''}${e.shiftKey ? 'Shift+' : ''}${e.altKey ? 'Alt+' : ''}${e.key.length === 1 ? e.key.toUpperCase() : ({ ArrowLeft: 'Left', ArrowRight: 'Right', ArrowUp: 'Up', ArrowDown: 'Down' } as Record<string, string>)[e.key] ?? e.key}`;
-    const state = useApp.getState(); const doc = activeDoc();
-    const context = { editorTextFocus: !!target.closest('.monaco-editor'), editorFocus: !!target.closest('.editor-group'), inputFocus: typing,
-      textInputFocus: typing || !!target.closest('.monaco-editor'), explorerViewletFocus: !!target.closest('.explorer-view'),
-      searchViewletFocus: !!target.closest('.search-view'), resourceLangId: doc?.language ?? '', resourceScheme: doc?.path ? 'file' : 'untitled',
-      editorHasSelection: state.cursor.selected > 0, workspaceFolderCount: state.root ? '1' : '0', isWindows: true };
+    const state = useApp.getState();
+    const context = keyContext(target);
     const sequence = normalizeKey(chord ? `${chord} ${key}` : key);
     const binding = resolveBinding(state.keybindings, sequence, context);
-    const defaults = commands.filter(c => c.key && !binding.removed.has(c.id));
+    const defaults = defaultBindings(context);
     const wasChord = !!chord; chord = '';
-    if (binding.prefix || !typing && defaults.some(c => normalizeKey(c.key!).startsWith(`${sequence} `))) {
+    if (binding.prefix || !typing && defaults.some(c => normalizeKey(c.key).startsWith(`${sequence} `))) {
       e.preventDefault(); e.stopPropagation(); chord = sequence;
       setTimeout(() => { if (chord === sequence) chord = ''; }, 3000); return;
     }
     if (binding.command || wasChord) {
-      const id = binding.command ?? defaults.find(c => normalizeKey(c.key!) === sequence)?.id;
+      const id = binding.command ?? defaults.find(c => normalizeKey(c.key) === sequence)?.command.id;
       e.preventDefault(); e.stopPropagation(); if (id) void execute(id); return;
     }
     // Text-editing shortcuts belong to Monaco or the focused input, preserving its context rules.
-    const global = defaults.filter(c => !['Edit', 'Selection'].includes(c.menu ?? '') && !['F2', 'F12', 'Shift+F12', 'Shift+Alt+F'].includes(c.key!));
-    const command = global.find(c => normalizeKey(c.key!) === sequence)?.id ?? (key === 'Ctrl+Shift+F' && !binding.removed.has('workbench.action.findInFiles') ? 'workbench.action.findInFiles' : undefined);
+    const global = defaults.filter(c => !['Edit', 'Selection'].includes(c.command.menu ?? '') && !['F2', 'F12', 'Shift+F12', 'Shift+Alt+F'].includes(c.key));
+    const command = global.find(c => normalizeKey(c.key) === sequence)?.command.id;
     if (command && (!typing || ['Ctrl+S', 'Ctrl+Shift+S', 'Ctrl+Shift+P', 'Ctrl+P', 'Ctrl+Shift+F', 'Ctrl+O'].includes(key))) { e.preventDefault(); e.stopPropagation(); void execute(command); }
     if (key === 'Ctrl+Tab' && !typing) {
       e.preventDefault(); e.stopPropagation(); const s = useApp.getState(); const g = s.groups.find(g => g.id === s.activeGroup)!;

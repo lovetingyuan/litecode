@@ -65,7 +65,7 @@ export function attachDocument(doc: Doc, text: string, initiallyDirty = false) {
     if (!latest) return;
     const dirty = savedVersions.get(doc.id) !== m.getAlternativeVersionId() || savedEncodings.get(doc.id) !== latest.encoding;
     patchDoc(doc.id, { dirty, version: latest.version + 1, eol: m.getEOL() === '\r\n' ? 'CRLF' : 'LF' });
-    if (dirty) pin(doc.id);
+    if (dirty) keepOpen(doc.id);
     scheduleBackup();
     clearTimeout(autoTimers.get(doc.id));
     const s = useApp.getState();
@@ -119,8 +119,26 @@ export function newDocument(text = '', name = 'Untitled', searchQuery?: Doc['sea
   return id;
 }
 
-export function pin(id: string) {
-  setApp(s => ({ groups: s.groups.map(g => g.preview === id ? { ...g, preview: null } : g) }));
+export function keepOpen(id: string, groupId?: string) {
+  setApp(s => ({ groups: s.groups.map(g => g.preview === id && (!groupId || g.id === groupId) ? { ...g, preview: null } : g) }));
+}
+
+export function normalizeGroup(group: Group): Group {
+  const sticky = [...new Set(group.sticky ?? [])].filter(id => group.tabs.includes(id));
+  return { ...group, sticky, tabs: [...sticky, ...group.tabs.filter(id => !sticky.includes(id))],
+    preview: group.preview && group.tabs.includes(group.preview) && !sticky.includes(group.preview) ? group.preview : null };
+}
+
+export function setSticky(id: string, groupId: string, sticky: boolean) {
+  setApp(s => ({ groups: s.groups.map(g => {
+    if (g.id !== groupId || !g.tabs.includes(id)) return g;
+    const pinned = (g.sticky ?? []).filter(t => t !== id);
+    if (sticky) pinned.push(id);
+    const tabs = g.tabs.filter(t => t !== id);
+    tabs.splice(pinned.length - (sticky ? 1 : 0), 0, id);
+    return normalizeGroup({ ...g, tabs, sticky: pinned, preview: g.preview === id ? null : g.preview });
+  }) }));
+  scheduleBackup();
 }
 
 export function showDocument(id: string, options: { pinned?: boolean; group?: string; line?: number; column?: number; background?: boolean; preserveFocus?: boolean } = {}) {
@@ -218,22 +236,54 @@ async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMod
 
 export async function saveAll() { for (const doc of Object.values(useApp.getState().docs)) if (doc.dirty) await save(doc.id); }
 
-export async function closeDocument(id: string, groupId = useApp.getState().activeGroup) {
+export async function closeDocument(id: string, groupId = useApp.getState().activeGroup): Promise<boolean> {
   const s = useApp.getState();
+  if (!s.groups.find(g => g.id === groupId)?.tabs.includes(id)) return true;
   const doc = s.docs[id];
   const otherView = s.groups.some(g => g.id !== groupId && g.tabs.includes(id));
   if (doc?.dirty && !otherView) {
     const answer = await ask(`Save changes to ${doc.name}?`, 'Your changes will be lost if you do not save them.', ['Save', "Don't Save", 'Cancel']);
-    if (!answer || answer === 'Cancel') return;
-    if (answer === 'Save') { await save(id); if (useApp.getState().docs[id]?.dirty || !useApp.getState().docs[id]?.path) return; }
+    if (!answer || answer === 'Cancel') return false;
+    if (answer === 'Save') { await save(id); if (useApp.getState().docs[id]?.dirty || !useApp.getState().docs[id]?.path) return false; }
   }
-  setApp(s => ({ groups: s.groups.map(g => {
-    if (g.id !== groupId) return g;
-    const tabs = g.tabs.filter(t => t !== id);
-    return { ...g, tabs, active: g.active === id ? tabs[Math.max(0, g.tabs.indexOf(id) - 1)] ?? null : g.active, preview: g.preview === id ? null : g.preview };
-  }) }));
-  if (!otherView) disposeDocument(id);
+  setApp(s => {
+    let groups = s.groups.map(g => {
+      if (g.id !== groupId) return g;
+      const tabs = g.tabs.filter(t => t !== id);
+      return normalizeGroup({ ...g, tabs, active: g.active === id ? tabs[Math.max(0, g.tabs.indexOf(id) - 1)] ?? null : g.active, preview: g.preview === id ? null : g.preview });
+    });
+    let activeGroup = s.activeGroup;
+    const index = groups.findIndex(g => g.id === groupId);
+    if (groups.length > 1 && index >= 0 && !groups[index].tabs.length) {
+      groups = groups.filter(g => g.id !== groupId);
+      if (activeGroup === groupId) activeGroup = groups[Math.max(0, index - 1)].id;
+    }
+    return { groups, activeGroup };
+  });
+  if (!useApp.getState().groups.some(g => g.tabs.includes(id))) disposeDocument(id);
+  if (s.activeGroup === groupId) requestAnimationFrame(() => editor()?.focus());
   scheduleBackup();
+  return true;
+}
+
+export type CloseTabsMode = 'others' | 'right' | 'saved' | 'all';
+export function tabsToClose(group: Group, id: string, mode: CloseTabsMode): string[] {
+  const docs = useApp.getState().docs;
+  const targetIndex = group.tabs.indexOf(id);
+  return group.tabs.filter((tab, index) => !group.sticky?.includes(tab) &&
+    (mode === 'all' || mode === 'others' && tab !== id || mode === 'right' && index > targetIndex || mode === 'saved' && !docs[tab]?.dirty));
+}
+
+export async function closeTabs(id: string, groupId: string, mode: CloseTabsMode) {
+  const group = useApp.getState().groups.find(g => g.id === groupId);
+  if (!group?.tabs.includes(id)) return;
+  if (mode === 'others') keepOpen(id, groupId);
+  if (mode === 'right' && group.active) keepOpen(group.active, groupId);
+  for (const tab of tabsToClose(group, id, mode)) {
+    const current = useApp.getState();
+    if (current.groups.find(g => g.id === groupId)?.sticky?.includes(tab) || mode === 'saved' && current.docs[tab]?.dirty) continue;
+    if (!await closeDocument(tab, groupId)) break;
+  }
 }
 
 function disposeDocument(id: string) {
@@ -244,20 +294,35 @@ function disposeDocument(id: string) {
   setApp(s => { const docs = { ...s.docs }; delete docs[id]; return { docs }; });
 }
 
-export function splitGroup() {
-  const s = useApp.getState(); const source = s.groups.find(g => g.id === s.activeGroup)!;
-  const group: Group = { id: crypto.randomUUID(), tabs: source.active ? [source.active] : [], active: source.active, preview: null, views: {} };
-  setApp({ groups: [...s.groups, group], activeGroup: group.id }); scheduleBackup();
+export function splitGroup(groupId = useApp.getState().activeGroup, documentId?: string) {
+  const s = useApp.getState(); const source = s.groups.find(g => g.id === groupId)!;
+  const id = documentId ?? source.active;
+  if (source.active && editors.has(source.id)) source.views[source.active] = editors.get(source.id)!.saveViewState();
+  const group: Group = { id: crypto.randomUUID(), tabs: id ? [id] : [], active: id, preview: null, sticky: [], views: id && source.views[id] ? { [id]: source.views[id] } : {} };
+  const groups = [...s.groups]; groups.splice(groups.indexOf(source) + 1, 0, group);
+  setApp({ groups, activeGroup: group.id }); scheduleBackup();
+  requestAnimationFrame(() => editors.get(group.id)?.focus());
   return group.id;
 }
 
 export function moveTab(id: string, from: string, to: string, before?: string) {
-  setApp(s => ({ groups: s.groups.map(g => {
-    if (g.id !== from && g.id !== to) return g;
-    const tabs = g.tabs.filter(t => t !== id);
-    if (g.id === to) tabs.splice(before ? Math.max(0, tabs.indexOf(before)) : tabs.length, 0, id);
-    return { ...g, tabs, active: g.id === to ? id : g.active === id ? tabs[0] ?? null : g.active, preview: g.preview === id ? null : g.preview };
-  }), activeGroup: to })); scheduleBackup();
+  setApp(s => {
+    const source = s.groups.find(g => g.id === from);
+    if (!source?.tabs.includes(id) || !s.groups.some(g => g.id === to)) return {};
+    const sticky = source.sticky?.includes(id) ?? false;
+    return { groups: s.groups.map(g => {
+      if (g.id !== from && g.id !== to) return g;
+      const tabs = g.tabs.filter(t => t !== id);
+      const pinned = (g.sticky ?? []).filter(t => t !== id);
+      if (g.id === to) {
+        const index = before && tabs.includes(before) ? tabs.indexOf(before) : tabs.length;
+        const target = sticky ? Math.min(index, pinned.length) : Math.max(index, pinned.length);
+        tabs.splice(target, 0, id);
+        if (sticky) pinned.splice(target, 0, id);
+      }
+      return normalizeGroup({ ...g, tabs, sticky: pinned, active: g.id === to ? id : g.active === id ? tabs[0] ?? null : g.active, preview: g.preview === id ? null : g.preview });
+    }), activeGroup: to };
+  }); scheduleBackup();
 }
 
 export function addHistory(location: Location) {
