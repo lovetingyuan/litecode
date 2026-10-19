@@ -9,6 +9,7 @@ vi.mock('./monaco', () => ({
     editor: { getModel: () => null, createModel: vi.fn() },
   },
   loadSyntax: vi.fn().mockResolvedValue(undefined),
+  languageFor: () => 'plaintext',
 }));
 vi.mock('./bridge', () => ({ call: vi.fn(), desktop: true, errorMessage: (e: { message: string }) => e.message }));
 vi.mock('./dialog', () => ({ ask: vi.fn() }));
@@ -17,7 +18,7 @@ vi.mock('./languages', () => ({ ensureLanguage: vi.fn(), releaseLanguageDocument
 import { call } from './bridge';
 import { monaco } from './monaco';
 import { canFormat, formatModel } from './languages';
-import { attachDocument, autoSave, editors, models, patchDoc, save } from './documents';
+import { attachDocument, autoSave, editors, models, openPath, patchDoc, save, session, showDocument } from './documents';
 import { setApp, useApp } from './store';
 
 class Buffer {
@@ -54,13 +55,90 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(call).mockImplementation(async command => command === 'save_document' ? 'new-revision' : undefined as never);
   vi.mocked(canFormat).mockReturnValue(false);
-  setApp({ docs: {}, groups: [], settings: { 'files.autoSave': 'onFocusChange' }, notice: null });
+  setApp({ docs: {}, groups: [], tabRevealRequests: {}, settings: { 'files.autoSave': 'onFocusChange' }, notice: null });
 });
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
   models.clear();
   editors.clear();
+  vi.unstubAllGlobals();
+});
+
+describe('Opening documents', () => {
+  function setup() {
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 0; });
+    const { id } = addDocument();
+    setApp({ activeGroup: 'group', groups: [{ id: 'group', tabs: [], active: null, preview: null, views: {} }], history: [], historyIndex: -1 });
+    const editor = { focus: vi.fn(), setPosition: vi.fn(), revealLineInCenterIfOutsideViewport: vi.fn() };
+    editors.set('group', editor as unknown as Monaco.editor.IStandaloneCodeEditor);
+    return { id, editor };
+  }
+
+  it('activates an existing file as a preview without taking focus from the explorer', async () => {
+    const { id, editor } = setup();
+    await openPath(useApp.getState().docs[id].path!, { preserveFocus: true });
+    expect(useApp.getState().groups[0]).toMatchObject({ active: id, tabs: [id], preview: id });
+    expect(useApp.getState().history[0].id).toBe(id);
+    expect(editor.focus).not.toHaveBeenCalled();
+  });
+
+  it('loads a new file and preserves focus while still revealing the requested location', async () => {
+    const { editor } = setup();
+    vi.mocked(call).mockResolvedValueOnce({ text: 'fresh', encoding: 'utf8', eol: 'LF', revision: 'new' });
+    vi.mocked(monaco.editor.createModel).mockReturnValueOnce(new Buffer('fresh') as unknown as Monaco.editor.ITextModel);
+    const id = await openPath('C:/workspace/fresh.txt', { preserveFocus: true, line: 3, column: 2 });
+    expect(useApp.getState().groups[0]).toMatchObject({ active: id, preview: id });
+    expect(editor.setPosition).toHaveBeenCalledWith({ lineNumber: 3, column: 2 });
+    expect(editor.focus).not.toHaveBeenCalled();
+  });
+
+  it('focuses and pins the current preview when explicitly opened', () => {
+    const { id, editor } = setup();
+    showDocument(id, { preserveFocus: true });
+    showDocument(id, { pinned: true });
+    expect(useApp.getState().groups[0]).toMatchObject({ active: id, tabs: [id], preview: null });
+    expect(editor.focus).toHaveBeenCalledOnce();
+  });
+
+  it('continues focusing ordinary opens and leaves background opens inactive', () => {
+    const { id, editor } = setup();
+    showDocument(id, { background: true });
+    expect(useApp.getState().groups[0].active).toBeNull();
+    expect(editor.focus).not.toHaveBeenCalled();
+    showDocument(id);
+    expect(editor.focus).toHaveBeenCalledOnce();
+  });
+
+  it('requests a reveal on every foreground open, including the already active document', () => {
+    const { id, editor } = setup();
+    showDocument(id, { preserveFocus: true });
+    const first = useApp.getState().tabRevealRequests.group;
+    showDocument(id, { preserveFocus: true });
+    expect(useApp.getState().tabRevealRequests.group).toBe(first + 1);
+    expect(useApp.getState().groups[0].tabs).toEqual([id]);
+    expect(editor.focus).not.toHaveBeenCalled();
+  });
+
+  it('does not request a reveal for background opens or change another group request', () => {
+    const { id } = setup();
+    showDocument(id);
+    const requests = useApp.getState().tabRevealRequests;
+    const other = addDocument();
+    showDocument(other.id, { background: true });
+    expect(useApp.getState().tabRevealRequests).toBe(requests);
+    expect(useApp.getState().groups[0].active).toBe(id);
+    setApp(s => ({ groups: [...s.groups, { id: 'other', tabs: [], active: null, preview: null, views: {} }] }));
+    showDocument(other.id, { group: 'other' });
+    expect(useApp.getState().tabRevealRequests).toEqual({ ...requests, other: 1 });
+  });
+
+  it('keeps reveal requests out of the saved session', () => {
+    const { id, editor } = setup();
+    Object.assign(editor, { saveViewState: () => null });
+    showDocument(id);
+    expect(session()).not.toHaveProperty('tabRevealRequests');
+  });
 });
 
 describe('Automatic saves', () => {

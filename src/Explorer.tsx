@@ -17,11 +17,13 @@ import {
   relative,
   renameDocumentPaths,
   normalize,
-  pin,
+  pathTitle,
+  visiblePath,
 } from './documents'
 import { ask, input } from './dialog'
 import { Icon, IconButton } from './ui'
 import type { TreeSnapshot } from './types'
+import { createExplorerSync } from './explorerSync'
 
 let clipboard: { paths: string[]; cut: boolean } | null = null
 const scans = new Map<string, Promise<void>>()
@@ -32,7 +34,7 @@ export function refreshTree() {
   if (previous) return previous
   const current = call<TreeSnapshot>('scan_workspace')
     .then(tree => {
-      if (useApp.getState().root === root) setApp({ tree })
+      if (useApp.getState().root === root) setApp({ tree, treeRoot: root })
     })
     .catch(e => {
       if (useApp.getState().root === root) notify(errorMessage(e))
@@ -45,23 +47,33 @@ export function refreshTree() {
 }
 export function revealInTree(path: string) {
   setApp({ sidebar: 'explorer' })
-  window.dispatchEvent(new CustomEvent('reveal-tree', { detail: relative(path) }))
+  window.dispatchEvent(new CustomEvent('reveal-tree', { detail: path }))
 }
 
 export function Explorer({ openFolder }: { openFolder: () => void }) {
   const root = useApp(s => s.root)
   const tree = useApp(s => s.tree)
+  const treeRoot = useApp(s => s.treeRoot)
   const groups = useApp(s => s.groups)
   const docs = useApp(s => s.docs)
   const activeGroup = useApp(s => s.activeGroup)
+  const sidebar = useApp(s => s.sidebar)
+  const tabRevealRequest = useApp(s => s.tabRevealRequests[s.activeGroup] ?? 0)
   const [context, setContext] = useState<{
     item: FileTreeContextMenuItem
     context: FileTreeContextMenuOpenContext
   } | null>(null)
   const worker = useRef<Worker | null>(null)
   const generation = useRef(0)
+  const [prepared, setPrepared] = useState<{ id: number; root: string | null; paths: string[] }>({ id: 0, root: null, paths: [] })
+  const explicitReveal = useRef<{
+    path: string; group: string; activePath: string | null | undefined; request: number
+  } | null>(null)
+  const [explicitRequest, setExplicitRequest] = useState(0)
   const operationQueue = useRef(Promise.resolve())
   const [expanded, setExpanded] = useState(true)
+  const wasExpanded = useRef(expanded)
+  const revealPending = useRef(true)
   const { model } = useFileTree({
     preparedInput: preparePresortedFileTreeInput([]),
     flattenEmptyDirectories: false,
@@ -93,10 +105,6 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       },
       onDropError: notify,
     },
-    onSelectionChange: paths => {
-      if (paths.length === 1 && !model.getItem(paths[0])?.isDirectory() && rootRef.current)
-        void openPath(join(rootRef.current, paths[0])).catch(e => notify(errorMessage(e)))
-    },
     composition: {
       contextMenu: {
         enabled: true,
@@ -108,6 +116,21 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   })
   const rootRef = useRef(root)
   rootRef.current = root
+  function openTreeFile(event: Event, pinned = false) {
+    // Rows live in the tree's shadow DOM; ignore rename inputs and empty space.
+    const targets = event.composedPath()
+    if (targets.some(target => target instanceof HTMLInputElement)) return false
+    const row = targets.find(
+      target => target instanceof HTMLElement && target.hasAttribute('data-item-path'),
+    ) as HTMLElement | undefined
+    const path = row?.dataset.itemPath
+    const item = path ? model.getItem(path) : null
+    if (!path || !item || item.isDirectory() || !rootRef.current) return false
+    void openPath(join(rootRef.current, path), { pinned, preserveFocus: !pinned }).catch(e =>
+      notify(errorMessage(e)),
+    )
+    return true
+  }
   function mutate(from: string, to: string) {
     const root = rootRef.current
     if (!root) return
@@ -124,36 +147,125 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     })
   }
   useEffect(() => {
+    const sync = createExplorerSync(model)
     const w = new PrepareWorker()
     worker.current = w
-    w.onmessage = (event: MessageEvent<{ id: number; paths: string[] }>) => {
-      if (event.data.id === generation.current)
-        model.resetPaths({ preparedInput: preparePresortedFileTreeInput(event.data.paths) })
+    let appliedRoot: string | null = null
+    const unsubscribe = useApp.subscribe((state, previous) => {
+      if (state.root !== previous.root) {
+        ++generation.current
+        sync.reset([])
+        appliedRoot = null
+      }
+    })
+    w.onmessage = (event: MessageEvent<{ id: number; root: string; paths: string[] }>) => {
+      const state = useApp.getState()
+      if (event.data.id === generation.current && event.data.root === state.root && state.treeRoot === state.root) {
+        if (appliedRoot !== event.data.root) sync.reset(event.data.paths)
+        else sync.update(event.data.paths)
+        appliedRoot = event.data.root
+        setPrepared(event.data)
+      }
     }
     return () => {
       w.terminate()
+      unsubscribe()
+      sync.dispose()
       worker.current = null
     }
   }, [model])
   useEffect(() => {
-    worker.current?.postMessage({ id: ++generation.current, paths: tree.paths })
-  }, [tree.paths])
+    if (root && treeRoot === root)
+      worker.current?.postMessage({ id: ++generation.current, root, paths: tree.paths })
+  }, [tree.paths, root, treeRoot])
   useEffect(() => {
     model.setGitStatus(
       tree.git.map(g => ({ ...g, status: g.status === 'conflicted' ? 'modified' : g.status })),
     )
   }, [model, tree.git])
   useEffect(() => {
-    const onReveal = (e: Event) =>
-      model.scrollToPath((e as CustomEvent<string>).detail, { focus: true })
+    const onReveal = (e: Event) => {
+      const state = useApp.getState()
+      explicitReveal.current = {
+        path: (e as CustomEvent<string>).detail,
+        group: state.activeGroup,
+        activePath: state.docs[state.groups.find(g => g.id === state.activeGroup)?.active ?? '']?.path,
+        request: state.tabRevealRequests[state.activeGroup] ?? 0,
+      }
+      setExplicitRequest(request => request + 1)
+    }
     window.addEventListener('reveal-tree', onReveal)
     return () => window.removeEventListener('reveal-tree', onReveal)
-  }, [model])
+  }, [])
   const active = docs[groups.find(g => g.id === activeGroup)?.active ?? '']
   useEffect(() => {
-    if (active?.path && root && normalize(active.path).startsWith(normalize(root)))
-      model.scrollToPath(relative(active.path, root))
-  }, [model, active?.path, root])
+    revealPending.current = true
+  }, [activeGroup, active?.path, tabRevealRequest, root, sidebar])
+  useEffect(() => {
+    // A newer editor activation supersedes an explicit reveal waiting for tree data.
+    const pending = explicitReveal.current
+    if (pending && (pending.group !== activeGroup || pending.activePath !== active?.path || pending.request !== tabRevealRequest))
+      explicitReveal.current = null
+    // Collapsing the workspace is a user action, not a request to reveal again.
+    const collapsed = wasExpanded.current && !expanded
+    const reopened = !wasExpanded.current && expanded
+    wasExpanded.current = expanded
+    if (collapsed) revealPending.current = false
+    if (reopened) revealPending.current = true
+    if ((collapsed && !explicitReveal.current) || sidebar !== 'explorer') return
+    if (!revealPending.current && !explicitReveal.current) return
+    if (prepared.id !== generation.current || prepared.root !== root || treeRoot !== root) return
+    const focus = explicitReveal.current !== null
+    const path = explicitReveal.current?.path ?? active?.path
+    const base = root ? visiblePath(root).replace(/[\\/]+$/, '') : null
+    if (!path || !base || !normalize(visiblePath(path)).startsWith(normalize(base) + '/')) {
+      explicitReveal.current = null
+      revealPending.current = false
+      return
+    }
+    const requestedPath = relative(path, base)
+    // Keep the tree's canonical casing even if a file was opened through another spelling.
+    const canonicalPath = prepared.paths.includes(requestedPath) ? requestedPath
+      : prepared.paths.find(p => normalize(p) === normalize(requestedPath))
+    const item = canonicalPath ? model.getItem(canonicalPath) : null
+    // A newly opened file can precede the scan that first includes it.
+    if (!item) return
+    if (item.isDirectory()) {
+      explicitReveal.current = null
+      revealPending.current = false
+      return
+    }
+    if (!expanded) {
+      setExpanded(true)
+      return
+    }
+    const target = item.getPath()
+    // Keep pointer/keyboard navigation in the tree stable; editor navigation reveals context.
+    const navigatingTree = !focus && document.activeElement === model.getFileTreeContainer()
+      && model.getFocusedPath() === target
+    const parts = target.split('/')
+    for (let depth = 1; depth < parts.length; depth++) {
+      const parent = model.getItem(parts.slice(0, depth).join('/'))
+      if (parent && 'expand' in parent) parent.expand()
+    }
+    for (const selected of model.getSelectedPaths()) {
+      if (selected !== target) model.getItem(selected)?.deselect()
+    }
+    item.select()
+    model.focusPath(target)
+    model.scrollToPath(target, { focus: false, offset: navigatingTree ? 'nearest' : 'center' })
+    explicitReveal.current = null
+    revealPending.current = false
+    if (focus) {
+      // Automatic reveals retain DOM focus; explicit reveals transfer it after rendering.
+      const frame = requestAnimationFrame(() => {
+        model.getFileTreeContainer()?.shadowRoot
+          ?.querySelector<HTMLElement>(`[data-item-path="${CSS.escape(target)}"]`)
+          ?.focus({ preventScroll: true })
+      })
+      return () => cancelAnimationFrame(frame)
+    }
+  }, [model, activeGroup, active?.path, tabRevealRequest, root, treeRoot, sidebar, prepared, expanded, explicitRequest])
 
   async function action(kind: string, path = model.getFocusedPath() ?? '') {
     if (!root) return
@@ -232,6 +344,8 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   const treeStyle = {
     flex: 1,
     minHeight: 0,
+    // Included in the virtual layout by tools/patch-trees-scroll.mjs.
+    '--trees-scroll-padding-bottom': '32px',
     ...themeToTreeStyles({
       colors: {
         'sideBar.background': '#181818',
@@ -275,7 +389,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       ) : (
         <>
           <div className="section-heading">
-            <button onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
+            <button title={pathTitle(root)} onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
               <Icon name={expanded ? 'chevron-down' : 'chevron-right'} />
               {basename(root).toUpperCase()}
             </button>
@@ -310,14 +424,23 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
               model={model}
               className="file-tree"
               style={treeStyle}
-              onDoubleClick={() => {
-                const id = useApp
-                  .getState()
-                  .groups.find(g => g.id === useApp.getState().activeGroup)?.active
-                if (id) pin(id)
+              onPointerMove={e => {
+                // Tree rows are virtualized inside a shadow root; resolve the current row on hover.
+                const row = e.nativeEvent.composedPath().find(
+                  target => target instanceof HTMLElement && target.hasAttribute('data-item-path'),
+                ) as HTMLElement | undefined
+                if (row?.dataset.itemPath) row.title = pathTitle(join(root, row.dataset.itemPath))
               }}
+              onClick={e => {
+                if (e.detail === 2 || e.ctrlKey || e.metaKey || e.shiftKey) return
+                if (e.detail !== 0 && useApp.getState().settings['workbench.list.openMode'] === 'doubleClick') return
+                openTreeFile(e.nativeEvent)
+              }}
+              onDoubleClick={e => { openTreeFile(e.nativeEvent, true) }}
               onKeyDown={e => {
-                if (e.key === 'F2') {
+                if (e.key === 'Enter' && openTreeFile(e.nativeEvent, true)) {
+                  e.preventDefault()
+                } else if (e.key === 'F2') {
                   e.preventDefault()
                   model.startRenaming()
                 } else if (e.key === 'Delete') {

@@ -10,6 +10,7 @@ import { commands, execute, installKeys, openFolder } from './commands';
 import { Explorer, refreshTree } from './Explorer';
 import { SearchView } from './SearchView';
 import { EditorGroup } from './EditorGroup';
+import { WelcomePage } from './WelcomePage';
 import { QuickOpen } from './QuickOpen';
 import { DialogHost, input } from './dialog';
 import { DiffViewer } from './DiffViewer';
@@ -25,7 +26,7 @@ function start() {
     const boot = await bootstrap();
     setApp({ root: boot.root, settings: boot.settings, recent: boot.recent, dataDir: boot.dataDir, keybindings: boot.keybindings ?? [] });
     for (const mirror of boot.documents) restoreDocument(mirror);
-    const session = boot.session;
+    const session = boot.session ?? {};
     if (session.query) setApp({ query: session.query, searchHistory: session.searchHistory ?? [] });
     const valid = session.groups?.map(g => ({ ...g, tabs: g.tabs.filter(id => models.has(id)), active: g.active && models.has(g.active) ? g.active : g.tabs.find(id => models.has(id)) ?? null, views: g.views ?? {} }));
     setApp({ ready: true, ...(valid?.length ? { groups: valid, activeGroup: session.activeGroup && valid.some(g => g.id === session.activeGroup) ? session.activeGroup : valid[0].id } : {}), sidebarWidth: session.sidebarWidth ?? 260, sidebar: session.sidebar === 'search' ? 'search' : 'explorer', history: session.history ?? [], historyIndex: session.historyIndex ?? -1 });
@@ -61,6 +62,7 @@ export default function App() {
     return () => { disposed = true; cleanups.forEach(fn => fn()); };
   }, []);
   const doc = s.docs[s.groups.find(g => g.id === s.activeGroup)?.active ?? ''];
+  const showWelcome = s.ready && !s.root && s.groups.every(group => group.tabs.length === 0);
   useEffect(() => { if (desktop) void getCurrentWindow().setTitle(`${doc?.dirty ? '● ' : ''}${doc?.name ? `${doc.name} — ` : ''}${s.root ? `${basename(s.root)} — ` : ''}LiteCode`); }, [doc?.name, doc?.dirty, s.root]);
   function windowAction(action: 'minimize' | 'maximize' | 'close') {
     if (!desktop) return; const win = getCurrentWindow();
@@ -84,7 +86,12 @@ export default function App() {
     </header>
     <div className="workbench-body">
       <nav className="activitybar" aria-label="Views"><div><button className={s.sidebar === 'explorer' ? 'active' : ''} aria-label="Explorer (Ctrl+Shift+E)" title="Explorer (Ctrl+Shift+E)" onClick={() => setApp({ sidebar: s.sidebar === 'explorer' ? null : 'explorer' })}><Icon name="files" /></button><button className={s.sidebar === 'search' ? 'active' : ''} aria-label="Search (Ctrl+Shift+F)" title="Search (Ctrl+Shift+F)" onClick={() => void execute('workbench.action.findInFiles')}><Icon name="search" /></button></div><button title="Manage" aria-label="Manage" onClick={() => setApp({ quick: '>Preferences:' })}><Icon name="settings-gear" /></button></nav>
-      {s.ready && <><aside className="sidebar" style={{ width: s.sidebar ? s.sidebarWidth : 0, display: s.sidebar ? 'flex' : 'none' }}><div className="sidebar-view" hidden={s.sidebar !== 'explorer'}><Explorer openFolder={() => void openFolder().catch(e => notify(errorMessage(e)))} /></div><div className="sidebar-view" hidden={s.sidebar !== 'search'}><SearchView /></div></aside>{s.sidebar && <div className="sidebar-resizer" role="separator" aria-label="Primary side bar width" aria-orientation="vertical" aria-valuenow={s.sidebarWidth} tabIndex={0} onPointerDown={resize} onKeyDown={e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); setApp({ sidebarWidth: Math.max(170, s.sidebarWidth + (e.key === 'ArrowRight' ? 10 : -10)) }); } }} />}<main className="editors" aria-label="Editors">{s.groups.map(group => <EditorGroup key={group.id} group={group} />)}</main></>}
+      {s.ready && <><aside className="sidebar" style={{ width: s.sidebar ? s.sidebarWidth : 0, display: s.sidebar ? 'flex' : 'none' }}><div className="sidebar-view" hidden={s.sidebar !== 'explorer'}><Explorer openFolder={() => void openFolder().catch(e => notify(errorMessage(e)))} /></div><div className="sidebar-view" hidden={s.sidebar !== 'search'}><SearchView /></div></aside>{s.sidebar && <div className="sidebar-resizer" role="separator" aria-label="Primary side bar width" aria-orientation="vertical" aria-valuenow={s.sidebarWidth} tabIndex={0} onPointerDown={resize} onKeyDown={e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); setApp({ sidebarWidth: Math.max(170, s.sidebarWidth + (e.key === 'ArrowRight' ? 10 : -10)) }); } }} />}<main className="editors" aria-label="Editors">
+        <div className={`editor-groups${showWelcome ? ' welcome-hidden' : ''}`} inert={showWelcome} aria-hidden={showWelcome || undefined}>
+          {s.groups.map(group => <EditorGroup key={group.id} group={group} />)}
+        </div>
+        {showWelcome && <WelcomePage />}
+      </main></>}
       {!s.ready && <div className="startup" role="status">{fatal ? <><Icon name="error" /><p>{fatal}</p><button onClick={() => location.reload()}>Reload</button></> : <><span className="spinner" /><p>Starting editor services…</p></>}</div>}
     </div>
     <footer className="statusbar"><div className="status-left"><span className="remote-indicator" title="Local window"><Icon name="remote" /></span>{s.tree.branch && <span className="status-item" title="Current Git branch"><Icon name="source-control" />{s.tree.branch}</span>}<button title="Show Problems" onClick={() => void editor()?.getAction('editor.action.marker.next')?.run()}><Icon name="error" />{diagnostics.errors}<Icon name="warning" />{diagnostics.warnings}</button></div><div className="status-right">{doc && <><button onClick={() => setApp({ quick: ':' })}>Ln {s.cursor.line}, Col {s.cursor.column}{s.cursor.selected ? ` (${s.cursor.selected} selected)` : ''}</button><button onClick={() => void changeIndent()}>Spaces: {String(s.settings['editor.tabSize'] ?? 4)}</button><button onClick={() => void changeEncoding()}>{doc.encoding.toUpperCase().replace('UTF8', 'UTF-8')}</button><button onClick={() => { const m = models.get(doc.id); if (m) m.pushEOL(doc.eol === 'LF' ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF); }}>{doc.eol}</button><button onClick={() => void execute('litecode.setLanguage')}>{doc.language === 'plaintext' ? 'Plain Text' : doc.language}</button></>}{s.searching && <span>Searching…</span>}<span className="status-item" title={s.languageStatus}><Icon name="check" /></span><button title="Notifications" onClick={() => notify(s.notice ?? 'No new notifications.')} aria-label="Notifications"><Icon name="bell" /></button></div></footer>

@@ -18,6 +18,8 @@ npm run tauri dev
 
 仅运行前端用 `npm run dev`；浏览器模式不会伪造本地文件或工具服务。
 
+`npm ci` / `npm install` 及 Vite 启动时会自动运行 `tools/patch-trees-scroll.mjs`，为固定版本的文件树补上可滚动的底部留白；开发服务的依赖缓存按补丁内容区分，防止旧组件缓存覆盖补丁。升级 `@pierre/trees` 时需复核该兼容补丁。
+
 ```powershell
 npm run tauri build
 node tools/package-portable.mjs
@@ -27,7 +29,12 @@ node tools/package-portable.mjs
 
 ## 文件、搜索与编辑
 
+- 未打开文件夹且没有文件标签时，编辑区显示初始页，提供新建文件、打开文件、打开文件夹及最近文件夹入口；关闭全部单文件标签后会返回初始页。
 - `Ctrl+P` 打开文件；支持路径、`:行:列`，以及 `>` 命令、`@` 当前文档符号、`#` 工作区符号、`%` Quick Search、`?` 帮助。
+- 文件树默认单击预览并保留树中焦点，双击或按 `Enter` 固定文件并聚焦编辑器。兼容 VS Code 的 `workbench.list.openMode`：`singleClick`（默认）或 `doubleClick`（单击仅选中）；可在用户设置或 `.litecode/settings.json` 中修改，保存后即时生效。
+- 打开或切换文件时，编辑器标签按最小滚动距离进入可视区域；重复打开当前文件也会定位标签。后台打开不强制滚动，手动滚动后不会因普通编辑更新被拉回。标签背景、文字及悬停颜色按提供的 VS Code 截图对齐；横向滚动条覆盖显示在标签底部，不占用布局高度，支持滚轮、滑块拖动及轨道点击。
+- 鼠标悬停在文件树的文件或文件夹、编辑器标签、面包屑项目上时，显示对应的完整路径；面包屑的文件夹项目显示该级目录的完整路径。
+- 文件修改、增删和手动刷新保留现有目录的展开状态及文件树滚动位置；切换编辑器标签或执行文件树定位仍会展开目标文件的父目录。展开状态不跨应用重启保存。
 - `Ctrl+Shift+P` 打开命令面板。`Ctrl+K Ctrl+O` 打开目录，命令面板提供新窗口入口；每个窗口最多一个根目录。
 - `Ctrl+F / Ctrl+H` 是 Monaco 查找与替换；`Ctrl+Shift+F` 打开 Search View；`F4 / Shift+F4` 跳转工作区结果。
 - 搜索由打包的 PCRE2 ripgrep 执行，叠加未保存和 Untitled 缓冲区；有请求取消、结果上限、Channel 消费确认和版本校验。
@@ -77,5 +84,9 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 ```
 
 真实桌面端测试需要 `tauri-driver` 和匹配 WebView2 版本的 EdgeDriver；先启动 `tauri-driver --port 4446 --native-driver <msedgedriver.exe 路径>`，然后执行 `npm run test:e2e`，或 `node tools/verify-desktop.mjs --release` 验证发行 exe。脚本创建隔离 fixture、便携数据目录并模拟崩溃，不使用个人工作区文件。
+
+标签栏浏览器回归：先启动 `npm run dev`，再执行 `node tools/verify-editor-tabs.mjs`（需要已安装的 Microsoft Edge）。脚本仅模拟 IPC 数据，使用真实文件树、标签栏和 Monaco，覆盖标签定位、文件树焦点、手动滚动、后台打开、预览、分栏、会话恢复与配色；截图保存至 `.verification/editor-tabs/`。
+
+文件树与编辑器双向联动回归：启动 `npm run dev` 后执行 `node tools/verify-explorer-sync.mjs`（需要 Microsoft Edge）。切换活动编辑器会展开父目录、选中文件并尽量滚动到视野中部，同时保留编辑器焦点；直接操作文件树时保持条目位置稳定。脚本覆盖居中定位、鼠标/键盘切换、分组、导航、侧栏恢复、Windows 路径和异步树数据更新；截图保存至 `.verification/explorer-sync/`。
 
 Trees 官方 skill 已通过 `npx skills add pierrecomputer/pierre --skill trees` 安装到 `.agents/skills/trees`，集成使用官方 React、prepared input、主题和交互 API。依赖锁定在 npm / Cargo lockfile；第三方许可在 [docs/licenses](docs/licenses/)，发行资源带有完整 notices。重新生成清单用 `node tools/notices.mjs`。

@@ -2,6 +2,7 @@
   "type": "object",
   "additionalProperties": true,
   "properties": {
+    "workbench.list.openMode": { "enum": ["singleClick", "doubleClick"], "default": "singleClick", "description": "文件树的鼠标打开方式：singleClick 单击预览并保留文件树焦点；doubleClick 单击仅选中。双击或按 Enter 打开并固定文件，将焦点移到编辑器。" },
     "editor.fontSize": { "type": "number", "minimum": 6, "maximum": 100, "default": 14, "description": "编辑器字号，单位为像素，范围 6–100。" },
     "editor.fontFamily": { "type": "string", "default": "Consolas, \"Courier New\", monospace", "description": "编辑器字体，按逗号分隔的顺序查找本机已安装的字体。" },
     "editor.lineHeight": { "type": "number", "minimum": 0, "maximum": 150, "default": 20, "description": "编辑器行高：0 为自动计算；大于 0 且小于 8 为字号倍数；8–150 为像素。" },

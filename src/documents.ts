@@ -19,6 +19,7 @@ export const basename = (path: string) => path.replace(/\\/g, '/').split('/').po
 export const normalize = (path: string) => path.replace(/^\\\\\?\\/, '').replace(/\\/g, '/').toLowerCase();
 export const join = (root: string, path: string) => `${root.replace(/[\\/]$/, '')}/${path.replace(/\/$/, '')}`;
 export const visiblePath = (path: string) => path.replace(/^\\\\\?\\UNC\\/, '\\\\').replace(/^\\\\\?\\/, '');
+export const pathTitle = (path: string) => visiblePath(path).replace(/\//g, '\\');
 export const relative = (path: string, root = useApp.getState().root) => {
   const value = visiblePath(path).replace(/\\/g, '/'); const base = root ? visiblePath(root).replace(/\\/g, '/') : null;
   return base && value.toLowerCase().startsWith(base.toLowerCase() + '/') ? value.slice(base.length + 1) : value;
@@ -83,7 +84,7 @@ export function restoreDocument(mirror: Mirror) {
   attachDocument(doc, mirror.text, mirror.dirty);
 }
 
-export async function openPath(path: string, options: { pinned?: boolean; group?: string; line?: number; column?: number; background?: boolean; force?: boolean } = {}) {
+export async function openPath(path: string, options: { pinned?: boolean; group?: string; line?: number; column?: number; background?: boolean; preserveFocus?: boolean; force?: boolean } = {}) {
   const existing = Object.values(useApp.getState().docs).find(d => d.path && normalize(d.path) === normalize(path));
   let id = existing?.id;
   if (!id) {
@@ -120,7 +121,7 @@ export function pin(id: string) {
   setApp(s => ({ groups: s.groups.map(g => g.preview === id ? { ...g, preview: null } : g) }));
 }
 
-export function showDocument(id: string, options: { pinned?: boolean; group?: string; line?: number; column?: number; background?: boolean } = {}) {
+export function showDocument(id: string, options: { pinned?: boolean; group?: string; line?: number; column?: number; background?: boolean; preserveFocus?: boolean } = {}) {
   const s = useApp.getState();
   const groupId = options.group ?? s.activeGroup;
   setApp({ groups: s.groups.map(g => {
@@ -130,7 +131,10 @@ export function showDocument(id: string, options: { pinned?: boolean; group?: st
     if (!existing && !options.pinned && g.preview && !s.docs[g.preview]?.dirty) tabs = tabs.filter(t => t !== g.preview);
     if (!tabs.includes(id)) tabs.push(id);
     return { ...g, tabs, active: options.background ? g.active : id, preview: options.pinned ? g.preview === id ? null : g.preview : existing ? g.preview : id };
-  }), activeGroup: options.background ? s.activeGroup : groupId });
+  }), activeGroup: options.background ? s.activeGroup : groupId,
+    // Reopening the already active document must also reveal its tab.
+    ...(!options.background ? { tabRevealRequests: { ...s.tabRevealRequests, [groupId]: (s.tabRevealRequests[groupId] ?? 0) + 1 } } : {}),
+  });
   const visible = new Set(useApp.getState().groups.flatMap(g => g.tabs));
   for (const previous of Object.values(s.docs)) if (previous.id !== id && !previous.dirty && !visible.has(previous.id)) disposeDocument(previous.id);
   if (!options.background) {
@@ -138,7 +142,7 @@ export function showDocument(id: string, options: { pinned?: boolean; group?: st
     requestAnimationFrame(() => {
       const e = editors.get(groupId);
       if (e && options.line) { e.setPosition({ lineNumber: options.line, column: options.column ?? 1 }); e.revealLineInCenterIfOutsideViewport(options.line); }
-      e?.focus();
+      if (!options.preserveFocus) e?.focus();
     });
   }
   scheduleBackup();

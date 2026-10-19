@@ -6,7 +6,8 @@ const initialGroup = (): Group => ({ id: crypto.randomUUID(), tabs: [], active: 
 const group = initialGroup();
 type State = {
   ready: boolean; root: string | null; docs: Record<string, Doc>; groups: Group[]; activeGroup: string;
-  sidebar: 'explorer' | 'search' | null; sidebarWidth: number; tree: TreeSnapshot; settings: Record<string, unknown>;
+  tabRevealRequests: Record<string, number>; // Transient UI requests; excluded from session().
+  sidebar: 'explorer' | 'search' | null; sidebarWidth: number; tree: TreeSnapshot; treeRoot: string | null; settings: Record<string, unknown>;
   recent: string[]; history: Location[]; historyIndex: number; cursor: { line: number; column: number; selected: number };
   keybindings: Keybinding[]; dataDir: string;
   quick: string | null; notice: string | null; query: Query; results: SearchMatch[]; searching: boolean; searchErrors: string[];
@@ -15,7 +16,8 @@ type State = {
 };
 export const useApp = create<State>(set => ({
   ready: false, root: null, docs: {}, groups: [group], activeGroup: group.id,
-  sidebar: 'explorer', sidebarWidth: 260, tree: { paths: [], git: [], branch: null, warnings: [], truncated: false }, settings: {},
+  tabRevealRequests: {},
+  sidebar: 'explorer', sidebarWidth: 260, tree: { paths: [], git: [], branch: null, warnings: [], truncated: false }, treeRoot: null, settings: {},
   recent: [], history: [], historyIndex: -1, cursor: { line: 1, column: 1, selected: 0 }, quick: null, notice: null,
   keybindings: [], dataDir: '',
   query: { ...defaultQuery }, results: [], searching: false, searchErrors: [], limited: false, requestId: null, searchHistory: [], languageStatus: 'Plain Text',

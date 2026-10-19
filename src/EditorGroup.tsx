@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { useApp, setApp, notify } from './store';
 import { monaco } from './monaco';
-import { models, editors, closeDocument, showDocument, pin, relative, addHistory, moveTab, splitGroup, scheduleBackup, resolveConflict, patchDoc, openPath, checkpoint, autoSave } from './documents';
+import { models, editors, closeDocument, showDocument, pin, relative, addHistory, moveTab, splitGroup, scheduleBackup, resolveConflict, patchDoc, openPath, checkpoint, autoSave, pathTitle } from './documents';
 import { errorMessage, call, channel } from './bridge';
 import { Icon, IconButton } from './ui';
 import { revealInTree } from './Explorer';
@@ -13,6 +13,25 @@ export function EditorGroup({ group }: { group: Group }) {
   const host = useRef<HTMLDivElement>(null); const instance = useRef<monaco.editor.IStandaloneCodeEditor | null>(null); const previous = useRef<string | null>(null);
   const doc = group.active ? docs[group.active] : undefined;
   const tabs = useRef<HTMLDivElement>(null);
+  const revealRequest = useApp(s => s.tabRevealRequests[group.id] ?? 0);
+  const activeTabIndex = group.tabs.indexOf(group.active ?? '');
+  useLayoutEffect(() => {
+    const element = tabs.current;
+    const active = element?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!element || !active) return;
+    const reveal = () => {
+      const viewport = element.getBoundingClientRect();
+      const bounds = active.getBoundingClientRect();
+      const left = element.scrollLeft + bounds.left - viewport.left;
+      if (bounds.width > element.clientWidth || left < element.scrollLeft) element.scrollLeft = left;
+      else if (left + bounds.width > element.scrollLeft + element.clientWidth) element.scrollLeft = left + bounds.width - element.clientWidth;
+    };
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    observer.observe(element);
+    observer.observe(active);
+    return () => observer.disconnect();
+  }, [group.active, activeTabIndex, revealRequest]);
   useEffect(() => {
     const element = tabs.current; if (!element) return;
     const scroll = (event: WheelEvent) => {
@@ -78,21 +97,71 @@ export function EditorGroup({ group }: { group: Group }) {
   }}>
     <div className="tabs-toolbar"><div className="editor-tabs" ref={tabs} role="tablist" aria-label="Open editors">{group.tabs.map(id => {
       const tab = docs[id]; if (!tab) return null;
-      return <div role="tab" tabIndex={group.active === id ? 0 : -1} aria-selected={group.active === id} aria-label={`${tab.name}${tab.dirty ? ', unsaved' : ''}`} key={id} className={`editor-tab ${group.active === id ? 'active' : ''} ${group.preview === id ? 'preview' : ''}`} draggable onDragStart={e => e.dataTransfer.setData('application/litecode-tab', JSON.stringify({ id, from: group.id }))} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); e.stopPropagation(); const raw = e.dataTransfer.getData('application/litecode-tab'); if (raw) { const t = JSON.parse(raw); moveTab(t.id, t.from, group.id, id); } }} onClick={() => showDocument(id, { group: group.id })} onDoubleClick={() => pin(id)} onAuxClick={e => { if (e.button === 1) void closeDocument(id, group.id).catch(e => notify(errorMessage(e))); }} onKeyDown={e => {
+      return <div role="tab" title={tab.path ? pathTitle(tab.path) : tab.name} tabIndex={group.active === id ? 0 : -1} aria-selected={group.active === id} aria-label={`${tab.name}${tab.dirty ? ', unsaved' : ''}`} key={id} className={`editor-tab ${group.active === id ? 'active' : ''} ${group.preview === id ? 'preview' : ''}`} draggable onDragStart={e => e.dataTransfer.setData('application/litecode-tab', JSON.stringify({ id, from: group.id }))} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); e.stopPropagation(); const raw = e.dataTransfer.getData('application/litecode-tab'); if (raw) { const t = JSON.parse(raw); moveTab(t.id, t.from, group.id, id); } }} onClick={() => showDocument(id, { group: group.id })} onDoubleClick={() => pin(id)} onAuxClick={e => { if (e.button === 1) void closeDocument(id, group.id).catch(e => notify(errorMessage(e))); }} onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showDocument(id, { group: group.id }); }
         if (e.key === 'Delete') void closeDocument(id, group.id);
         if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const index = group.tabs.indexOf(id); const next = group.tabs[(index + group.tabs.length + (e.key === 'ArrowRight' ? 1 : -1)) % group.tabs.length]; if (next) showDocument(next, { group: group.id }); }
       }}><FileIcon language={tab.language} /><span>{tab.name}</span>{tab.conflict && <Icon name="warning" />}<button className={`tab-close ${tab.dirty ? 'dirty' : ''}`} title={`Close ${tab.name}`} aria-label={`Close ${tab.name}`} onClick={e => { e.stopPropagation(); void closeDocument(id, group.id).catch(e => notify(errorMessage(e))); }}><Icon name={tab.dirty ? 'primitive-dot' : 'close'} /></button></div>;
-    })}</div><div className="actions"><IconButton icon="split-horizontal" label="Split Editor Right (Ctrl+\\)" onClick={splitGroup} />{useApp.getState().groups.length > 1 && <IconButton icon="close" label="Close Editor Group" onClick={() => {
+    })}</div><EditorTabsScrollbar viewport={tabs} tabIds={group.tabs} /><div className="actions"><IconButton icon="split-horizontal" label="Split Editor Right (Ctrl+\\)" onClick={splitGroup} />{useApp.getState().groups.length > 1 && <IconButton icon="close" label="Close Editor Group" onClick={() => {
       const s = useApp.getState(); const target = s.groups.find(g => g.id !== group.id)!;
       setApp({ groups: s.groups.filter(g => g.id !== group.id).map(g => g.id === target.id ? { ...g, tabs: [...new Set([...g.tabs, ...group.tabs])], active: g.active ?? group.active } : g), activeGroup: target.id }); scheduleBackup();
     }} />}</div></div>
-    {doc && <div className="breadcrumbs">{relative(doc.path ?? doc.name).split('/').map((segment, i, all) => <span key={i}><button onClick={() => doc.path && revealInTree(doc.path)}>{i === all.length - 1 && <FileIcon language={doc.language} />}{segment}</button>{i < all.length - 1 && <Icon name="chevron-right" />}</span>)}</div>}
+    {doc && <div className="breadcrumbs">{relative(doc.path ?? doc.name).split('/').map((segment, i, all) => {
+      const remaining = all.length - i - 1;
+      const path = doc.path ? pathTitle(doc.path).split('\\').slice(0, remaining ? -remaining : undefined).join('\\') : segment;
+      return <span key={i}><button title={path} onClick={() => doc.path && revealInTree(doc.path)}>{i === all.length - 1 && <FileIcon language={doc.language} />}{segment}</button>{i < all.length - 1 && <Icon name="chevron-right" />}</span>;
+    })}</div>}
     {doc?.conflict && <div className="conflict-banner"><Icon name="warning" /><span>{doc.deleted ? 'This file was deleted from disk. Your buffer is preserved.' : 'The file changed on disk. Your edits are preserved.'}</span><button onClick={() => void compareDisk(doc.id).catch(e => notify(errorMessage(e)))}>Compare</button><button onClick={() => void resolveConflict(doc.id, 'overwrite').catch(e => notify(errorMessage(e)))}>Overwrite</button><button onClick={() => void resolveConflict(doc.id, 'reload').catch(e => notify(errorMessage(e)))}>Reload</button></div>}
     {doc?.searchQuery && <SearchEditorBar id={doc.id} query={doc.searchQuery} />}
     <div className="monaco-host" ref={host} style={{ visibility: doc ? 'visible' : 'hidden' }} />
     {!doc && <div className="empty-editor"><div className="editor-watermark"><Icon name="code" /></div><dl><dt>Show All Commands</dt><dd>Ctrl+Shift+P</dd><dt>Go to File</dt><dd>Ctrl+P</dd><dt>Find in Files</dt><dd>Ctrl+Shift+F</dd><dt>Open Folder</dt><dd>Ctrl+K Ctrl+O</dd></dl></div>}
   </section>;
+}
+
+function EditorTabsScrollbar({ viewport, tabIds }: { viewport: RefObject<HTMLDivElement | null>; tabIds: string[] }) {
+  const track = useRef<HTMLDivElement>(null);
+  const thumb = useRef<HTMLDivElement>(null);
+  const dragOffset = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const element = viewport.current; const rail = track.current; const slider = thumb.current;
+    if (!element || !rail || !slider) return;
+    const update = () => {
+      const width = element.clientWidth; const scrollWidth = element.scrollWidth;
+      rail.hidden = width === 0 || scrollWidth <= width;
+      if (rail.hidden) return;
+      const thumbWidth = Math.min(width, Math.max(20, width * width / scrollWidth));
+      rail.style.width = `${width}px`;
+      slider.style.width = `${thumbWidth}px`;
+      slider.style.transform = `translateX(${element.scrollLeft / (scrollWidth - width) * (width - thumbWidth)}px)`;
+    };
+    update();
+    element.addEventListener('scroll', update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    for (const tab of element.children) observer.observe(tab);
+    return () => { element.removeEventListener('scroll', update); observer.disconnect(); };
+  }, [viewport, tabIds]);
+  function scrollToPointer(clientX: number, offset: number) {
+    const element = viewport.current; const rail = track.current; const slider = thumb.current;
+    if (!element || !rail || !slider) return;
+    const travel = rail.clientWidth - slider.getBoundingClientRect().width;
+    if (travel <= 0) return;
+    const position = Math.max(0, Math.min(travel, clientX - rail.getBoundingClientRect().left - offset));
+    element.scrollLeft = position / travel * (element.scrollWidth - element.clientWidth);
+  }
+  return <div ref={track} className="editor-tabs-scrollbar" aria-hidden="true" onPointerDown={event => {
+    if (event.button !== 0 || !thumb.current) return;
+    event.preventDefault(); event.stopPropagation();
+    const bounds = thumb.current.getBoundingClientRect();
+    dragOffset.current = event.target === thumb.current ? event.clientX - bounds.left : bounds.width / 2;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.dataset.dragging = 'true';
+    scrollToPointer(event.clientX, dragOffset.current);
+  }} onPointerMove={event => {
+    if (dragOffset.current !== null) scrollToPointer(event.clientX, dragOffset.current);
+  }} onLostPointerCapture={event => {
+    dragOffset.current = null; delete event.currentTarget.dataset.dragging;
+  }}><div ref={thumb} className="editor-tabs-scrollbar-thumb" /></div>;
 }
 
 function SearchEditorBar({ id, query }: { id: string; query: Query }) {

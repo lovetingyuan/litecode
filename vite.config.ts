@@ -3,11 +3,18 @@ import react from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import process from "node:process";
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import './tools/patch-trees-scroll.mjs';
 const host = process.env.TAURI_DEV_HOST;
+// Dependency patches must be applied before Vite optimizes and caches the tree.
+const treesPatchHash = createHash('sha256')
+  .update(readFileSync(new URL('./tools/patch-trees-scroll.mjs', import.meta.url)))
+  .digest('hex').slice(0, 12);
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
+  cacheDir: `node_modules/.vite/trees-${treesPatchHash}`,
   plugins: [
     { name: 'one-monaco-for-grammars', enforce: 'pre', resolveId(source, importer) {
       if (importer?.replace(/\\/g, '/').includes('/monaco-languages/') && source.endsWith('/editor/editor.api.js')) return this.resolve('@codingame/monaco-vscode-editor-api', undefined, { skipSelf: true });
