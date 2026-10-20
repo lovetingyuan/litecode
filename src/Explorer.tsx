@@ -593,7 +593,6 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
             label="Search (Ctrl+Shift+F)"
             onClick={() => setApp({ sidebar: 'search' })}
           />
-          <IconButton icon="ellipsis" label="Explorer actions" onClick={() => model.openSearch()} />
         </div>
       </div>
       {!root ? (

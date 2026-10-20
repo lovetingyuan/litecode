@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Menu } from '@base-ui/react/menu';
 import { useApp, setApp, notify } from './store';
 import { cancelSearch, createSearchEditor, openMatch, replaceMatches, runSearch } from './search';
 import { basename, relative, splitGroup } from './documents';
@@ -10,17 +9,18 @@ import { revealInTree } from './Explorer';
 import { FileIcon } from './EditorGroup';
 import { languageFor } from './monaco';
 import { searchPreview } from './searchPreview';
+import { buildSearchResults, searchResultRows, searchRowMatches, type ResultRow } from './searchResults';
 import type { Query, SearchMatch } from './types';
 
-type ResultRow = { kind: 'file'; path: string; count: number } | { kind: 'match'; match: SearchMatch; index: number };
 const resultHeight = 26;
 const resultBottomPadding = 48;
 export function SearchView() {
   const query = useApp(s => s.query); const results = useApp(s => s.results); const searching = useApp(s => s.searching);
+  const root = useApp(s => s.root);
   const errors = useApp(s => s.searchErrors); const limited = useApp(s => s.limited); const history = useApp(s => s.searchHistory);
   const [replace, setReplace] = useState(false); const [replacement, setReplacement] = useState(''); const [preserve, setPreserve] = useState(false);
-  const [details, setDetails] = useState(false); const [collapsed, setCollapsed] = useState(new Set<string>()); const [listMode, setListMode] = useState(false);
-  const [sort, setSort] = useState('path'); const [scroll, setScroll] = useState(0); const [height, setHeight] = useState(400); const [selected, setSelected] = useState(-1);
+  const [details, setDetails] = useState(false); const [collapsed, setCollapsed] = useState(new Set<string>()); const [listMode, setListMode] = useState(true);
+  const [scroll, setScroll] = useState(0); const [height, setHeight] = useState(400); const [selected, setSelected] = useState(-1);
   const [menu, setMenu] = useState<{ x: number; y: number; row: ResultRow } | null>(null);
   const viewport = useRef<HTMLDivElement>(null); const input = useRef<HTMLTextAreaElement>(null);
   const pendingSearch = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -33,23 +33,10 @@ export function SearchView() {
     return () => { window.removeEventListener('focus-search', focus); observer.disconnect(); };
   }, []);
   useEffect(() => { if (!menu) return; const close = () => setMenu(null); document.addEventListener('click', close); return () => document.removeEventListener('click', close); }, [menu]);
-  const files = useMemo(() => {
-    const files = new Map<string, SearchMatch[]>();
-    for (const match of results) {
-      const matches = files.get(match.path);
-      if (matches) matches.push(match); else files.set(match.path, [match]);
-    }
-    return [...files].sort((a, b) => sort === 'count' ? b[1].length - a[1].length : sort === 'name' ? basename(a[0]).localeCompare(basename(b[0])) : a[0].localeCompare(b[0]));
-  }, [results, sort]);
-  const rows: ResultRow[] = useMemo(() => {
-    const rows: ResultRow[] = [];
-    const indices = new Map(results.map((match, index) => [match, index]));
-    for (const [path, matches] of files) {
-      if (!listMode) rows.push({ kind: 'file', path, count: matches.length });
-      if (listMode || !collapsed.has(path)) for (const match of matches) rows.push({ kind: 'match', match, index: indices.get(match)! });
-    }
-    return rows;
-  }, [files, listMode, collapsed, results]);
+  const { files, tree, paths } = useMemo(() => buildSearchResults(results, root), [results, root]);
+  const nodes = listMode ? files : tree;
+  const allCollapsed = nodes.length > 0 && nodes.every(node => collapsed.has(node.path));
+  const rows = useMemo(() => searchResultRows(nodes, collapsed), [nodes, collapsed]);
   const contentHeight = rows.length ? rows.length * resultHeight + resultBottomPadding : 0;
   useLayoutEffect(() => {
     const top = Math.min(viewport.current?.scrollTop ?? 0, Math.max(0, contentHeight - height));
@@ -67,6 +54,7 @@ export function SearchView() {
     cancelSearch(); resetSelection(); setApp({ query: { ...query, ...patch }, requestId: null, results: [], searchErrors: [], limited: false });
   }
   function toggle(path: string) { setCollapsed(previous => { const next = new Set(previous); if (next.has(path)) next.delete(path); else next.add(path); return next; }); }
+  function removeRow(row: ResultRow) { const removed = new Set(searchRowMatches(row)); setApp({ results: results.filter(match => !removed.has(match)) }); }
   async function replaceRows(matches: SearchMatch[], preview = false) {
     if (!preview && matches.length > 1 && await ask('Replace search results?', `Replace ${matches.length} occurrence(s)? Closed files will be saved. Open editors keep unsaved changes. Use Undo Workspace Replacement to undo this operation.`, ['Replace', 'Cancel']) !== 'Replace') return;
     try { await replaceMatches(matches, replacement, preserve, query, preview); if (!preview) await runSearch(query); } catch (e) { notify(errorMessage(e)); }
@@ -78,17 +66,8 @@ export function SearchView() {
       <IconButton icon={searching ? 'search-stop' : 'refresh'} label={searching ? 'Cancel Search' : 'Refresh Search'} onClick={searching ? cancelSearch : search} />
       <IconButton icon="clear-all" label="Clear Search Results" onClick={clearResults} />
       <IconButton icon="new-file" label="Open New Search Editor" onClick={() => void createSearchEditor()} />
-      <Menu.Root><Menu.Trigger className="icon-button" title="Search View Options" aria-label="Search View Options"><Icon name={listMode ? 'list-flat' : 'list-tree'} /></Menu.Trigger>
-        <Menu.Portal><Menu.Positioner className="z-90" side="bottom" align="end" sideOffset={4}><Menu.Popup className="context-menu search-view-menu" aria-label="Search view options">
-          <Menu.RadioGroup value={sort} onValueChange={value => { setSort(value); resetSelection(); }} aria-label="Sort results">
-            {([['path', 'Sort by Path'], ['name', 'Sort by File Name'], ['count', 'Sort by Count']] as const).map(([value, label]) => <Menu.RadioItem key={value} value={value}><Icon name={sort === value ? 'check' : 'blank'} />{label}</Menu.RadioItem>)}
-          </Menu.RadioGroup>
-          <Menu.Separator className="search-menu-separator" />
-          <Menu.CheckboxItem checked={listMode} onCheckedChange={value => { setListMode(value); resetSelection(); }}><Icon name={listMode ? 'check' : 'blank'} />List View</Menu.CheckboxItem>
-          <Menu.CheckboxItem checked={query.followSymlinks} onCheckedChange={value => update({ followSymlinks: value })}><Icon name={query.followSymlinks ? 'check' : 'blank'} />Follow Symbolic Links</Menu.CheckboxItem>
-        </Menu.Popup></Menu.Positioner></Menu.Portal>
-      </Menu.Root>
-      <IconButton icon="collapse-all" label="Collapse All Results" onClick={() => { setCollapsed(new Set(files.map(([path]) => path))); resetSelection(); }} />
+      <IconButton icon={listMode ? 'list-flat' : 'list-tree'} label={listMode ? 'View as Tree' : 'View as List'} onClick={() => { setListMode(!listMode); resetSelection(); }} />
+      <IconButton icon={allCollapsed ? 'expand-all' : 'collapse-all'} label={allCollapsed ? 'Expand All Results' : 'Collapse All Results'} onClick={() => { setCollapsed(allCollapsed ? new Set<string>() : new Set(listMode ? files.map(file => file.path) : paths)); resetSelection(); }} />
     </div></div>
     <div className="search-form">
       <div className="search-inputs">
@@ -127,17 +106,21 @@ export function SearchView() {
         else if ((index + 1) * resultHeight > top + height) viewport.current?.scrollTo({ top: (index + 1) * resultHeight - height });
       }
       const row = rows[selected]; if (!row) return;
-      if (e.key === 'Enter') { e.preventDefault(); if (row.kind === 'file') toggle(row.path); else void openMatch(row.match).catch(e => notify(errorMessage(e))); }
-      if (e.key === 'Delete') setApp({ results: results.filter(m => row.kind === 'file' ? m.path !== row.path : m !== row.match) });
+      if (e.key === 'Enter') { e.preventDefault(); if (row.kind !== 'match') toggle(row.path); else void openMatch(row.match).catch(e => notify(errorMessage(e))); }
+      if (e.key === 'ArrowRight' && row.kind !== 'match') { e.preventDefault(); if (collapsed.has(row.path)) toggle(row.path); }
+      if (e.key === 'ArrowLeft' && row.kind !== 'match') { e.preventDefault(); if (!collapsed.has(row.path)) toggle(row.path); }
+      if (e.key === 'Delete') removeRow(row);
     }}>
-      <div style={{ height: contentHeight, position: 'relative' }}>{visible.map((row, offset) => <div role="treeitem" aria-level={row.kind === 'file' || listMode ? 1 : 2} aria-selected={selected === first + offset} aria-expanded={row.kind === 'file' ? !collapsed.has(row.path) : undefined} aria-label={row.kind === 'file' ? `${basename(row.path)}, ${row.count} matches` : `${basename(row.match.path)}:${row.match.line}:${row.match.column}: ${row.match.preview}`} key={row.kind === 'file' ? row.path : `${row.index}:${row.match.path}`} className={`result-row ${row.kind} ${selected === first + offset ? 'selected' : ''}`} style={{ top: (first + offset) * resultHeight }} onClick={() => { setSelected(first + offset); viewport.current?.focus(); if (row.kind === 'file') toggle(row.path); else void openMatch(row.match).catch(e => notify(errorMessage(e))); }} onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, row }); }}>
-        {row.kind === 'file' ? <><Icon name={collapsed.has(row.path) ? 'chevron-right' : 'chevron-down'} /><span className="result-file-icon"><FileIcon language={languageFor(row.path)} /></span><span className="result-filename" title={basename(row.path)}>{basename(row.path)}</span><span className="muted result-path" title={relative(row.path)}>{relative(row.path).split(/[\\/]/).slice(0, -1).join('\\')}</span><span className="count">{row.count}</span></> : <><span className="result-preview" title={`${relative(row.match.path)}:${row.match.line}:${row.match.column}\n${row.match.preview}`}>{listMode && <span className="muted">{basename(row.match.path)}: </span>}{highlight(row.match)}</span>{replace && <button className="inline-action" aria-label="Replace Match" title="Replace Match" onClick={e => { e.stopPropagation(); void replaceRows([row.match]); }}><Icon name="replace" /></button>}<button className="inline-action" aria-label="Remove Result" title="Remove Result" onClick={e => { e.stopPropagation(); setApp({ results: results.filter(m => m !== row.match) }); }}><Icon name="close" /></button></>}
+      <div style={{ height: contentHeight, position: 'relative' }}>{visible.map((row, offset) => <div role="treeitem" aria-level={row.depth + 1} aria-selected={selected === first + offset} aria-expanded={row.kind !== 'match' ? !collapsed.has(row.path) : undefined} aria-label={row.kind !== 'match' ? `${row.name}, ${row.count} matches` : `${basename(row.match.path)}:${row.match.line}:${row.match.column}: ${row.match.preview}`} key={row.kind !== 'match' ? row.path : `${row.index}:${row.match.path}`} className={`result-row ${row.kind} ${selected === first + offset ? 'selected' : ''}`} style={{ top: (first + offset) * resultHeight, paddingLeft: 18 + row.depth * 12 + (row.kind === 'match' ? 18 : 0) }} onClick={() => { setSelected(first + offset); viewport.current?.focus(); if (row.kind !== 'match') toggle(row.path); else void openMatch(row.match).catch(e => notify(errorMessage(e))); }} onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, row }); }}>
+        {!listMode && Array.from({ length: row.depth }, (_, level) => <span key={level} className="result-indent-guide" aria-hidden="true" style={{ left: 26 + level * 12 }} />)}
+        {row.kind !== 'match' ? <><Icon name={collapsed.has(row.path) ? 'chevron-right' : 'chevron-down'} />{row.kind === 'file' && <span className="result-file-icon"><FileIcon language={languageFor(row.path)} /></span>}<span className="result-filename" title={row.name}>{row.name}</span>{listMode && <span className="muted result-path" title={relative(row.path)}>{relative(row.path).split(/[\\/]/).slice(0, -1).join('\\')}</span>}<span className="count">{row.count}</span></> : <><span className="result-preview" title={`${relative(row.match.path)}:${row.match.line}:${row.match.column}\n${row.match.preview}`}>{highlight(row.match)}</span>{replace && <button className="inline-action" aria-label="Replace Match" title="Replace Match" onClick={e => { e.stopPropagation(); void replaceRows([row.match]); }}><Icon name="replace" /></button>}<button className="inline-action" aria-label="Remove Result" title="Remove Result" onClick={e => { e.stopPropagation(); removeRow(row); }}><Icon name="close" /></button></>}
       </div>)}</div>
     </div>
     {menu && <div className="context-menu floating-menu" role="menu" style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 280) }}>
       {(() => {
-        const row = menu.row; const matches = row.kind === 'file' ? results.filter(m => m.path === row.path) : [row.match]; const path = row.kind === 'file' ? row.path : row.match.path;
-        return <><button onClick={() => void openMatch(matches[0], true, splitGroup())}>Open to the Side</button><button onClick={() => void copy(matches.map(m => `${relative(m.path)}:${m.line}:${m.column}: ${m.preview}`).join('\n'))}>Copy Match</button><button onClick={() => void copy(path)}>Copy Path</button><button onClick={() => void copy(results.map(m => `${m.path}:${m.line}:${m.column}: ${m.preview}`).join('\n'))}>Copy All</button><button onClick={() => revealInTree(path)}>Reveal in Explorer</button><button onClick={() => update({ include: `${relative(path).split('/').slice(0, -1).join('/')}/**` })}>Restrict Search to Folder</button><button onClick={() => update({ exclude: [query.exclude, `**/*.${path.split('.').pop()}`].filter(Boolean).join(',') })}>Exclude File Type</button>{replace && <><button onClick={() => void replaceRows(matches, true)}>Preview Replacement</button><button onClick={() => void replaceRows(matches)}>Replace</button></>}<button onClick={() => setApp({ results: results.filter(m => !matches.includes(m)) })}>Remove Result</button></>;
+        const row = menu.row; const matches = searchRowMatches(row); const path = row.kind !== 'match' ? row.path : row.match.path;
+        const folder = row.kind === 'folder' ? relative(path) : relative(path).split('/').slice(0, -1).join('/');
+        return <><button onClick={() => void openMatch(matches[0], true, splitGroup())}>Open to the Side</button><button onClick={() => void copy(matches.map(m => `${relative(m.path)}:${m.line}:${m.column}: ${m.preview}`).join('\n'))}>Copy Match</button><button onClick={() => void copy(path)}>Copy Path</button><button onClick={() => void copy(results.map(m => `${m.path}:${m.line}:${m.column}: ${m.preview}`).join('\n'))}>Copy All</button><button onClick={() => revealInTree(path)}>Reveal in Explorer</button><button onClick={() => update({ include: `${folder}/**` })}>Restrict Search to Folder</button>{row.kind !== 'folder' && <button onClick={() => update({ exclude: [query.exclude, `**/*.${path.split('.').pop()}`].filter(Boolean).join(',') })}>Exclude File Type</button>}{replace && <><button onClick={() => void replaceRows(matches, true)}>Preview Replacement</button><button onClick={() => void replaceRows(matches)}>Replace</button></>}<button onClick={() => removeRow(row)}>Remove Result</button></>;
       })()}
     </div>}
   </section>;
