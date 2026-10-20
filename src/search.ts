@@ -1,6 +1,6 @@
 import { call, channel, errorMessage } from './bridge';
 import { useApp, setApp, notify } from './store';
-import { checkpoint, newDocument, openPath, models, showDocument, normalize, relative, patchDoc, basename, editor, patchMediaView } from './documents';
+import { checkpoint, newDocument, openPath, models, showDocument, normalize, relative, patchDoc, basename, editors, patchMediaView } from './documents';
 import { monaco } from './monaco';
 import type { SearchMatch, DiskDocument } from './types';
 import { isTextDocument } from './media';
@@ -33,10 +33,13 @@ export function cancelSearch() {
 }
 
 export async function openMatch(match: SearchMatch, side = false, group?: string) {
-  if (match.documentId && useApp.getState().docs[match.documentId]?.kind === 'svg') patchMediaView(group ?? useApp.getState().activeGroup, match.documentId, { mode: 'text' });
-  if (match.documentId && models.has(match.documentId)) showDocument(match.documentId, { pinned: side, group, line: match.line, column: match.column });
-  else await openPath(match.path, { pinned: side, group, line: match.line, column: match.column });
-  const e = editor();
+  const groupId = group ?? useApp.getState().activeGroup;
+  if (match.documentId && useApp.getState().docs[match.documentId]?.kind === 'svg') patchMediaView(groupId, match.documentId, { mode: 'text' });
+  if (match.documentId && models.has(match.documentId)) showDocument(match.documentId, { pinned: side, group: groupId, line: match.line, column: match.column });
+  else await openPath(match.path, { pinned: side, group: groupId, line: match.line, column: match.column });
+  // showDocument reveals the position next frame; apply the range after that reveal.
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+  const e = editors.get(groupId);
   e?.setSelection(new monaco.Range(match.line, match.column, match.endLine, match.endColumn));
 }
 
