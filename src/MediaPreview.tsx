@@ -59,7 +59,7 @@ function ImagePreview({ doc, group, source, onReady, onError }: { doc: Doc; grou
   const restoring = useRef(true);
   useEffect(() => {
     const element = host.current; if (!element) return;
-    const observer = new ResizeObserver(() => setViewport({ width: element.clientWidth, height: element.clientHeight }));
+    const observer = new ResizeObserver(([entry]) => setViewport({ width: entry.contentRect.width, height: entry.contentRect.height }));
     observer.observe(element);
     const wheel = (event: WheelEvent) => {
       if (!event.ctrlKey) return;
@@ -83,7 +83,7 @@ function ImagePreview({ doc, group, source, onReady, onError }: { doc: Doc; grou
     if (event.key === '-') { event.preventDefault(); zoom(-1); }
     if (event.key === '0') { event.preventDefault(); patchMediaView(group.id, doc.id, { scale: 1 }); }
   }}>
-    <div className="image-stage" style={natural ? { width: Math.max(viewport.width, natural.width * actual + 32), height: Math.max(viewport.height, natural.height * actual + 32) } : undefined}>
+    <div className="image-stage" style={natural ? { width: natural.width * actual + 32, height: natural.height * actual + 32 } : undefined}>
       <img src={source} alt={doc.name} draggable={false} className={actual >= 3 ? 'pixelated' : ''} style={natural ? { width: natural.width * actual, height: natural.height * actual } : { visibility: 'hidden' }}
         onClick={event => { host.current?.focus({ preventScroll: true }); zoom(event.ctrlKey ? -1 : 1); }} onLoad={event => {
           const img = event.currentTarget;

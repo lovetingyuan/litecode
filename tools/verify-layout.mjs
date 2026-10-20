@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 // Real Allotment, Monaco and previews; IPC is isolated, like verify-editor-tabs.
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await chromium.launch({ channel: 'msedge', headless: true, ignoreDefaultArgs: ['--hide-scrollbars'] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.setDefaultTimeout(15_000);
 const urls = {}, errors = [];
@@ -42,6 +42,36 @@ async function drag(separator, dx, dy = 0) {
 const sashes = () => page.locator('.editor-groups .sash');
 try {
   await mkdir('.verification/layout', { recursive: true });
+  await reset();
+  await group('one').getByRole('tab', { name: 'image.png', exact: true }).click();
+  await page.locator('.media-loading').waitFor({ state: 'hidden' });
+  const imageViewport = group('one').locator('.image-viewport');
+  async function imageOverflow() {
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    return imageViewport.evaluate(el => ({ horizontal: el.scrollWidth > el.clientWidth, vertical: el.scrollHeight > el.clientHeight }));
+  }
+  for (const zoom of [1, 1.25, 1.4, 1.75]) {
+    await page.evaluate(zoom => { document.documentElement.style.zoom = String(zoom); }, zoom);
+    assert.deepEqual(await imageOverflow(), { horizontal: false, vertical: false }, `Small image fits at UI zoom ${zoom}`);
+  }
+  await page.evaluate(() => { document.documentElement.style.zoom = '1.4'; });
+  await action('documents', 'patchMediaView', 'one', docs[2].id, { scale: 2 });
+  assert.deepEqual(await imageOverflow(), { horizontal: true, vertical: false }, 'Wide image only scrolls horizontally');
+  await action('documents', 'patchMediaView', 'one', docs[2].id, { scale: 10 });
+  assert.deepEqual(await imageOverflow(), { horizontal: true, vertical: true }, 'Large zoom keeps both scrollbars');
+  await imageViewport.evaluate(el => el.scrollTo(180, 120));
+  await group('one').getByRole('tab', { name: 'long.txt', exact: true }).click();
+  await group('one').getByRole('tab', { name: 'image.png', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.image-viewport')?.scrollTop === 120);
+  assert.equal(await imageViewport.evaluate(el => el.scrollLeft), 180);
+  await action('documents', 'patchMediaView', 'one', docs[2].id, { scale: 'fit' });
+  assert.deepEqual(await imageOverflow(), { horizontal: false, vertical: false }, 'Fit clears scrollbars after zooming out');
+  await page.setViewportSize({ width: 700, height: 500 });
+  assert.deepEqual(await imageOverflow(), { horizontal: false, vertical: false }, 'Large image fits a smaller fractional viewport');
+  await page.evaluate(() => { document.documentElement.style.zoom = ''; });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  console.log('PASS: image scrollbars reflect actual overflow at fractional UI scales, zoom, tab restore and resize');
+
   await reset();
   const right = await split('one', 'right'); const third = await split(right, 'right'); await count(3);
   let b = await boxes(); near(b[0].width, b[1].width); near(b[1].width, b[2].width);
