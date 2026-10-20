@@ -113,7 +113,7 @@ pub async fn paste_file_clipboard(
     .map_err(|error| AppError::new("copy", error.to_string()))?
 }
 
-fn check_source(path: &Path) -> Result<fs::Metadata> {
+pub(crate) fn check_source(path: &Path) -> Result<fs::Metadata> {
     let metadata = fs::symlink_metadata(path)?;
     // Canonical comparison also rejects paths through directory links. Avoid
     // rejecting all Windows reparse points: cloud-backed regular files use them too.
@@ -205,7 +205,7 @@ fn copy_file(source: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
-fn copy_item(source: &Path, target: &Path, directory: bool) -> Result<()> {
+pub(crate) fn copy_item(source: &Path, target: &Path, directory: bool) -> Result<()> {
     if !directory {
         return copy_file(source, target);
     }

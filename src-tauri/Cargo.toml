@@ -42,6 +42,8 @@ pcre2 = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4.1", features = ["std"] }
+webview2-com = "=0.39.1"
+windows = { version = "=0.62.2", features = ["Win32_System_Com"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

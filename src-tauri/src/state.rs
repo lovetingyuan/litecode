@@ -43,6 +43,7 @@ pub struct WindowState {
     pub documents: HashMap<String, Mirror>,
     pub watcher: Option<RecommendedWatcher>,
     pub session: serde_json::Value,
+    pub drops: HashMap<String, Vec<PathBuf>>,
 }
 
 pub struct SearchTask {

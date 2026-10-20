@@ -1,6 +1,7 @@
 mod commands;
 mod configuration;
 mod error;
+mod external_drop;
 mod file_clipboard;
 mod file_moves;
 mod files;
@@ -33,6 +34,9 @@ pub fn run() {
                 data_dir,
                 ..Default::default()
             });
+            if let Some(window) = app.get_webview_window("main") {
+                external_drop::install(&window)?;
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -71,6 +75,10 @@ pub fn run() {
             file_moves::move_files,
             file_clipboard::read_file_clipboard,
             file_clipboard::paste_file_clipboard,
+            external_drop::authorize_external_drop,
+            external_drop::plan_external_copy,
+            external_drop::copy_external_item,
+            external_drop::release_external_drop,
             commands::reveal_path,
             commands::settings_path,
             commands::explicit_open,

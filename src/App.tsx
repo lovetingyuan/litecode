@@ -19,6 +19,7 @@ import './App.css';
 import { initializeLanguages } from './languages';
 import { isTextView } from './media';
 import { MediaStatus } from './MediaStatus';
+import { useExternalDrop } from './useExternalDrop';
 
 let startup: Promise<void> | undefined;
 function start() {
@@ -42,6 +43,7 @@ function start() {
 
 export default function App() {
   const s = useApp(); const [fatal, setFatal] = useState<string | null>(null); const [maximized, setMaximized] = useState(false);
+  useExternalDrop(s.ready);
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
   useEffect(() => { void start().catch(e => setFatal(errorMessage(e))); return installKeys(); }, []);
   useEffect(() => {

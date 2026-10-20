@@ -27,6 +27,7 @@ import { refreshTree } from './workspaceTree'
 import { createExplorerSync } from './explorerSync'
 import { treeMovePlan, type FileMove, type MoveReport } from './explorerMove'
 import { createExplorerClipboard, isEditableTreeEvent, pasteDirectory, type FileClipboard, type CopyReport } from './explorerClipboard'
+import { copyDroppedItems, externalDropDirectory, registerExternalExplorer, type ExternalCopyPlan } from './externalDrop'
 
 export { refreshTree } from './workspaceTree'
 export function revealInTree(path: string) {
@@ -78,6 +79,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       svg[data-icon-name]{width:var(--trees-icon-width);height:var(--trees-icon-width)}
       [data-item-section="git"] [data-icon-name="file-tree-icon-dot"]{transform:none}
       [data-file-tree-root-drag-target="true"] > [data-file-tree-virtualized-scroll]{outline:1px solid #0078d4;outline-offset:-1px;background:#04395e44}
+      [data-external-drop="true"]{outline:1px solid var(--trees-focus-border,#0078d4);outline-offset:-1px;background:var(--trees-list-active-selection-background,#04395e)}
       /* Keep each level at 14px and its guide centered under the parent icon. */
       [data-item-section="spacing"]{padding-left:0;margin-right:calc(-1 * var(--trees-item-row-gap))}
       [data-item-section="spacing"] > [data-item-section="spacing-item"]{
@@ -161,6 +163,68 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     operationQueue.current = operation
     await operation
   }
+  useEffect(() => registerExternalExplorer({
+    resolve: targets => {
+      const container = targets.find(target => target instanceof HTMLElement && target.matches('.explorer')) as HTMLElement | undefined
+      if (!container || !rootRef.current) return null
+      const row = targets.find(target => target instanceof HTMLElement && target.hasAttribute('data-item-path')) as HTMLElement | undefined
+      const path = row?.dataset.itemPath
+      const item = path ? model.getItem(path) : null
+      const directory = externalDropDirectory(path, item?.isDirectory() ?? false)
+      const treeContainer = model.getFileTreeContainer()
+      const folderRow = directory ? treeContainer?.shadowRoot?.querySelector<HTMLElement>(`[data-item-path="${CSS.escape(directory)}"]`) : null
+      return {
+        element: folderRow ?? (directory && row ? row : container), directory,
+        hover: item?.isDirectory() ? () => { if ('expand' in item) item.expand() } : undefined,
+        scroll: treeContainer?.shadowRoot?.querySelector<HTMLElement>('[data-file-tree-virtualized-scroll]') ?? undefined,
+      }
+    },
+    copy: async (drop, directory, signal) => {
+      const base = rootRef.current
+      if (!base || signal.aborted) return
+      if (moveBusy.current) { notify('Another file operation is in progress. Please drag the items again.'); return }
+      moveBusy.current = true
+      let executed = false
+      const operation = operationQueue.current.then(async () => {
+        try {
+          if (signal.aborted || rootRef.current !== base) return
+          const args = { batchId: drop.batchId, expectedRoot: base, targetDirectory: directory ? join(base, directory) : base }
+          const report = await copyDroppedItems(drop.items, {
+            plan: index => call<ExternalCopyPlan>('plan_external_copy', { ...args, index }),
+            confirm: (_item, plan) => ask(`Replace '${basename(plan.destination)}'?`,
+              `An item with this name already exists in ${pathTitle(args.targetDirectory)}.\n${plan.directory ? 'The existing folder and all its contents will be replaced.' : 'Its existing contents will be replaced.'}`,
+              ['Replace', 'Skip', 'Cancel'], { signal }),
+            copy: async (index, plan) => {
+              executed = true
+              moveExecuting.current = true
+              return call('copy_external_item', { ...args, index, expectedTarget: plan.existing, replace: plan.existing !== null })
+            },
+          }, signal)
+          if (rootRef.current !== base || signal.aborted) return
+          if (report.copied.length) {
+            pendingMoveSelection.current = report.copied.map(item => relative(item.to, base))
+            revealPending.current = false
+            setExpanded(true)
+          }
+          if (report.failed.length) notify(`Copied ${report.copied.length} item(s).\n${report.failed.map(item => `${pathTitle(item.path)}: ${item.message}`).join('\n')}`)
+          if (report.copied.length === 1) {
+            const copied = report.copied[0]
+            if (drop.items.some(item => normalize(item.path) === normalize(copied.from) && !item.directory)) {
+              await openPath(copied.to, { pinned: true, preserveFocus: true })
+            }
+          }
+        } catch (error) {
+          if (!signal.aborted) notify(errorMessage(error))
+        } finally {
+          moveExecuting.current = false
+          try { if (executed && rootRef.current === base) await refreshTree() }
+          finally { moveBusy.current = false }
+        }
+      })
+      operationQueue.current = operation
+      await operation
+    },
+  }), [model])
   function rootContext(event: MouseEvent<HTMLElement>) {
     if (!rootRef.current || isEditableTreeEvent(event.nativeEvent)) return
     if (event.nativeEvent.composedPath().some(target => target instanceof HTMLElement && target.hasAttribute('data-item-path'))) return

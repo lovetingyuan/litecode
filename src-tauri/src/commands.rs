@@ -66,6 +66,7 @@ pub async fn bootstrap(window: WebviewWindow, state: State<'_, AppState>) -> Res
     {
         let mut windows = state.windows.lock().unwrap();
         let w = windows.entry(window.label().into()).or_default();
+        w.drops.clear();
         if w.session.is_null() {
             w.root = w.root.clone().or_else(|| {
                 value["root"]
@@ -194,7 +195,7 @@ pub async fn open_workspace(
             .entry(label.clone())
             .or_default()
             .root = Some(root);
-        tauri::WebviewWindowBuilder::new(
+        let created = tauri::WebviewWindowBuilder::new(
             window.app_handle(),
             &label,
             tauri::WebviewUrl::App("index.html".into()),
@@ -206,6 +207,8 @@ pub async fn open_workspace(
         .disable_drag_drop_handler()
         .build()
         .map_err(|e| AppError::new("window", e.to_string()))?;
+        crate::external_drop::install(&created)
+            .map_err(|e| AppError::new("window", e.to_string()))?;
         Ok(false)
     } else {
         state.checkpoint(window.label())?;
