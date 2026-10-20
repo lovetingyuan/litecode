@@ -12,15 +12,29 @@ import './MarkdownPreview.css';
 export function MarkdownPreview({ doc, group }: { doc: Doc; group: Group }) {
   const host = useRef<HTMLDivElement>(null);
   const savedScroll = useRef(group.mediaViews?.[doc.id]);
+  const restoring = useRef(true);
   // Document updates publish to the store; read Monaco as an external snapshot.
   const text = useSyncExternalStore(useApp.subscribe, () => models.get(doc.id)?.getValue() ?? '');
   useLayoutEffect(() => {
-    if (!host.current) return;
-    host.current.scrollTop = savedScroll.current?.scrollTop ?? 0;
-    host.current.scrollLeft = savedScroll.current?.scrollLeft ?? 0;
+    const element = host.current; if (!element) return;
+    // Nested panes receive their dimensions after their children mount.
+    const restore = () => {
+      if (!element.clientWidth || !element.clientHeight) return false;
+      element.scrollTop = savedScroll.current?.scrollTop ?? 0;
+      element.scrollLeft = savedScroll.current?.scrollLeft ?? 0;
+      restoring.current = false;
+      return true;
+    };
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => { if (restore()) observer.disconnect(); });
+    });
+    observer.observe(element);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, []);
   return <div ref={host} className="markdown-preview" tabIndex={0} aria-label={`Markdown preview: ${doc.name}`} onScroll={event => {
-    patchMediaView(group.id, doc.id, { scrollTop: event.currentTarget.scrollTop, scrollLeft: event.currentTarget.scrollLeft });
+    if (!restoring.current) patchMediaView(group.id, doc.id, { scrollTop: event.currentTarget.scrollTop, scrollLeft: event.currentTarget.scrollLeft });
   }}><MarkdownContent text={text} path={doc.path} groupId={group.id} /></div>;
 }
 

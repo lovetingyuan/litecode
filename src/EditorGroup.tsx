@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { useApp, setApp, notify } from './store';
 import { monaco } from './monaco';
-import { models, editors, closeDocument, showDocument, keepOpen, relative, addHistory, moveTab, splitGroup, scheduleBackup, resolveConflict, patchDoc, openPath, checkpoint, autoSave, pathTitle, setSticky, normalizeGroup, focusDocument } from './documents';
+import { models, editors, closeDocument, closeGroup, showDocument, keepOpen, relative, addHistory, moveTab, splitGroup, resolveConflict, patchDoc, openPath, checkpoint, autoSave, pathTitle, setSticky, focusDocument } from './documents';
+import { Menu } from '@base-ui/react/menu';
+import { splitDirections } from './commands';
 import { errorMessage, call, channel } from './bridge';
 import { Icon, IconButton } from './ui';
 import { revealInTree } from './Explorer';
@@ -17,6 +19,8 @@ import { MarkdownPreview } from './MarkdownPreview';
 export function EditorGroup({ group }: { group: Group }) {
   const docs = useApp(s => s.docs); const activeGroup = useApp(s => s.activeGroup); const settings = useApp(s => s.settings);
   const root = useApp(s => s.root); const treeRoot = useApp(s => s.treeRoot); const git = useApp(s => s.tree.git);
+  const multipleGroups = useApp(s => s.groups.length > 1);
+  const splitDown = settings['workbench.editor.openSideBySideDirection'] === 'down';
   const host = useRef<HTMLDivElement>(null); const instance = useRef<monaco.editor.IStandaloneCodeEditor | null>(null); const previous = useRef<string | null>(null);
   const doc = group.active ? docs[group.active] : undefined;
   const textView = !!doc && isTextView(doc, group);
@@ -116,10 +120,7 @@ export function EditorGroup({ group }: { group: Group }) {
         if (e.key === 'Delete' && !sticky) void closeDocument(id, group.id).catch(e => notify(errorMessage(e)));
         if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const index = group.tabs.indexOf(id); const next = group.tabs[(index + group.tabs.length + (e.key === 'ArrowRight' ? 1 : -1)) % group.tabs.length]; if (next) showDocument(next, { group: group.id }); }
       }}><FileIcon language={tab.language} /><span className={`editor-tab-label${isGitIgnored(tab.path, root, treeRoot, git) ? ' ignored' : ''}`}>{tab.name}</span>{tab.conflict && <Icon name="warning" />}<button className={`tab-close ${tab.dirty ? 'dirty' : ''} ${sticky ? 'tab-unpin' : ''}`} title={`${sticky ? 'Unpin' : 'Close'} ${tab.name}`} aria-label={`${sticky ? 'Unpin' : 'Close'} ${tab.name}`} onClick={e => { e.stopPropagation(); if (sticky) setSticky(id, group.id, false); else void closeDocument(id, group.id).catch(e => notify(errorMessage(e))); }}><Icon name={sticky ? 'pinned' : tab.dirty ? 'primitive-dot' : 'close'} /></button></div></EditorTabMenu>;
-    })}</div><EditorTabsScrollbar viewport={tabs} tabIds={group.tabs} /><div className="actions"><IconButton icon="split-horizontal" label="Split Editor Right (Ctrl+\\)" onClick={() => splitGroup(group.id)} />{useApp.getState().groups.length > 1 && <IconButton icon="close" label="Close Editor Group" onClick={() => {
-      const s = useApp.getState(); const target = s.groups.find(g => g.id !== group.id)!;
-      setApp({ groups: s.groups.filter(g => g.id !== group.id).map(g => g.id === target.id ? normalizeGroup({ ...g, views: { ...group.views, ...g.views }, mediaViews: { ...group.mediaViews, ...g.mediaViews }, sticky: [...(g.sticky ?? []), ...(group.sticky ?? [])], tabs: [...new Set([...g.tabs, ...group.tabs])], active: g.active ?? group.active }) : g), activeGroup: target.id }); scheduleBackup();
-    }} />}</div></div>
+    })}</div><EditorTabsScrollbar viewport={tabs} tabIds={group.tabs} /><div className="actions"><IconButton icon={splitDown ? 'split-vertical' : 'split-horizontal'} label={`Split Editor ${splitDown ? 'Down' : 'Right'} (Ctrl+\\)`} onClick={() => splitGroup(group.id)} /><Menu.Root><Menu.Trigger className="icon-button" title="Split Editor Direction" aria-label="Split Editor Direction"><Icon name="chevron-down" /></Menu.Trigger><Menu.Portal><Menu.Positioner className="z-90" side="bottom" align="end"><Menu.Popup className="context-menu editor-split-menu" finalFocus={false}>{splitDirections.map(({ id, label, direction }) => <Menu.Item key={id} onClick={() => splitGroup(group.id, undefined, direction)}>{label}</Menu.Item>)}</Menu.Popup></Menu.Positioner></Menu.Portal></Menu.Root>{multipleGroups && <IconButton icon="close" label="Close Editor Group" onClick={() => closeGroup(group.id)} />}</div></div>
     {doc && <div className="breadcrumbs"><div className="breadcrumbs-path">{relative(doc.path ?? doc.name).split('/').map((segment, i, all) => {
       const remaining = all.length - i - 1;
       const path = doc.path ? pathTitle(doc.path).split('\\').slice(0, remaining ? -remaining : undefined).join('\\') : segment;

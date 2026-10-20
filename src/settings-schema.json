@@ -2,6 +2,7 @@
   "type": "object",
   "additionalProperties": true,
   "properties": {
+    "workbench.editor.openSideBySideDirection": { "enum": ["right", "down"], "default": "right", "description": "分屏及在侧边打开编辑器的默认方向：right 向右，down 向下。显式指定方向的分屏命令不受此设置影响。" },
     "workbench.list.openMode": { "enum": ["singleClick", "doubleClick"], "default": "singleClick", "description": "文件树的鼠标打开方式：singleClick 单击预览并保留文件树焦点；doubleClick 单击仅选中。双击或按 Enter 打开并固定文件，将焦点移到编辑器。" },
     "editor.fontSize": { "type": "number", "minimum": 6, "maximum": 100, "default": 14, "description": "编辑器字号，单位为像素，范围 6–100。" },
     "editor.fontFamily": { "type": "string", "default": "Consolas, \"Courier New\", monospace", "description": "编辑器字体，按逗号分隔的顺序查找本机已安装的字体。" },

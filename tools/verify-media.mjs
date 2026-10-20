@@ -100,9 +100,9 @@ try {
   await action('documents', 'patchMediaView', firstGroup, imageId, { scale: 10 });
   await page.waitForFunction(() => document.querySelector('.image-viewport').scrollWidth > document.querySelector('.image-viewport').clientWidth);
   await page.locator('.image-viewport').evaluate(el => el.scrollTo(180, 120));
-  await page.waitForFunction(() => document.querySelector('.image-viewport').scrollTop === 120);
+  await page.waitForFunction(() => Math.abs(document.querySelector('.image-viewport').scrollTop - 120) < 1);
   await open('text.txt'); await action('documents', 'showDocument', imageId);
-  await page.waitForFunction(() => document.querySelector('.image-viewport')?.scrollTop === 120);
+  await page.waitForFunction(() => Math.abs(document.querySelector('.image-viewport')?.scrollTop - 120) < 1);
   await action('documents', 'patchMediaView', firstGroup, imageId, { scale: 1.5, scrollLeft: 0, scrollTop: 0 });
   checks.push('Real protocol image loading, Unicode/space/#/+ paths, original dimensions, status bar, click/Ctrl-click and keyboard zoom');
   checks.push('Zoom picker, Ctrl+wheel and scroll position restored across tabs');

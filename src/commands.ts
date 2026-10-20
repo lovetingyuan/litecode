@@ -1,6 +1,7 @@
 import { call, desktop, errorMessage } from './bridge';
 import { activeDoc, useApp, setApp, notify } from './store';
 import { checkpoint, closeDocument, closeTabs, editor, models, navigate, newDocument, openPath, save, saveAll, showDocument, splitGroup, scheduleBackup, join, normalize, relative, pathTitle, setSticky } from './documents';
+import type { SplitDirection } from './editorLayout';
 import { refreshTree, revealInTree } from './Explorer';
 import { createSearchEditor, undoReplacement, nextSearchResult } from './search';
 import { input } from './dialog';
@@ -10,6 +11,17 @@ import { completeSettings, parseConfiguration, updateSetting } from './settings'
 
 export type EditorContext = { groupId: string; documentId: string };
 export type Command = { id: string; label: string; key?: string; aliases?: string[]; menu?: string; run: (context?: EditorContext) => unknown };
+export const splitDirections = [
+  { direction: 'up', label: 'Split Up', id: 'workbench.action.splitEditorUp' },
+  { direction: 'down', label: 'Split Down', id: 'workbench.action.splitEditorDown' },
+  { direction: 'left', label: 'Split Left', id: 'workbench.action.splitEditorLeft' },
+  { direction: 'right', label: 'Split Right', id: 'workbench.action.splitEditorRight' },
+] as const;
+function splitEditor(context?: EditorContext, direction?: SplitDirection) {
+  const target = editorTarget(context);
+  if (target) return splitGroup(target.group.id, target.doc.id, direction);
+  if (!context) return splitGroup(undefined, undefined, direction);
+}
 export function editorTarget(context?: EditorContext) {
   const s = useApp.getState();
   const group = s.groups.find(g => g.id === (context?.groupId ?? s.activeGroup));
@@ -116,10 +128,8 @@ export const commands: Command[] = [
   { id: 'workbench.action.showCommands', label: 'Command Palette…', key: 'Ctrl+Shift+P', menu: 'View', run: () => quick('>') },
   { id: 'workbench.view.explorer', label: 'Explorer', key: 'Ctrl+Shift+E', menu: 'View', run: () => setApp({ sidebar: 'explorer' }) },
   { id: 'workbench.action.toggleSidebarVisibility', label: 'Toggle Primary Side Bar', key: 'Ctrl+B', menu: 'View', run: () => setApp({ sidebar: useApp.getState().sidebar ? null : 'explorer' }) },
-  { id: 'workbench.action.splitEditorRight', label: 'Split Editor Right', key: 'Ctrl+\\', menu: 'View', run: context => {
-    const target = editorTarget(context); if (target) return splitGroup(target.group.id, target.doc.id);
-    if (!context) return splitGroup();
-  } },
+  { id: 'workbench.action.splitEditor', label: 'Split Editor', key: 'Ctrl+\\', menu: 'View', run: context => splitEditor(context) },
+  ...splitDirections.map(({ direction, id }) => ({ id, label: `Split Editor ${direction[0].toUpperCase()}${direction.slice(1)}`, menu: 'View', run: (context?: EditorContext) => splitEditor(context, direction) })),
   { id: 'editor.action.toggleWordWrap', label: 'Toggle Word Wrap', key: 'Alt+Z', menu: 'View', run: () => setApp(s => ({ settings: { ...s.settings, 'editor.wordWrap': s.settings['editor.wordWrap'] === 'on' ? 'off' : 'on' } })) },
   { id: 'workbench.action.navigateBack', label: 'Back', key: 'Alt+Left', menu: 'Go', run: () => navigate(-1) },
   { id: 'workbench.action.navigateForward', label: 'Forward', key: 'Alt+Right', menu: 'Go', run: () => navigate(1) },

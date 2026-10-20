@@ -186,7 +186,7 @@ try {
       inactiveBackground: inactive.backgroundColor, inactiveForeground: inactive.color };
   });
   assert.deepEqual(colors, { toolbar: 'rgb(43, 43, 43)', activeBackground: 'rgb(31, 31, 31)',
-    activeForeground: 'rgb(204, 204, 204)', activeTopBorder: 'rgba(0, 0, 0, 0)',
+    activeForeground: 'rgb(204, 204, 204)', activeTopBorder: 'rgb(0, 120, 212)',
     inactiveBackground: 'rgb(43, 43, 43)', inactiveForeground: 'rgb(157, 157, 157)' });
   const inactive = page.locator('.editor-tab:not(.active)').filter({ hasText: files.at(-2) });
   await inactive.hover();
@@ -196,7 +196,7 @@ try {
   await page.screenshot({ path: `${output}/after.png` });
   await page.locator('.editor-tab.active').hover();
   assert.equal(await page.locator('.editor-tab.active').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(31, 31, 31)');
-  console.log('PASS: normal, active and hover colors match the reference; no blue top border');
+  console.log('PASS: normal, active and hover colors match the reference; active tabs have a blue top border');
 
   await open(files.at(-1));
   await page.keyboard.press('Control+Tab');

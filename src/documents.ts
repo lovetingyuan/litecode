@@ -6,6 +6,7 @@ import type { DiskDocument, Doc, Group, Mirror, Location, Session, FileInfo, Med
 import { isMarkdownDocument, isTextDocument, isTextView } from './media';
 import { ensureLanguage, releaseLanguageDocument, formatModel, canFormat } from './languages';
 import { parseConfiguration } from './settings';
+import { layoutGroups, restoreLayout, splitLayout, type SplitDirection } from './editorLayout';
 
 export const models = new Map<string, monaco.editor.ITextModel>();
 export const editors = new Map<string, monaco.editor.IStandaloneCodeEditor>();
@@ -66,13 +67,18 @@ export function focusDocument(groupId = useApp.getState().activeGroup) {
   }
 }
 
-export function session(): Session {
+function saveEditorViews() {
   const s = useApp.getState();
   for (const g of s.groups) {
     const e = editors.get(g.id);
     if (g.active && e && s.docs[g.active] && isTextView(s.docs[g.active], g)) g.views[g.active] = e.saveViewState();
   }
-  return { groups: s.groups, activeGroup: s.activeGroup, sidebar: s.sidebar ?? '', sidebarWidth: s.sidebarWidth, history: s.history, historyIndex: s.historyIndex, query: s.query, searchHistory: s.searchHistory };
+}
+
+export function session(): Session {
+  saveEditorViews();
+  const s = useApp.getState();
+  return { groups: s.groups, activeGroup: s.activeGroup, editorLayout: s.editorLayout, groupMru: s.groupMru, sidebar: s.sidebar ?? '', sidebarWidth: s.sidebarWidth, history: s.history, historyIndex: s.historyIndex, query: s.query, searchHistory: s.searchHistory };
 }
 
 export async function checkpoint() {
@@ -300,6 +306,7 @@ export async function closeDocument(id: string, groupId = useApp.getState().acti
     if (!answer || answer === 'Cancel') return false;
     if (answer === 'Save') { await save(id); if (useApp.getState().docs[id]?.dirty || !useApp.getState().docs[id]?.path) return false; }
   }
+  saveEditorViews();
   setApp(s => {
     let groups = s.groups.map(g => {
       if (g.id !== groupId) return g;
@@ -310,12 +317,12 @@ export async function closeDocument(id: string, groupId = useApp.getState().acti
     const index = groups.findIndex(g => g.id === groupId);
     if (groups.length > 1 && index >= 0 && !groups[index].tabs.length) {
       groups = groups.filter(g => g.id !== groupId);
-      if (activeGroup === groupId) activeGroup = groups[Math.max(0, index - 1)].id;
+      if (activeGroup === groupId) activeGroup = s.groupMru.find(id => id !== groupId && groups.some(g => g.id === id)) ?? groups[0].id;
     }
     return { groups, activeGroup };
   });
   if (!useApp.getState().groups.some(g => g.tabs.includes(id))) disposeDocument(id);
-  if (s.activeGroup === groupId) requestAnimationFrame(() => focusDocument());
+  if (s.activeGroup === groupId || !useApp.getState().groups.some(g => g.id === groupId)) requestAnimationFrame(() => focusDocument());
   scheduleBackup();
   return true;
 }
@@ -354,23 +361,29 @@ function detachModel(id: string) {
   m?.dispose(); models.delete(id); savedVersions.delete(id); savedEncodings.delete(id);
 }
 
-export function splitGroup(groupId = useApp.getState().activeGroup, documentId?: string) {
-  const s = useApp.getState(); const source = s.groups.find(g => g.id === groupId)!;
+export function splitGroup(groupId = useApp.getState().activeGroup, documentId?: string, direction?: SplitDirection) {
+  saveEditorViews();
+  const s = useApp.getState(); const source = s.groups.find(g => g.id === groupId);
+  if (!source) return s.activeGroup;
+  direction ??= s.settings['workbench.editor.openSideBySideDirection'] === 'down' ? 'down' : 'right';
   const id = documentId ?? source.active;
-  if (source.active && editors.has(source.id) && isTextView(s.docs[source.active], source)) source.views[source.active] = editors.get(source.id)!.saveViewState();
+  if (id && !source.tabs.includes(id)) return source.id;
   const group: Group = { id: crypto.randomUUID(), tabs: id ? [id] : [], active: id, preview: null, sticky: [], views: id && source.views[id] ? { [id]: source.views[id] } : {}, mediaViews: id && source.mediaViews?.[id] ? { [id]: { ...source.mediaViews[id] } } : {} };
-  const groups = [...s.groups]; groups.splice(groups.indexOf(source) + 1, 0, group);
-  setApp({ groups, activeGroup: group.id }); scheduleBackup();
+  const editorLayout = splitLayout(restoreLayout(s.editorLayout, s.groups.map(g => g.id)), source.id, group.id, direction);
+  const all = [...s.groups, group];
+  const groups = layoutGroups(editorLayout).map(id => all.find(g => g.id === id)!);
+  setApp({ groups, editorLayout, activeGroup: group.id }); scheduleBackup();
   requestAnimationFrame(() => focusDocument(group.id));
   return group.id;
 }
 
 export function moveTab(id: string, from: string, to: string, before?: string) {
+  saveEditorViews();
   setApp(s => {
     const source = s.groups.find(g => g.id === from);
     if (!source?.tabs.includes(id) || !s.groups.some(g => g.id === to)) return {};
     const sticky = source.sticky?.includes(id) ?? false;
-    return { groups: s.groups.map(g => {
+    const groups = s.groups.map(g => {
       if (g.id !== from && g.id !== to) return g;
       const tabs = g.tabs.filter(t => t !== id);
       const pinned = (g.sticky ?? []).filter(t => t !== id);
@@ -381,8 +394,27 @@ export function moveTab(id: string, from: string, to: string, before?: string) {
         if (sticky) pinned.splice(target, 0, id);
       }
       return normalizeGroup({ ...g, tabs, sticky: pinned, ...(g.id === to ? { views: { ...g.views, [id]: source.views[id] }, mediaViews: { ...g.mediaViews, [id]: { ...source.mediaViews?.[id] } } } : {}), active: g.id === to ? id : g.active === id ? tabs[0] ?? null : g.active, preview: g.preview === id ? null : g.preview });
-    }), activeGroup: to };
+    });
+    return { groups: groups.filter(g => g.id !== from || from === to || g.tabs.length || groups.length === 1), activeGroup: to };
   }); scheduleBackup();
+  requestAnimationFrame(() => focusDocument(to));
+}
+
+export function closeGroup(groupId: string) {
+  saveEditorViews();
+  const s = useApp.getState();
+  const source = s.groups.find(g => g.id === groupId);
+  const targetId = s.groupMru.find(id => id !== groupId && s.groups.some(g => g.id === id));
+  const target = s.groups.find(g => g.id === targetId);
+  if (!source || !target) return;
+  const active = s.activeGroup === groupId ? target.id : s.activeGroup;
+  setApp({ groups: s.groups.filter(g => g.id !== groupId).map(g => g.id !== target.id ? g : normalizeGroup({ ...g,
+    views: { ...source.views, ...g.views }, mediaViews: { ...source.mediaViews, ...g.mediaViews },
+    sticky: [...(g.sticky ?? []), ...(source.sticky ?? [])], tabs: [...new Set([...g.tabs, ...source.tabs])],
+    active: s.activeGroup === groupId ? source.active ?? g.active : g.active ?? source.active,
+  })), activeGroup: active });
+  scheduleBackup();
+  requestAnimationFrame(() => focusDocument(active));
 }
 
 export function addHistory(location: Location) {

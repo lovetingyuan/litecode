@@ -65,7 +65,7 @@ try {
   await mkdir('.verification/editor-tabs', { recursive: true });
   await reset();
   await context('a.txt');
-  assert.deepEqual(await menu.getByRole('menuitem').locator('span').allTextContents(), ['Close', 'Close Others', 'Close to the Right', 'Close Saved', 'Close All', 'Copy Path', 'Copy Relative Path', 'Reveal in File Explorer', 'Reveal in Explorer View', 'Pin', 'Split Right']);
+  assert.deepEqual(await menu.getByRole('menuitem').locator('span').allTextContents(), ['Close', 'Close Others', 'Close to the Right', 'Close Saved', 'Close All', 'Copy Path', 'Copy Relative Path', 'Reveal in File Explorer', 'Reveal in Explorer View', 'Pin', 'Split Up', 'Split Down', 'Split Left', 'Split Right']);
   assert.equal(await menu.getByRole('separator').count(), 4);
   assert.equal((await state()).groups[0].active, docs[1].id, 'Right clicking an inactive tab does not switch documents');
   assert.equal(await item('Close').locator('kbd').textContent(), 'Ctrl+F4');

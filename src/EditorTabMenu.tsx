@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactElement } from 'react';
 import { ContextMenu } from '@base-ui/react/context-menu';
-import { canRevealInExplorer, commandShortcut, execute, keyContext } from './commands';
+import { canRevealInExplorer, commandShortcut, execute, keyContext, splitDirections } from './commands';
 import { tabsToClose } from './documents';
 import { useApp } from './store';
 import type { CloseTabsMode } from './documents';
@@ -27,7 +27,7 @@ export function EditorTabMenu({ group, documentId, children }: { group: Group; d
     [{ id: 'copyFilePath', label: 'Copy Path', disabled: !doc?.path }, { id: 'copyRelativeFilePath', label: 'Copy Relative Path', disabled: !doc?.path }],
     [{ id: 'revealFileInOS', label: 'Reveal in File Explorer', disabled: !doc?.path }, { id: 'workbench.files.action.showActiveFileInExplorer', label: 'Reveal in Explorer View', disabled: !canRevealInExplorer(doc?.path ?? null) }],
     [{ id: sticky ? 'workbench.action.unpinEditor' : 'workbench.action.pinEditor', label: sticky ? 'Unpin' : 'Pin', disabled: false }],
-    [{ id: 'workbench.action.splitEditorRight', label: 'Split Right', disabled: false }],
+    splitDirections.map(({ id, label }) => ({ id, label, disabled: false })),
   ] : [];
   return <ContextMenu.Root open={open && !!doc} onOpenChange={next => { if (next) restoreTrigger.current = true; setOpen(next); }}>
     <ContextMenu.Trigger ref={setTrigger} render={children} onKeyDown={event => {
@@ -42,7 +42,7 @@ export function EditorTabMenu({ group, documentId, children }: { group: Group; d
           {groups.map((items, index) => <ContextMenu.Group key={index}>
             {index > 0 && <ContextMenu.Separator className="editor-tab-menu-separator" />}
             {items.map(item => <ContextMenu.Item key={item.id} aria-label={item.label} disabled={item.disabled} onClick={() => {
-              restoreTrigger.current = !['workbench.files.action.showActiveFileInExplorer', 'workbench.action.splitEditorRight'].includes(item.id);
+              restoreTrigger.current = item.id !== 'workbench.files.action.showActiveFileInExplorer' && !item.id.startsWith('workbench.action.splitEditor');
               void execute(item.id, context);
             }}>
               <span>{item.label}</span><kbd>{trigger && commandShortcut(item.id, keyContext(trigger, context), keybindings)}</kbd>

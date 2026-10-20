@@ -18,7 +18,7 @@ vi.mock('./languages', () => ({ ensureLanguage: vi.fn(), releaseLanguageDocument
 import { call } from './bridge';
 import { monaco, languageFor } from './monaco';
 import { canFormat, formatModel } from './languages';
-import { attachDocument, autoSave, editors, models, normalize, openPath, patchDoc, restoreDocument, save, session, showDocument, visiblePath, closeDocument, closeTabs, tabsToClose, keepOpen, normalizeGroup, setSticky, moveTab, splitGroup, checkpoint, patchMediaView, refreshDocuments, renameDocuments } from './documents';
+import { attachDocument, autoSave, editors, models, normalize, openPath, patchDoc, restoreDocument, save, session, showDocument, visiblePath, closeDocument, closeGroup, closeTabs, tabsToClose, keepOpen, normalizeGroup, setSticky, moveTab, splitGroup, checkpoint, patchMediaView, refreshDocuments, renameDocuments } from './documents';
 import { ask } from './dialog';
 import { setApp, useApp } from './store';
 
@@ -155,6 +155,51 @@ describe('Editor tab actions', () => {
     expect(state.groups[1]).toMatchObject({ active: ids[3], tabs: [ids[3]], views: { [ids[3]]: view } });
     expect(state.activeGroup).toBe(id);
     expect(state.groups[0].tabs).toEqual(ids);
+  });
+
+  it('uses the side-by-side setting while explicit directions take precedence', () => {
+    setup(); setApp({ settings: { 'workbench.editor.openSideBySideDirection': 'down' } });
+    const below = splitGroup('one');
+    const layout = useApp.getState().editorLayout;
+    expect(JSON.stringify(layout)).toContain('vertical');
+    const left = splitGroup(below, undefined, 'left');
+    expect(useApp.getState().groups.map(g => g.id)).toEqual(['one', left, below, 'two']);
+    expect(useApp.getState().activeGroup).toBe(left);
+    expect(useApp.getState().groups.find(g => g.id === below)?.active).toBe(useApp.getState().groups.find(g => g.id === left)?.active);
+  });
+
+  it('returns to the most recently active group and preserves focus when closing an inactive group', async () => {
+    const ids = setup(); const third = splitGroup('one');
+    setApp({ activeGroup: 'one' }); setApp({ activeGroup: 'two' }); setApp({ activeGroup: third });
+    await closeDocument(ids[1], third);
+    expect(useApp.getState().activeGroup).toBe('two');
+    expect(useApp.getState().groupMru).toEqual(['two', 'one']);
+    await closeTabs(ids[1], 'one', 'all');
+    expect(useApp.getState().activeGroup).toBe('two');
+  });
+
+  it('merges a removed group into the recently active group without losing dirty or fixed tabs', () => {
+    const ids = setup(); const third = splitGroup('one', ids[2]);
+    patchDoc(ids[2], { dirty: true }); setSticky(ids[2], third, true);
+    setApp({ activeGroup: 'two' }); setApp({ activeGroup: third });
+    closeGroup(third);
+    const state = useApp.getState();
+    expect(state.activeGroup).toBe('two');
+    expect(state.groups.find(g => g.id === 'two')).toMatchObject({ active: ids[2], sticky: [ids[2]] });
+    expect(state.docs[ids[2]].dirty).toBe(true);
+    expect(ask).not.toHaveBeenCalled();
+    expect(JSON.stringify(state.editorLayout)).not.toContain(third);
+  });
+
+  it('removes the source group when its last tab is moved and saves layout and MRU in the session', () => {
+    const ids = setup(); const third = splitGroup('one', ids[3]);
+    moveTab(ids[3], third, 'two');
+    expect(useApp.getState().groups.map(g => g.id)).toEqual(['one', 'two']);
+    expect(useApp.getState().activeGroup).toBe('two');
+    const saved = session();
+    expect(saved.groupMru).toEqual(['two', 'one']);
+    expect(saved.editorLayout).toEqual(useApp.getState().editorLayout);
+    expect(saved.groups.find(g => g.id === 'two')?.tabs).toContain(ids[3]);
   });
 });
 afterEach(() => {
