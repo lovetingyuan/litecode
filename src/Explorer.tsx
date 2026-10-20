@@ -28,6 +28,7 @@ import { createExplorerSync } from './explorerSync'
 import { treeMovePlan, type FileMove, type MoveReport } from './explorerMove'
 import { createExplorerClipboard, isEditableTreeEvent, pasteDirectory, type FileClipboard, type CopyReport } from './explorerClipboard'
 import { copyDroppedItems, externalDropDirectory, registerExternalExplorer, type ExternalCopyPlan } from './externalDrop'
+import { explorerDragType } from './explorerDrag'
 
 export { refreshTree } from './workspaceTree'
 export function revealInTree(path: string) {
@@ -656,6 +657,11 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
               model={model}
               className="file-tree"
               style={treeStyle}
+              onDragStart={e => {
+                if (e.defaultPrevented || !rootRef.current || !draggedPaths.current.length) return
+                e.dataTransfer.setData(explorerDragType, JSON.stringify({ root: rootRef.current, paths: draggedPaths.current }))
+                e.dataTransfer.effectAllowed = 'copyMove'
+              }}
               onDragEnd={() => { draggedPaths.current = []; setRootDropTarget(false) }}
               onPointerMove={e => {
                 // Tree rows are virtualized inside a shadow root; resolve the current row on hover.

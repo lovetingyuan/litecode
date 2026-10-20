@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { useApp, setApp, notify } from './store';
 import { monaco } from './monaco';
-import { models, editors, closeDocument, closeGroup, showDocument, keepOpen, relative, addHistory, moveTab, splitGroup, resolveConflict, patchDoc, openPath, checkpoint, autoSave, pathTitle, setSticky, focusDocument } from './documents';
+import { models, editors, closeDocument, closeGroup, showDocument, keepOpen, relative, addHistory, moveTab, splitGroup, resolveConflict, patchDoc, openPath, checkpoint, autoSave, pathTitle, setSticky, focusDocument, join } from './documents';
 import { Menu } from '@base-ui/react/menu';
 import { splitDirections } from './commands';
 import { errorMessage, call, channel } from './bridge';
@@ -15,6 +15,7 @@ import { isMarkdownDocument, isMarkdownView, isTextView } from './media';
 import { MediaPreview } from './MediaPreview';
 import { EditorViewMenu } from './MediaStatus';
 import { MarkdownPreview } from './MarkdownPreview';
+import { explorerDragFiles, explorerDragType } from './explorerDrag';
 
 export function EditorGroup({ group }: { group: Group }) {
   const docs = useApp(s => s.docs); const activeGroup = useApp(s => s.activeGroup); const settings = useApp(s => s.settings);
@@ -108,7 +109,25 @@ export function EditorGroup({ group }: { group: Group }) {
   useEffect(() => {
     instance.current?.updateOptions({ fontSize: Number(settings['editor.fontSize'] ?? 14), fontFamily: String(settings['editor.fontFamily'] ?? 'Consolas, "Courier New", monospace'), lineHeight: Number(settings['editor.lineHeight'] ?? 20), tabSize: Number(settings['editor.tabSize'] ?? 4), wordWrap: settings['editor.wordWrap'] === 'on' ? 'on' : 'off', minimap: { enabled: !doc?.large && settings['editor.minimap.enabled'] !== false }, folding: !doc?.large, readOnly: false });
   }, [settings, doc?.large]);
-  return <section data-group-id={group.id} className={`editor-group ${activeGroup === group.id ? 'focused' : ''}`} aria-label="Editor group" onPointerDown={() => { if (activeGroup !== group.id) setApp({ activeGroup: group.id }); }} onFocus={e => { if (e.currentTarget.contains(e.target) && activeGroup !== group.id) setApp({ activeGroup: group.id }); }} onDragOver={e => e.preventDefault()} onDrop={e => {
+  async function openTreeDrop(raw: string) {
+    const { root, tree, treeRoot } = useApp.getState();
+    if (!root || treeRoot !== root) return;
+    for (const path of explorerDragFiles(raw, root, tree.paths)) {
+      const state = useApp.getState();
+      if (state.root !== root || !state.groups.some(g => g.id === group.id)) return;
+      try { await openPath(join(root, path), { pinned: true, group: group.id }); }
+      catch (error) { notify(errorMessage(error)); }
+    }
+  }
+  return <section data-group-id={group.id} className={`editor-group ${activeGroup === group.id ? 'focused' : ''}`} aria-label="Editor group" onPointerDown={() => { if (activeGroup !== group.id) setApp({ activeGroup: group.id }); }} onFocus={e => { if (e.currentTarget.contains(e.target) && activeGroup !== group.id) setApp({ activeGroup: group.id }); }} onDragOverCapture={e => {
+    if (!e.dataTransfer.types.includes(explorerDragType)) return;
+    e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy';
+  }} onDropCapture={e => {
+    if (!e.dataTransfer.types.includes(explorerDragType)) return;
+    // Capture before Monaco inserts text or a tab consumes the drop.
+    e.preventDefault(); e.stopPropagation();
+    void openTreeDrop(e.dataTransfer.getData(explorerDragType));
+  }} onDragOver={e => e.preventDefault()} onDrop={e => {
     e.preventDefault(); const raw = e.dataTransfer.getData('application/litecode-tab'); if (!raw) return;
     const { id, from } = JSON.parse(raw); moveTab(id, from, group.id);
   }}>
