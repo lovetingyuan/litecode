@@ -15,6 +15,23 @@ const saveQueues = new Map<string, Promise<void>>();
 let backupTimer: ReturnType<typeof setTimeout>;
 let autoTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let checkpointQueue = Promise.resolve();
+let saveSequence = 0;
+let documentMove: { paths: string[]; done: Promise<void>; drainThrough: number } | null = null;
+
+export async function beginDocumentMove(paths: string[]) {
+  if (documentMove) await documentMove.done;
+  let release!: () => void;
+  const done = new Promise<void>(resolve => { release = resolve; });
+  const draining = [...saveQueues.values()];
+  documentMove = { paths, done, drainThrough: saveSequence };
+  // Finish saves already in flight; subsequent saves read the rebound path.
+  await Promise.allSettled(draining);
+  return () => { documentMove = null; release(); };
+}
+
+function isMoving(path: string) {
+  return documentMove?.paths.some(source => normalize(path) === normalize(source) || normalize(path).startsWith(normalize(source) + '/')) ?? false;
+}
 export const basename = (path: string) => path.replace(/\\/g, '/').split('/').pop() || path;
 export const normalize = (path: string) => visiblePath(path).replace(/\\/g, '/').toLowerCase();
 export const join = (root: string, path: string) => `${root.replace(/[\\/]$/, '')}/${path.replace(/\/$/, '')}`;
@@ -185,8 +202,10 @@ export async function save(id = activeDoc()?.id, saveAs = false) { await saveDoc
 
 async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMode?: AutoSaveMode) {
   if (!id) return;
+  const ticket = ++saveSequence;
   const previous = saveQueues.get(id) ?? Promise.resolve();
   const current = previous.catch(() => {}).then(async () => {
+    if (documentMove && ticket > documentMove.drainThrough) await documentMove.done;
     let doc = useApp.getState().docs[id];
     let m = models.get(id);
     if (!doc || !m) return;
@@ -348,16 +367,16 @@ export async function navigate(direction: number) {
 
 export async function refreshDocuments() {
   for (const doc of Object.values(useApp.getState().docs)) {
-    if (!doc.path) continue;
+    if (!doc.path || isMoving(doc.path)) continue;
     try {
       const disk = await call<DiskDocument>('read_document', { path: doc.path, force: true, encoding: doc.encoding });
       const latest = useApp.getState().docs[doc.id];
-      if (!latest || disk.revision === latest.revision) continue;
+      if (!latest || latest.path !== doc.path || isMoving(doc.path) || disk.revision === latest.revision) continue;
       if (latest.dirty) { patchDoc(doc.id, { conflict: true }); continue; }
       const m = models.get(doc.id); if (!m) continue;
       m.setValue(disk.text); savedVersions.set(doc.id, m.getAlternativeVersionId());
       patchDoc(doc.id, { revision: disk.revision, dirty: false, conflict: false, deleted: false });
-    } catch (e) { if ((e as { code?: string }).code === 'io') patchDoc(doc.id, { deleted: true, conflict: true }); }
+    } catch (e) { if ((e as { code?: string }).code === 'io' && useApp.getState().docs[doc.id]?.path === doc.path && !isMoving(doc.path)) patchDoc(doc.id, { deleted: true, conflict: true }); }
   }
 }
 
@@ -374,9 +393,15 @@ export async function resolveConflict(id: string, action: 'reload' | 'overwrite'
 }
 
 export async function renameDocumentPaths(from: string, to: string) {
+  await renameDocuments([{ from, to }]);
+}
+
+export async function renameDocuments(moves: { from: string; to: string }[]) {
   for (const doc of Object.values(useApp.getState().docs)) {
-    if (!doc.path || !(normalize(doc.path) === normalize(from) || normalize(doc.path).startsWith(normalize(from) + '/'))) continue;
-    const path = to + doc.path.slice(from.length);
+    if (!doc.path) continue;
+    const move = moves.find(({ from }) => normalize(doc.path!) === normalize(from) || normalize(doc.path!).startsWith(normalize(from) + '/'));
+    if (!move) continue;
+    const path = move.to + doc.path.slice(move.from.length);
     rebindDocument(doc.id, path);
   }
   await checkpoint();

@@ -203,6 +203,7 @@ pub async fn open_workspace(
         .inner_size(1280.0, 820.0)
         .min_inner_size(700.0, 420.0)
         .decorations(false)
+        .disable_drag_drop_handler()
         .build()
         .map_err(|e| AppError::new("window", e.to_string()))?;
         Ok(false)

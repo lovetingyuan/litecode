@@ -2,6 +2,7 @@ mod commands;
 mod configuration;
 mod error;
 mod files;
+mod file_moves;
 mod lsp;
 mod replacement;
 mod search;
@@ -63,6 +64,8 @@ pub fn run() {
             commands::save_document,
             commands::sync_documents,
             commands::file_operation,
+            file_moves::plan_file_moves,
+            file_moves::move_files,
             commands::reveal_path,
             commands::settings_path,
             commands::explicit_open,

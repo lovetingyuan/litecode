@@ -5,6 +5,7 @@ import {
   themeToTreeStyles,
   type ContextMenuItem as FileTreeContextMenuItem,
   type ContextMenuOpenContext as FileTreeContextMenuOpenContext,
+  type FileTreeDropContext,
 } from '@pierre/trees'
 import { Menu } from '@base-ui/react/menu'
 import PrepareWorker from './tree.worker?worker'
@@ -16,6 +17,8 @@ import {
   openPath,
   relative,
   renameDocumentPaths,
+  renameDocuments,
+  beginDocumentMove,
   normalize,
   pathTitle,
   visiblePath,
@@ -24,6 +27,7 @@ import { ask, input } from './dialog'
 import { Icon, IconButton } from './ui'
 import type { TreeSnapshot } from './types'
 import { createExplorerSync } from './explorerSync'
+import { treeMovePlan, type FileMove, type MoveReport } from './explorerMove'
 
 let clipboard: { paths: string[]; cut: boolean } | null = null
 const scans = new Map<string, Promise<void>>()
@@ -74,6 +78,12 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   const [expanded, setExpanded] = useState(true)
   const wasExpanded = useRef(expanded)
   const revealPending = useRef(true)
+  const moveBusy = useRef(false)
+  const moveExecuting = useRef(false)
+  const moveAbort = useRef<AbortController | null>(null)
+  const draggedPaths = useRef<readonly string[]>([])
+  const pendingMoveSelection = useRef<string[] | null>(null)
+  const [rootDropTarget, setRootDropTarget] = useState(false)
   const { model } = useFileTree({
     preparedInput: preparePresortedFileTreeInput([]),
     flattenEmptyDirectories: false,
@@ -85,6 +95,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     unsafeCSS: `
       svg[data-icon-name]{width:var(--trees-icon-width);height:var(--trees-icon-width)}
       [data-item-section="git"] [data-icon-name="file-tree-icon-dot"]{transform:none}
+      [data-file-tree-root-drag-target="true"] > [data-file-tree-virtualized-scroll]{outline:1px solid #0078d4;outline-offset:-1px;background:#04395e44}
       /* Keep each level at 14px and its guide centered under the parent icon. */
       [data-item-section="spacing"]{padding-left:0;margin-right:calc(-1 * var(--trees-item-row-gap))}
       [data-item-section="spacing"] > [data-item-section="spacing-item"]{
@@ -94,15 +105,13 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     `,
     renaming: { onRename: e => mutate(e.sourcePath, e.destinationPath), onError: notify },
     dragAndDrop: {
-      onDropComplete: e => {
-        for (const from of e.draggedPaths) {
-          const name = basename(from.replace(/\/$/, ''))
-          const to = e.target.directoryPath
-            ? `${e.target.directoryPath.replace(/\/$/, '')}/${name}`
-            : name
-          if (from.replace(/\/$/, '') !== to) mutate(from, to)
-        }
+      canDrag: paths => {
+        if (moveBusy.current || !rootRef.current) return false
+        draggedPaths.current = paths
+        return true
       },
+      canDrop: e => !moveBusy.current && !!treeMovePlan(e.draggedPaths, e.target.directoryPath)?.length,
+      onDropRequest: e => { void requestMove(e) },
       onDropError: notify,
     },
     composition: {
@@ -116,6 +125,73 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   })
   const rootRef = useRef(root)
   rootRef.current = root
+  async function requestMove(event: FileTreeDropContext) {
+    const base = rootRef.current
+    const planned = treeMovePlan(event.draggedPaths, event.target.directoryPath)
+    if (!base || moveBusy.current || !planned?.length) return
+    moveBusy.current = true
+    const abort = new AbortController()
+    moveAbort.current = abort
+    const focused = model.getFocusedPath()
+    let releaseDocuments: (() => void) | undefined
+    try {
+      await operationQueue.current
+      if (abort.signal.aborted) return
+      const args = {
+        sources: planned.map(p => join(base, p.from)),
+        targetDirectory: event.target.directoryPath ? join(base, event.target.directoryPath) : base,
+        expectedRoot: base,
+      }
+      const moves = await call<FileMove[]>('plan_file_moves', args)
+      if (abort.signal.aborted || !moves.length) return
+      const names = moves.map(move => basename(move.from))
+      const destination = event.target.directoryPath?.replace(/\/$/, '') || basename(base)
+      const choice = await ask(
+        `Are you sure you want to move ${moves.length === 1 ? `'${names[0]}'` : `the following ${moves.length} files and folders`} into '${destination}'?`,
+        '', ['Move', 'Cancel'], {
+          items: moves.map((move, index) => names.filter(name => name === names[index]).length > 1 ? relative(move.from, base) : names[index]),
+          signal: abort.signal,
+        },
+      )
+      if (choice !== 'Move' || abort.signal.aborted) return
+      moveExecuting.current = true
+      releaseDocuments = await beginDocumentMove(moves.map(move => move.from))
+      if (abort.signal.aborted) return
+      const report = await call<MoveReport>('move_files', args)
+      // Always rebind successful disk moves, including a partially failed batch.
+      await renameDocuments(report.moved)
+      if (!abort.signal.aborted && report.moved.length) {
+        const operations = report.moved.map(move => {
+          const from = relative(move.from, base)
+          const directory = model.getItem(from)?.isDirectory() ?? planned.some(p => p.from === from + '/')
+          return { type: 'move' as const, from: from + (directory ? '/' : ''), to: relative(move.to, base) + (directory ? '/' : '') }
+        })
+        pendingMoveSelection.current = operations.map(op => op.to)
+        model.batch(operations)
+        revealPending.current = false
+      }
+      if (report.failed.length) notify(`Moved ${report.moved.length} item(s). The remaining items were not moved.\n${report.failed.map(f => `${relative(f.path, base)}: ${f.message}`).join('\n')}`)
+    } catch (e) {
+      if (!abort.signal.aborted) notify(errorMessage(e))
+    } finally {
+      releaseDocuments?.()
+      const executed = moveExecuting.current
+      moveExecuting.current = false
+      try {
+        if (executed) {
+          // Finish a watcher scan that may have started before the move, then scan again.
+          await scans.get(rootRef.current ?? base)
+          await refreshTree()
+        } else if (!abort.signal.aborted && focused) {
+          model.focusPath(focused)
+          model.getFileTreeContainer()?.shadowRoot?.querySelector<HTMLElement>(`[data-item-path="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true })
+        }
+      } finally {
+        moveBusy.current = false
+        if (moveAbort.current === abort) moveAbort.current = null
+      }
+    }
+  }
   function openTreeFile(event: Event, pinned = false) {
     // Rows live in the tree's shadow DOM; ignore rename inputs and empty space.
     const targets = event.composedPath()
@@ -153,21 +229,43 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     let appliedRoot: string | null = null
     const unsubscribe = useApp.subscribe((state, previous) => {
       if (state.root !== previous.root) {
+        moveAbort.current?.abort()
+        draggedPaths.current = []
+        pendingMoveSelection.current = null
+        setRootDropTarget(false)
         ++generation.current
         sync.reset([])
         appliedRoot = null
       }
     })
     w.onmessage = (event: MessageEvent<{ id: number; root: string; paths: string[] }>) => {
+      if (moveExecuting.current) return
       const state = useApp.getState()
       if (event.data.id === generation.current && event.data.root === state.root && state.treeRoot === state.root) {
         if (appliedRoot !== event.data.root) sync.reset(event.data.paths)
         else sync.update(event.data.paths)
         appliedRoot = event.data.root
+        const moved = pendingMoveSelection.current
+        if (moved) {
+          pendingMoveSelection.current = null
+          revealPending.current = false
+          for (const selected of model.getSelectedPaths()) model.getItem(selected)?.deselect()
+          for (const path of moved) {
+            const parts = path.replace(/\/$/, '').split('/')
+            for (let depth = 1; depth < parts.length; depth++) {
+              const parent = model.getItem(parts.slice(0, depth).join('/'))
+              if (parent && 'expand' in parent) parent.expand()
+            }
+            model.getItem(path)?.select()
+          }
+          model.focusPath(moved[0])
+          model.scrollToPath(moved[0], { focus: false, offset: 'nearest' })
+        }
         setPrepared(event.data)
       }
     }
     return () => {
+      moveAbort.current?.abort()
       w.terminate()
       unsubscribe()
       sync.dispose()
@@ -199,9 +297,10 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   }, [])
   const active = docs[groups.find(g => g.id === activeGroup)?.active ?? '']
   useEffect(() => {
-    revealPending.current = true
+    if (!moveExecuting.current && !pendingMoveSelection.current) revealPending.current = true
   }, [activeGroup, active?.path, tabRevealRequest, root, sidebar])
   useEffect(() => {
+    if (moveExecuting.current || pendingMoveSelection.current) return
     // A newer editor activation supersedes an explicit reveal waiting for tree data.
     const pending = explicitReveal.current
     if (pending && (pending.group !== activeGroup || pending.activePath !== active?.path || pending.request !== tabRevealRequest))
@@ -388,7 +487,22 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         </div>
       ) : (
         <>
-          <div className="section-heading">
+          <div className="section-heading" data-drop-target={rootDropTarget}
+            onDragOver={e => {
+              if (!draggedPaths.current.length || moveBusy.current) return
+              e.preventDefault()
+              const allowed = !!treeMovePlan(draggedPaths.current, null)?.length
+              e.dataTransfer.dropEffect = allowed ? 'move' : 'none'
+              setRootDropTarget(allowed)
+            }}
+            onDragLeave={() => setRootDropTarget(false)}
+            onDrop={e => {
+              e.preventDefault()
+              setRootDropTarget(false)
+              if (draggedPaths.current.length) void requestMove({ draggedPaths: draggedPaths.current, target: { kind: 'root', directoryPath: null, hoveredPath: null, flattenedSegmentPath: null } })
+              draggedPaths.current = []
+            }}
+          >
             <button title={pathTitle(root)} onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
               <Icon name={expanded ? 'chevron-down' : 'chevron-right'} />
               {basename(root).toUpperCase()}
@@ -424,6 +538,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
               model={model}
               className="file-tree"
               style={treeStyle}
+              onDragEnd={() => { draggedPaths.current = []; setRootDropTarget(false) }}
               onPointerMove={e => {
                 // Tree rows are virtualized inside a shadow root; resolve the current row on hover.
                 const row = e.nativeEvent.composedPath().find(
