@@ -10,7 +10,7 @@ type NativeWebview = { postMessageWithAdditionalObjects: (message: unknown, file
 
 export function useExternalDrop(ready: boolean) {
   useEffect(() => {
-    if (!desktop || !ready) return
+    if (!desktop || !ready) {return}
     let disposed = false
     let active: AbortController | null = null
     let changingWorkspace = false
@@ -27,18 +27,18 @@ export function useExternalDrop(ready: boolean) {
     }
     function target(event: DragEvent): { tree: ExplorerDropTarget | null; group: string; element: HTMLElement } | null {
       const path = event.composedPath()
-      if (document.querySelector('[role="dialog"]')) return null
+      if (document.querySelector('[role="dialog"]')) {return null}
       const tree = externalExplorer()?.resolve(path) ?? null
-      if (tree) return { tree, element: tree.element, group: useApp.getState().activeGroup }
+      if (tree) {return { tree, element: tree.element, group: useApp.getState().activeGroup }}
       const group = path.find(e => e instanceof HTMLElement && e.matches('.editor-group')) as HTMLElement | undefined
       const area = group ?? path.find(e => e instanceof HTMLElement && e.matches('.editors, .explorer')) as HTMLElement | undefined
       return area ? { tree: null, group: group?.dataset.groupId ?? useApp.getState().activeGroup, element: area } : null
     }
     function onOver(event: DragEvent) {
-      if (!hasExternalFiles(event.dataTransfer)) return
+      if (!hasExternalFiles(event.dataTransfer)) {return}
       event.preventDefault(); event.stopPropagation()
       const dropTarget = target(event)
-      if (event.dataTransfer) event.dataTransfer.dropEffect = dropTarget ? 'copy' : 'none'
+      if (event.dataTransfer) {event.dataTransfer.dropEffect = dropTarget ? 'copy' : 'none'}
       if (!dropTarget) { clear(); return }
       if (highlighted !== dropTarget.element) {
         clear()
@@ -56,17 +56,17 @@ export function useExternalDrop(ready: boolean) {
         const el = tree.scroll
         const bounds = el.getBoundingClientRect()
         const delta = event.clientY < bounds.top + 30 ? -14 : event.clientY > bounds.bottom - 30 ? 14 : 0
-        if (delta) scroll = setInterval(() => { el.scrollTop += delta }, 30)
+        if (delta) {scroll = setInterval(() => { el.scrollTop += delta }, 30)}
       }
     }
-    function onLeave(event: DragEvent) { if (!event.relatedTarget) clear() }
+    function onLeave(event: DragEvent) { if (!event.relatedTarget) {clear()} }
     async function perform(event: DragEvent) {
-      if (!hasExternalFiles(event.dataTransfer)) return
+      if (!hasExternalFiles(event.dataTransfer)) {return}
       event.preventDefault(); event.stopPropagation()
       const dropTarget = target(event)
       const files = Array.from(event.dataTransfer?.files ?? [])
       clear()
-      if (!dropTarget || !files.length) return
+      if (!dropTarget || !files.length) {return}
       active?.abort()
       const controller = new AbortController()
       active = controller
@@ -74,7 +74,7 @@ export function useExternalDrop(ready: boolean) {
       let timeout: ReturnType<typeof setTimeout> | undefined
       try {
         const bridge = (window as Window & { chrome?: { webview?: NativeWebview } }).chrome?.webview
-        if (!bridge?.postMessageWithAdditionalObjects) throw new Error('External file drops require the Windows desktop app and a current WebView2 runtime.')
+        if (!bridge?.postMessageWithAdditionalObjects) {throw new Error('External file drops require the Windows desktop app and a current WebView2 runtime.')}
         const received = new Promise<ResolvedDrop>((resolve, reject) => {
           pending.set(batchId, { resolve, reject })
           timeout = setTimeout(() => reject(new Error('Could not resolve the dropped files. Please drag them again.')), 15000)
@@ -85,9 +85,9 @@ export function useExternalDrop(ready: boolean) {
         try { bridge.postMessageWithAdditionalObjects(JSON.stringify({ type: 'litecode-external-drop', batchId }), files) }
         catch (error) { pending.get(batchId)?.reject(new Error(errorMessage(error))) }
         const drop = await received
-        if (controller.signal.aborted) return
-        if (drop.failed.length) notify(drop.failed.map(f => `${pathTitle(f.path)}: ${f.message}`).join('\n'))
-        if (dropTarget.tree) await externalExplorer()?.copy(drop, dropTarget.tree.directory, controller.signal)
+        if (controller.signal.aborted) {return}
+        if (drop.failed.length) {notify(drop.failed.map(f => `${pathTitle(f.path)}: ${f.message}`).join('\n'))}
+        if (dropTarget.tree) {await externalExplorer()?.copy(drop, dropTarget.tree.directory, controller.signal)}
         else {
           const items = await call<DropItem[]>('authorize_external_drop', { batchId })
           const failed = await openDroppedItems(items, {
@@ -97,15 +97,15 @@ export function useExternalDrop(ready: boolean) {
             },
             file: path => openPath(path, { pinned: true, group: dropTarget.group }),
           }, controller.signal)
-          if (failed.length) notify(failed.map(f => `${pathTitle(f.path)}: ${f.message}`).join('\n'))
+          if (failed.length) {notify(failed.map(f => `${pathTitle(f.path)}: ${f.message}`).join('\n'))}
         }
       } catch (error) {
-        if (!controller.signal.aborted) notify(errorMessage(error))
+        if (!controller.signal.aborted) {notify(errorMessage(error))}
       } finally {
         clearTimeout(timeout)
         pending.delete(batchId)
         await call('release_external_drop', { batchId }).catch(() => {})
-        if (active === controller) active = null
+        if (active === controller) {active = null}
       }
     }
     const unsubscribe = useApp.subscribe((s, previous) => {
@@ -114,8 +114,8 @@ export function useExternalDrop(ready: boolean) {
     let unlisten: (() => void) | undefined
     void listen<ResolvedDrop>('external-drop-resolved', ({ payload }) => {
       const request = pending.get(payload.batchId)
-      if (request) request.resolve(payload)
-      else void call('release_external_drop', { batchId: payload.batchId }).catch(() => {})
+      if (request) {request.resolve(payload)}
+      else {void call('release_external_drop', { batchId: payload.batchId }).catch(() => {})}
     }).then(off => {
       if (disposed) { off(); return }
       unlisten = off

@@ -28,15 +28,15 @@ function start() {
     initializeLanguages();
     const boot = await bootstrap();
     setApp({ root: boot.root, settings: boot.settings, recent: boot.recent, dataDir: boot.dataDir, keybindings: boot.keybindings ?? [] });
-    for (const mirror of boot.documents) restoreDocument(mirror);
+    for (const mirror of boot.documents) {restoreDocument(mirror);}
     const session = boot.session ?? {};
-    if (session.query) setApp({ query: session.query, searchHistory: session.searchHistory ?? [] });
+    if (session.query) {setApp({ query: session.query, searchHistory: session.searchHistory ?? [] });}
     const docs = useApp.getState().docs;
     const legacySvg = boot.documents.filter(d => (!d.kind || d.kind === 'text') && /\.svg$/i.test(d.path ?? '')).map(d => d.id);
     const valid = session.groups?.map(g => normalizeGroup({ ...g, tabs: g.tabs.filter(id => !!docs[id]), active: g.active && docs[g.active] ? g.active : g.tabs.find(id => !!docs[id]) ?? null, views: g.views ?? {}, mediaViews: { ...Object.fromEntries(legacySvg.filter(id => g.tabs.includes(id)).map(id => [id, { mode: 'text' as const }])), ...g.mediaViews } }));
     setApp({ ready: true, ...(valid?.length ? { groups: valid, editorLayout: session.editorLayout, groupMru: session.groupMru ?? [], activeGroup: session.activeGroup && valid.some(g => g.id === session.activeGroup) ? session.activeGroup : valid[0].id } : {}), sidebarWidth: Number.isFinite(session.sidebarWidth) ? Math.max(170, session.sidebarWidth!) : 260, sidebar: session.sidebar === '' ? null : session.sidebar === 'search' ? 'search' : 'explorer', history: session.history ?? [], historyIndex: session.historyIndex ?? -1 });
-    if (boot.warnings.length) notify(boot.warnings.join('\n'));
-    if (boot.root) await refreshTree();
+    if (boot.warnings.length) {notify(boot.warnings.join('\n'));}
+    if (boot.root) {await refreshTree();}
     await refreshDocuments();
   })();
 }
@@ -47,38 +47,38 @@ export default function App() {
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
   useEffect(() => { void start().catch(e => setFatal(errorMessage(e))); return installKeys(); }, []);
   useEffect(() => {
-    if (!s.ready) return;
+    if (!s.ready) {return;}
     const markers = monaco.editor.onDidChangeMarkers(() => { const all = monaco.editor.getModelMarkers({}); setDiagnostics({ errors: all.filter(m => m.severity === monaco.MarkerSeverity.Error).length, warnings: all.filter(m => m.severity === monaco.MarkerSeverity.Warning).length }); });
     return () => markers.dispose();
   }, [s.ready]);
   useEffect(() => {
-    if (!desktop) return;
+    if (!desktop) {return;}
     let disposed = false; const cleanups: (() => void)[] = [];
     void (async () => {
       const onChange = await listen('workspace-changed', () => { void refreshTree(); void refreshDocuments(); });
-      if (disposed) onChange(); else cleanups.push(onChange);
+      if (disposed) {onChange();} else {cleanups.push(onChange);}
       const onConfig = await listen('configuration-changed', () => { void call<{ settings: Record<string, unknown>; keybindings: import('./types').Keybinding[] | null }>('configuration').then(config => setApp({ settings: config.settings, keybindings: config.keybindings ?? [] })).catch(e => notify(errorMessage(e))); });
-      if (disposed) onConfig(); else cleanups.push(onConfig);
+      if (disposed) {onConfig();} else {cleanups.push(onConfig);}
       const win = getCurrentWindow();
-      const onFocus = await win.onFocusChanged(({ payload: focused }) => { if (!disposed && !focused) void autoSave('onWindowChange'); });
-      if (disposed) onFocus(); else cleanups.push(onFocus);
+      const onFocus = await win.onFocusChanged(({ payload: focused }) => { if (!disposed && !focused) {void autoSave('onWindowChange');} });
+      if (disposed) {onFocus();} else {cleanups.push(onFocus);}
       const onClose = await win.onCloseRequested(async event => { event.preventDefault(); try { await checkpoint(); await win.destroy(); } catch (e) { notify(`Could not save recovery data. Window remains open: ${errorMessage(e)}`); } });
-      if (disposed) onClose(); else cleanups.push(onClose);
+      if (disposed) {onClose();} else {cleanups.push(onClose);}
     })().catch(e => notify(errorMessage(e)));
     return () => { disposed = true; cleanups.forEach(fn => fn()); };
   }, []);
   const group = s.groups.find(g => g.id === s.activeGroup);
   const doc = s.docs[group?.active ?? ''];
   const showWelcome = s.ready && !s.root && s.groups.every(group => group.tabs.length === 0);
-  useEffect(() => { if (desktop) void getCurrentWindow().setTitle(`${doc?.dirty ? '● ' : ''}${doc?.name ? `${doc.name} — ` : ''}${s.root ? `${basename(s.root)} — ` : ''}LiteCode`); }, [doc?.name, doc?.dirty, s.root]);
+  useEffect(() => { if (desktop) {void getCurrentWindow().setTitle(`${doc?.dirty ? '● ' : ''}${doc?.name ? `${doc.name} — ` : ''}${s.root ? `${basename(s.root)} — ` : ''}LiteCode`);} }, [doc?.name, doc?.dirty, s.root]);
   function windowAction(action: 'minimize' | 'maximize' | 'close') {
-    if (!desktop) return; const win = getCurrentWindow();
-    if (action === 'minimize') void win.minimize();
-    if (action === 'maximize') void win.toggleMaximize().then(() => win.isMaximized()).then(setMaximized);
-    if (action === 'close') void win.close();
+    if (!desktop) {return;} const win = getCurrentWindow();
+    if (action === 'minimize') {void win.minimize();}
+    if (action === 'maximize') {void win.toggleMaximize().then(() => win.isMaximized()).then(setMaximized);}
+    if (action === 'close') {void win.close();}
   }
   return <div className="workbench">
-    <header className="titlebar" data-tauri-drag-region onDoubleClick={e => { if (e.target === e.currentTarget) windowAction('maximize'); }}>
+    <header className="titlebar" data-tauri-drag-region onDoubleClick={e => { if (e.target === e.currentTarget) {windowAction('maximize');} }}>
       <div className="app-mark" aria-label="LiteCode"><Icon name="code" /></div>
       <nav className="menubar" aria-label="Application menu">{['File', 'Edit', 'Selection', 'View', 'Go', 'Help'].map(menu => <Menu.Root key={menu}><Menu.Trigger>{menu}</Menu.Trigger><Menu.Portal><Menu.Positioner className="z-90" side="bottom" align="start" sideOffset={0}><Menu.Popup className="context-menu application-menu">{commands.filter(c => c.menu === menu).map(c => <Menu.Item key={c.id} onClick={() => void execute(c.id)}><span>{c.label}</span>{c.key && <kbd>{c.key}</kbd>}</Menu.Item>)}</Menu.Popup></Menu.Positioner></Menu.Portal></Menu.Root>)}</nav>
       <div className="title-center" data-tauri-drag-region><IconButton icon="arrow-left" label="Go Back (Alt+Left)" onClick={() => void execute('workbench.action.navigateBack')} disabled={s.historyIndex <= 0} /><IconButton icon="arrow-right" label="Go Forward (Alt+Right)" onClick={() => void execute('workbench.action.navigateForward')} disabled={s.historyIndex >= s.history.length - 1} /><button className="command-center" onClick={() => setApp({ quick: '' })}><Icon name="search" /><span>{s.root ? basename(s.root) : 'LiteCode'}</span></button></div>
@@ -95,10 +95,10 @@ export default function App() {
       </main></WorkbenchLayout>}
       {!s.ready && <div className="startup" role="status">{fatal ? <><Icon name="error" /><p>{fatal}</p><button onClick={() => location.reload()}>Reload</button></> : <><span className="spinner" /><p>Starting editor services…</p></>}</div>}
     </div>
-    <footer className="statusbar"><div className="status-left"><span className="remote-indicator" title="Local window"><Icon name="remote" /></span>{s.tree.branch && <span className="status-item" title="Current Git branch"><Icon name="source-control" />{s.tree.branch}</span>}<button title="Show Problems" onClick={() => void editor()?.getAction('editor.action.marker.next')?.run()}><Icon name="error" />{diagnostics.errors}<Icon name="warning" />{diagnostics.warnings}</button></div><div className="status-right">{doc && isTextView(doc, group) && <><button onClick={() => setApp({ quick: ':' })}>Ln {s.cursor.line}, Col {s.cursor.column}{s.cursor.selected ? ` (${s.cursor.selected} selected)` : ''}</button><button onClick={() => void changeIndent()}>Spaces: {String(s.settings['editor.tabSize'] ?? 4)}</button><button onClick={() => void changeEncoding()}>{doc.encoding.toUpperCase().replace('UTF8', 'UTF-8')}</button><button onClick={() => { const m = models.get(doc.id); if (m) m.pushEOL(doc.eol === 'LF' ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF); }}>{doc.eol}</button><button onClick={() => void execute('litecode.setLanguage')}>{doc.language === 'plaintext' ? 'Plain Text' : doc.language}</button></>}{doc && group && !isTextView(doc, group) && <MediaStatus doc={doc} group={group} />}{s.searching && <span>Searching…</span>}<span className="status-item" title={s.languageStatus}><Icon name="check" /></span><button title="Notifications" onClick={() => notify(s.notice ?? 'No new notifications.')} aria-label="Notifications"><Icon name="bell" /></button></div></footer>
+    <footer className="statusbar"><div className="status-left"><span className="remote-indicator" title="Local window"><Icon name="remote" /></span>{s.tree.branch && <span className="status-item" title="Current Git branch"><Icon name="source-control" />{s.tree.branch}</span>}<button title="Show Problems" onClick={() => void editor()?.getAction('editor.action.marker.next')?.run()}><Icon name="error" />{diagnostics.errors}<Icon name="warning" />{diagnostics.warnings}</button></div><div className="status-right">{doc && isTextView(doc, group) && <><button onClick={() => setApp({ quick: ':' })}>Ln {s.cursor.line}, Col {s.cursor.column}{s.cursor.selected ? ` (${s.cursor.selected} selected)` : ''}</button><button onClick={() => void changeIndent()}>Spaces: {String(s.settings['editor.tabSize'] ?? 4)}</button><button onClick={() => void changeEncoding()}>{doc.encoding.toUpperCase().replace('UTF8', 'UTF-8')}</button><button onClick={() => { const m = models.get(doc.id); if (m) {m.pushEOL(doc.eol === 'LF' ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF);} }}>{doc.eol}</button><button onClick={() => void execute('litecode.setLanguage')}>{doc.language === 'plaintext' ? 'Plain Text' : doc.language}</button></>}{doc && group && !isTextView(doc, group) && <MediaStatus doc={doc} group={group} />}{s.searching && <span>Searching…</span>}<span className="status-item" title={s.languageStatus}><Icon name="check" /></span><button title="Notifications" onClick={() => notify(s.notice ?? 'No new notifications.')} aria-label="Notifications"><Icon name="bell" /></button></div></footer>
     {s.notice && <div className="notification" role="status"><Icon name="info" /><p>{s.notice}</p><IconButton icon="close" label="Dismiss Notification" onClick={() => setApp({ notice: null })} /></div>}
     {s.ready && <><QuickOpen /><DiffViewer /></>}<DialogHost />
   </div>;
 }
-async function changeEncoding() { const doc = activeDoc(); if (!doc) return; const encoding = await input('Save with Encoding: utf8, utf8bom, utf16le, utf16be, gbk', doc.encoding); if (encoding && ['utf8', 'utf8bom', 'utf16le', 'utf16be', 'gbk'].includes(encoding)) patchDoc(doc.id, { encoding, dirty: true }); }
-async function changeIndent() { const value = await input('Tab Size', String(useApp.getState().settings['editor.tabSize'] ?? 4)); if (value && Number(value) >= 1 && Number(value) <= 16) setApp(s => ({ settings: { ...s.settings, 'editor.tabSize': Number(value) } })); }
+async function changeEncoding() { const doc = activeDoc(); if (!doc) {return;} const encoding = await input('Save with Encoding: utf8, utf8bom, utf16le, utf16be, gbk', doc.encoding); if (encoding && ['utf8', 'utf8bom', 'utf16le', 'utf16be', 'gbk'].includes(encoding)) {patchDoc(doc.id, { encoding, dirty: true });} }
+async function changeIndent() { const value = await input('Tab Size', String(useApp.getState().settings['editor.tabSize'] ?? 4)); if (value && Number(value) >= 1 && Number(value) <= 16) {setApp(s => ({ settings: { ...s.settings, 'editor.tabSize': Number(value) } }));} }

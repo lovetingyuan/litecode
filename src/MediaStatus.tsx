@@ -8,7 +8,7 @@ export function MediaStatus({ doc, group }: { doc: Doc; group: Group }) {
   const scale = group.mediaViews?.[doc.id]?.scale ?? 'fit';
   const label = (value: number | 'fit') => value === 'fit' ? 'Whole Image' : `${Math.round(value * 100)}%`;
   const sizes: (number | 'fit')[] = [10, 5, 2, 1, 0.5, 0.2, 'fit'];
-  if (!sizes.includes(scale)) sizes.unshift(scale);
+  if (!sizes.includes(scale)) {sizes.unshift(scale);}
   return <>
     {isImageView(doc, group) && !doc.deleted && doc.imageSize && <>
       <Menu.Root><Menu.Trigger title="Image Zoom" aria-label={`Image Zoom: ${label(scale)}`}>{label(scale)}</Menu.Trigger><Menu.Portal><Menu.Positioner className="z-90" side="top" align="end" sideOffset={4}><Menu.Popup className="context-menu media-menu" aria-label="Select zoom level">

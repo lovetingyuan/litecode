@@ -16,7 +16,7 @@ await cp('docs', path.join(directory, 'docs'), { recursive: true, filter: source
 await copyFile('README.md', path.join(directory, 'README.md'));
 await copyFile('docs/verification/LIMITATIONS.md', path.join(directory, 'LIMITATIONS.md'));
 const zip = path.resolve('artifacts', `${name}-portable.zip`);
-try { await stat(zip); throw new Error(`Archive already exists: ${zip}`); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+try { await stat(zip); throw new Error(`Archive already exists: ${zip}`); } catch (error) { if (error.code !== 'ENOENT') {throw error;} }
 execFileSync('powershell.exe', ['-NoProfile', '-File', path.resolve('tools/package-portable.ps1'), '-SourceDirectory', directory, '-OutputPath', zip], { windowsHide: true });
 const installerName = `LiteCode_${pkg.version}_x64-setup.exe`;
 const installer = path.resolve('artifacts', installerName);

@@ -31,7 +31,7 @@ const screenshotEnvironments = {};
 const latencies = {};
 function measure(windows) {
   const result = spawnSync('powershell.exe', ['-NoProfile', '-File', path.resolve('tools/process-resources.ps1'), '-ApplicationPath', path.join(app, 'LiteCode.exe')], { encoding: 'utf8', windowsHide: true });
-  if (result.status !== 0) throw new Error(result.stderr); const sample = JSON.parse(result.stdout); measurements.push({ windows, ...sample }); return sample;
+  if (result.status !== 0) {throw new Error(result.stderr);} const sample = JSON.parse(result.stdout); measurements.push({ windows, ...sample }); return sample;
 }
 async function command(label) { await key('p', true, true); await fill('[aria-label="Quick Access"]', `>${label}`); await key('\ue007'); await wait('return !document.querySelector(".quick-open");', 'Command palette did not close'); }
 async function openFile(name) {
@@ -39,18 +39,19 @@ async function openFile(name) {
   await wait(`return !document.querySelector('.quick-open') && !!document.activeElement.closest('.monaco-editor') && document.querySelector('.editor-group.focused .editor-tab.active')?.textContent.includes(${JSON.stringify(name)});`, `Editor did not focus ${name}`);
 }
 async function request(method, route, body) {
+  // oxlint-disable-next-line unicorn/no-invalid-fetch-options -- The caller supplies the HTTP method; GET requests omit the body.
   const response = await fetch(endpoint + route, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
-  const payload = await response.json(); if (typeof payload.value?.error === 'string') throw new Error(`${payload.value.error}: ${payload.value.message}`); return payload.value;
+  const payload = await response.json(); if (typeof payload.value?.error === 'string') {throw new Error(`${payload.value.error}: ${payload.value.message}`);} return payload.value;
 }
 const url = route => `/session/${session}${route}`;
 async function exec(script, args = []) { return request('POST', url('/execute/sync'), { script, args }); }
 async function wait(script, message, timeout = 30_000) {
-  const begin = Date.now(); while (Date.now() - begin < timeout) { if (await exec(script)) return; await new Promise(resolve => setTimeout(resolve, 150)); } throw new Error(message);
+  const begin = Date.now(); while (Date.now() - begin < timeout) { if (await exec(script)) {return;} await new Promise(resolve => setTimeout(resolve, 150)); } throw new Error(message);
 }
 async function key(key, ctrl = false, shift = false) {
-  const actions = []; if (ctrl) actions.push({ type: 'keyDown', value: '\ue009' }); if (shift) actions.push({ type: 'keyDown', value: '\ue008' });
+  const actions = []; if (ctrl) {actions.push({ type: 'keyDown', value: '\ue009' });} if (shift) {actions.push({ type: 'keyDown', value: '\ue008' });}
   actions.push({ type: 'keyDown', value: key }, { type: 'keyUp', value: key });
-  if (shift) actions.push({ type: 'keyUp', value: '\ue008' }); if (ctrl) actions.push({ type: 'keyUp', value: '\ue009' });
+  if (shift) {actions.push({ type: 'keyUp', value: '\ue008' });} if (ctrl) {actions.push({ type: 'keyUp', value: '\ue009' });}
   await request('POST', url('/actions'), { actions: [{ type: 'key', id: 'keyboard', actions }] });
 }
 async function type(text) { const active = await request('GET', url('/element/active')); await request('POST', url(`/element/${active['element-6066-11e4-a52e-4f735466cecf']}/value`), { text }); }
@@ -160,6 +161,6 @@ try {
     languageStatus = await exec('return document.querySelector(".notification p")?.textContent;').catch(() => null);
     console.error(languageStatus);
   }
-  if (session) await screenshot('failure').catch(() => {});
+  if (session) {await screenshot('failure').catch(() => {});}
   await writeFile('docs/verification/desktop-failure.json', JSON.stringify({ release, run, checks, error: String(error), languageStatus }, null, 2)); throw error;
-} finally { if (session) await request('DELETE', url('')).catch(() => {}); }
+} finally { if (session) {await request('DELETE', url('')).catch(() => {});} }

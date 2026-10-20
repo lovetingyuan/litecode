@@ -11,7 +11,7 @@ const docs = ['long.txt', 'README.md', 'image.png'].map((name, i) => ({ id: `fil
 let restored;
 page.on('request', request => {
   const match = new URL(request.url()).pathname.match(/^\/src\/(documents|commands|store)\.ts$/);
-  if (match) urls[match[1]] = request.url();
+  if (match) {urls[match[1]] = request.url();}
 });
 page.on('pageerror', error => errors.push(String(error)));
 await page.route('**/src/bridge.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
@@ -78,7 +78,7 @@ try {
   assert.deepEqual((await state()).editorLayout.children.map(n => n.id), ['one', right, third]);
   await drag(sashes().nth(0), 90);
   b = await boxes(); const untouched = b[2].width, original = b[0].width;
-  const left = await split('one', 'left'); await count(4);
+  await split('one', 'left'); await count(4);
   b = await boxes(); near(b[0].width, original / 2); near(b[1].width, original / 2); near(b[3].width, untouched);
   await drag(sashes().nth(0), 25);
   const preserved = (await boxes()).slice(2).map(r => r.width);
@@ -112,7 +112,7 @@ try {
         const tab = group.querySelector('.editor-tab.active'); const r = tab.getBoundingClientRect();
         const pixels = context.getImageData(Math.ceil(r.x + 12), Math.floor(r.y), 8, 3).data;
         let blue = false;
-        for (let i = 0; i < pixels.length; i += 4) if (pixels[i] === 0 && pixels[i + 1] === 120 && pixels[i + 2] === 212) blue = true;
+        for (let i = 0; i < pixels.length; i += 4) {if (pixels[i] === 0 && pixels[i + 1] === 120 && pixels[i + 2] === 212) {blue = true;}}
         return { id: group.dataset.groupId, blue };
       });
     }, `data:image/png;base64,${screenshot.toString('base64')}`);
@@ -176,7 +176,7 @@ try {
   const shape = node => node.type === 'group' ? node.id : { axis: node.axis, children: node.children.map(shape) };
   assert.deepEqual(shape((await state()).editorLayout), shape(savedLayout));
   const proportions = (actual, saved) => {
-    if (actual.type === 'group') return;
+    if (actual.type === 'group') {return;}
     const a = actual.sizes.reduce((x, y) => x + y), b = saved.sizes.reduce((x, y) => x + y);
     actual.sizes.forEach((size, i) => near(size / a, saved.sizes[i] / b, .02));
     actual.children.forEach((node, i) => proportions(node, saved.children[i]));

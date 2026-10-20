@@ -36,7 +36,7 @@ function fixture() {
   const service = new QuickFileSearch(worker, () => received.push('error'));
   const search = (query: string) => service.search(query, () => received.push(query));
   const reply = (message: FileSearchMessage) => {
-    if (message.kind !== 'search') throw new Error('Expected search');
+    if (message.kind !== 'search') {throw new Error('Expected search');}
     worker.onmessage?.(new MessageEvent<FileSearchReply>('message', { data: { id: message.id, version: message.version, files: [] } }));
   };
   return { sent, worker, received, service, search, reply };

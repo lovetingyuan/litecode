@@ -30,18 +30,18 @@ export function MediaPreview({ doc, group }: { doc: Doc; group: Group }) {
     const media = player.current;
     return () => { if (media) { media.pause(); media.removeAttribute('src'); media.load(); } };
   }, [source]);
-  useEffect(() => { if (activeGroup !== group.id) player.current?.pause(); }, [activeGroup, group.id]);
+  useEffect(() => { if (activeGroup !== group.id) {player.current?.pause();} }, [activeGroup, group.id]);
   const failure = () => { setError(true); setReady(false); patchDoc(doc.id, { imageSize: undefined }); };
   let content;
-  if (doc.deleted) content = <div className="media-message" role="status"><Icon name="warning" /><p>The file could not be found. It may have been moved or deleted.</p></div>;
-  else if (doc.kind === 'binary') content = <div className="media-message binary-message" role="status"><Icon name="warning" /><p>The file is not displayed in the text editor because it is either binary or uses an unsupported text encoding.</p></div>;
-  else if (error) content = <div className="media-message" role="alert"><Icon name="warning" /><p>An error occurred while loading the {doc.kind === 'svg' ? 'image' : doc.kind} file.</p><button className="media-retry" onClick={() => setRetry(value => value + 1)}>Retry</button></div>;
-  else content = <>
+  if (doc.deleted) {content = <div className="media-message" role="status"><Icon name="warning" /><p>The file could not be found. It may have been moved or deleted.</p></div>;}
+  else if (doc.kind === 'binary') {content = <div className="media-message binary-message" role="status"><Icon name="warning" /><p>The file is not displayed in the text editor because it is either binary or uses an unsupported text encoding.</p></div>;}
+  else if (error) {content = <div className="media-message" role="alert"><Icon name="warning" /><p>An error occurred while loading the {doc.kind === 'svg' ? 'image' : doc.kind} file.</p><button className="media-retry" onClick={() => setRetry(value => value + 1)}>Retry</button></div>;}
+  else {content = <>
     {!ready && <div className="media-loading" role="status"><span className="spinner" /><span>Loading preview…</span></div>}
     {source && (doc.kind === 'image' || doc.kind === 'svg' ? <ImagePreview key={source} doc={doc} group={group} source={source} onReady={() => setReady(true)} onError={failure} />
       : doc.kind === 'video' ? <video key={source} ref={element => { player.current = element; }} src={source} controls preload="metadata" aria-label={`Video preview: ${doc.name}`} onLoadedMetadata={() => setReady(true)} onError={failure} />
       : <audio key={source} ref={element => { player.current = element; }} src={source} controls preload="metadata" aria-label={`Audio preview: ${doc.name}`} onLoadedMetadata={() => setReady(true)} onError={failure} />)}
-  </>;
+  </>;}
   return <div className={`media-preview ${doc.kind === 'video' || doc.kind === 'audio' ? 'playback-preview' : ''}`} tabIndex={0} aria-label={`Preview of ${doc.name}`}>{content}</div>;
 }
 
@@ -58,11 +58,11 @@ function ImagePreview({ doc, group, source, onReady, onError }: { doc: Doc; grou
   const savedScroll = useRef({ left: view?.scrollLeft ?? 0, top: view?.scrollTop ?? 0 });
   const restoring = useRef(true);
   useEffect(() => {
-    const element = host.current; if (!element) return;
+    const element = host.current; if (!element) {return;}
     const observer = new ResizeObserver(([entry]) => setViewport({ width: entry.contentRect.width, height: entry.contentRect.height }));
     observer.observe(element);
     const wheel = (event: WheelEvent) => {
-      if (!event.ctrlKey) return;
+      if (!event.ctrlKey) {return;}
       event.preventDefault(); event.stopPropagation();
       const current = zoomRef.current;
       patchMediaView(current.groupId, current.id, { scale: clampScale(current.actual * (event.deltaY > 0 ? 0.925 : 1.075)) });
@@ -71,13 +71,13 @@ function ImagePreview({ doc, group, source, onReady, onError }: { doc: Doc; grou
     return () => { observer.disconnect(); element.removeEventListener('wheel', wheel); };
   }, []);
   useEffect(() => {
-    if (!natural || !viewport.width || !host.current || !restoring.current) return;
+    if (!natural || !viewport.width || !host.current || !restoring.current) {return;}
     host.current.scrollLeft = savedScroll.current.left; host.current.scrollTop = savedScroll.current.top;
     restoring.current = false;
   }, [natural, viewport]);
   function zoom(direction: number) { patchMediaView(group.id, doc.id, { scale: stepScale(actual, direction) }); }
   return <div ref={host} className="image-viewport" tabIndex={0} aria-label="Image preview, Ctrl+scroll or click to zoom" onScroll={event => {
-    if (!restoring.current) patchMediaView(group.id, doc.id, { scrollLeft: event.currentTarget.scrollLeft, scrollTop: event.currentTarget.scrollTop });
+    if (!restoring.current) {patchMediaView(group.id, doc.id, { scrollLeft: event.currentTarget.scrollLeft, scrollTop: event.currentTarget.scrollTop });}
   }} onKeyDown={event => {
     if (event.key === '+' || event.key === '=') { event.preventDefault(); zoom(1); }
     if (event.key === '-') { event.preventDefault(); zoom(-1); }

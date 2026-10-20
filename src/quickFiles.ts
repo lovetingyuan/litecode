@@ -25,15 +25,15 @@ export function searchQuickFiles(workspace: Candidate[], open: Candidate[], quer
   const best: { file: Candidate; score: number; positions: number[] }[] = [];
   function consider(file: Candidate, recent: boolean) {
     const rank = rankPreparedPath(file.relative, file.haystack, needle, recent, file.filename);
-    if (!rank || (best.length === 100 && rank.score <= best[99].score)) return;
+    if (!rank || (best.length === 100 && rank.score <= best[99].score)) {return;}
     let lo = 0; let hi = best.length;
     // Insert after equal scores to preserve the original stable sort order.
-    while (lo < hi) { const mid = (lo + hi) >>> 1; if (best[mid].score >= rank.score) lo = mid + 1; else hi = mid; }
+    while (lo < hi) { const mid = (lo + hi) >>> 1; if (best[mid].score >= rank.score) {lo = mid + 1;} else {hi = mid;} }
     best.splice(lo, 0, { file, score: rank.score, positions: rank.positions });
-    if (best.length > 100) best.pop();
+    if (best.length > 100) {best.pop();}
   }
-  for (const file of open) consider(file, true);
-  for (const file of workspace) if (!opened.has(file.path)) consider(file, false);
+  for (const file of open) {consider(file, true);}
+  for (const file of workspace) {if (!opened.has(file.path)) {consider(file, false);}}
   return best.map(({ file, positions }) => {
     const offset = file.relative.lastIndexOf('/') + 1;
     return { path: file.path, label: file.relative.slice(offset), description: file.relative.slice(0, Math.max(0, offset - 1)), positions: positions.filter(p => p >= offset).map(p => p - offset) };

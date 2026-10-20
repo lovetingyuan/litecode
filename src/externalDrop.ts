@@ -22,16 +22,16 @@ type CopyServices = {
 export async function copyDroppedItems(items: DropItem[], services: CopyServices, signal: AbortSignal) {
   const report: CopyReport = { copied: [], failed: [] }
   for (const [index, item] of items.entries()) {
-    if (signal.aborted) break
+    if (signal.aborted) {break}
     try {
       const plan = await services.plan(index)
-      if (signal.aborted) break
+      if (signal.aborted) {break}
       if (plan.existing !== null) {
         const choice = await services.confirm(item, plan)
-        if (signal.aborted || !choice || choice === 'Cancel') break
-        if (choice === 'Skip') continue
+        if (signal.aborted || !choice || choice === 'Cancel') {break}
+        if (choice === 'Skip') {continue}
       }
-      if (signal.aborted) break
+      if (signal.aborted) {break}
       report.copied.push(await services.copy(index, plan))
     } catch (error) {
       report.failed.push({ path: item.path, message: typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error) })
@@ -48,10 +48,10 @@ export async function openDroppedItems(items: DropItem[], services: {
   let folders = 0
   // Establish the workspace first; mixed files always belong to the original window.
   for (const item of [...items.filter(i => i.directory), ...items.filter(i => !i.directory)]) {
-    if (signal.aborted) break
+    if (signal.aborted) {break}
     try {
-      if (item.directory) await services.folder(item.path, folders++ > 0)
-      else await services.file(item.path)
+      if (item.directory) {await services.folder(item.path, folders++ > 0)}
+      else {await services.file(item.path)}
     } catch (error) {
       failed.push({ path: item.path, message: typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error) })
     }
@@ -72,6 +72,6 @@ export type ExternalExplorer = {
 let explorer: ExternalExplorer | null = null
 export function registerExternalExplorer(value: ExternalExplorer) {
   explorer = value
-  return () => { if (explorer === value) explorer = null }
+  return () => { if (explorer === value) {explorer = null} }
 }
 export function externalExplorer() { return explorer }

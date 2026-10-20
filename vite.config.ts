@@ -17,7 +17,7 @@ export default defineConfig(() => ({
   cacheDir: `node_modules/.vite/trees-${treesPatchHash}`,
   plugins: [
     { name: 'one-monaco-for-grammars', enforce: 'pre', resolveId(source, importer) {
-      if (importer?.replace(/\\/g, '/').includes('/monaco-languages/') && source.endsWith('/editor/editor.api.js')) return this.resolve('@codingame/monaco-vscode-editor-api', undefined, { skipSelf: true });
+      if (importer?.replace(/\\/g, '/').includes('/monaco-languages/') && source.endsWith('/editor/editor.api.js')) {return this.resolve('@codingame/monaco-vscode-editor-api', undefined, { skipSelf: true });}
     } },
     react(), babel({ plugins: ["babel-plugin-react-compiler"] }), tailwindcss(),
   ],

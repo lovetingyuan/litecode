@@ -7,7 +7,7 @@ const formattingOptions = { insertSpaces: true, tabSize: 2 };
 export function parseConfiguration(text: string, array = false): Record<string, unknown> | unknown[] {
   const errors: ParseError[] = [];
   const root = parseTree(text, errors, { allowTrailingComma: true });
-  if (errors.length || root?.type !== (array ? 'array' : 'object')) throw new Error(array ? 'Keyboard shortcuts must be a valid JSONC array.' : 'Settings must be a valid JSONC object.');
+  if (errors.length || root?.type !== (array ? 'array' : 'object')) {throw new Error(array ? 'Keyboard shortcuts must be a valid JSONC array.' : 'Settings must be a valid JSONC object.');}
   return getNodeValue(root);
 }
 
@@ -19,7 +19,7 @@ export function updateSetting(text: string, key: string, value: unknown) {
 export function completeSettings(text: string): string {
   const values = parseConfiguration(text);
   for (const [key, setting] of Object.entries(schema.properties)) {
-    if (!Object.prototype.hasOwnProperty.call(values, key)) text = updateSetting(text, key, setting.default);
+    if (!Object.prototype.hasOwnProperty.call(values, key)) {text = updateSetting(text, key, setting.default);}
   }
   const root = parseTree(text, [], { allowTrailingComma: true })!;
   const edits = [];

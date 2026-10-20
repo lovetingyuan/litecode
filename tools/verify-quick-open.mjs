@@ -8,7 +8,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
 page.setDefaultTimeout(20_000);
 const errors = []; const urls = {}; const measurements = [];
 page.on('pageerror', error => errors.push(String(error)));
-page.on('request', request => { const match = new URL(request.url()).pathname.match(/^\/src\/(store|documents)\.ts$/); if (match) urls[match[1]] = request.url(); });
+page.on('request', request => { const match = new URL(request.url()).pathname.match(/^\/src\/(store|documents)\.ts$/); if (match) {urls[match[1]] = request.url();} });
 await page.addInitScript(() => {
   window.__renders = {}; window.__profile = []; window.__workerMessages = [];
   window.__workerDelay = 0; window.__inputFrames = []; window.__settled = [];
@@ -22,28 +22,28 @@ await page.addInitScript(() => {
         this.tree = true;
         this.addEventListener('message', () => { window.__treeFinished++; });
       }
-      if (!String(args[0]).includes('quickFiles.worker')) return;
+      if (!String(args[0]).includes('quickFiles.worker')) {return;}
       this.addEventListener('message', event => {
-        if (!window.__workerDelay || event.delayed) return;
+        if (!window.__workerDelay || event.delayed) {return;}
         event.stopImmediatePropagation();
         setTimeout(() => { const next = new MessageEvent('message', { data: event.data }); next.delayed = true; this.dispatchEvent(next); }, window.__workerDelay);
       });
     }
     postMessage(message, ...args) {
-      if (this.tree) window.__treeRequested++;
-      if (message?.kind) window.__workerMessages.push({ kind: message.kind, query: message.query });
+      if (this.tree) {window.__treeRequested++;}
+      if (message?.kind) {window.__workerMessages.push({ kind: message.kind, query: message.query });}
       return super.postMessage(message, ...args);
     }
   };
   let started = null;
   document.addEventListener('input', event => {
-    if (event.target.getAttribute('aria-label') !== 'Quick Access') return;
+    if (event.target.getAttribute('aria-label') !== 'Quick Access') {return;}
     started = performance.now();
     const start = started;
     requestAnimationFrame(() => window.__inputFrames.push(performance.now() - start));
   }, true);
   new MutationObserver(() => {
-    if (started === null || document.querySelector('[aria-label="Quick Access"]')?.getAttribute('aria-busy') !== 'false') return;
+    if (started === null || document.querySelector('[aria-label="Quick Access"]')?.getAttribute('aria-busy') !== 'false') {return;}
     window.__settled.push(performance.now() - started); started = null;
   }).observe(document, { subtree: true, attributes: true, attributeFilter: ['aria-busy'] });
 });
@@ -182,11 +182,11 @@ try {
       await page.waitForFunction(() => window.__treeRequested === window.__treeFinished);
       await fill('Component');
       await page.evaluate(() => { window.__inputFrames = []; window.__settled = []; window.__profile = []; window.__renders = {}; window.__longTasks = []; });
-      for (let i = 0; i < 30; i++) await fill(i % 2 ? `Component${count - i - 1}` : `module-${i}/c`);
+      for (let i = 0; i < 30; i++) {await fill(i % 2 ? `Component${count - i - 1}` : `module-${i}/c`);}
       await page.waitForTimeout(50);
       const result = await page.evaluate(() => ({ inputFrames: window.__inputFrames, settled: window.__settled, profile: window.__profile, renders: window.__renders, longTasks: window.__longTasks }));
       assert.ok(result.profile.length, 'React Profiler captures commits');
-      for (const name of ['App', 'Explorer', 'EditorGroup']) assert.equal(result.renders[name] ?? 0, 0, `${name} does not render on file input`);
+      for (const name of ['App', 'Explorer', 'EditorGroup']) {assert.equal(result.renders[name] ?? 0, 0, `${name} does not render on file input`);}
       const measurement = { count, opened, indexAndOpenMs, inputFrameP95Ms: p95(result.inputFrames), resultP95Ms: p95(result.settled), maxReactCommitMs: Math.max(...result.profile.map(p => p.actualDuration)), renders: result.renders, longTasks: result.longTasks };
       measurements.push(measurement); console.log(JSON.stringify(measurement));
       assert.ok(measurement.inputFrameP95Ms <= 50, 'Input-to-next-frame P95 <= 50ms');

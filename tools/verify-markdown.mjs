@@ -47,8 +47,8 @@ const checks = [], errors = [];
 try {
   const endpoint = `http://127.0.0.1:${port}`;
   for (let attempt = 0; attempt < 180; attempt++) {
-    if (child.exitCode !== null) throw new Error(`App exited ${child.exitCode}: ${log}`);
-    if (await fetch(`${endpoint}/json/version`).then(r => r.ok).catch(() => false)) break;
+    if (child.exitCode !== null) {throw new Error(`App exited ${child.exitCode}: ${log}`);}
+    if (await fetch(`${endpoint}/json/version`).then(r => r.ok).catch(() => false)) {break;}
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   browser = await chromium.connectOverCDP(endpoint);

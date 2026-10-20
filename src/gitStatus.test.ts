@@ -61,7 +61,7 @@ describe('Git ignore decorations', () => {
     const indexed = performance.now();
     const initialReads = reads;
     for (let i = 0; i < 10_000; i++) {
-      if (!ignored('C:/project/generated-199999/deep/file.ts', large)) throw new Error('Lost ignored status');
+      if (!ignored('C:/project/generated-199999/deep/file.ts', large)) {throw new Error('Lost ignored status');}
     }
     expect(reads).toBe(initialReads);
     console.info(`Git decoration benchmark: index ${(indexed - start).toFixed(1)} ms; 10,000 cached queries ${(performance.now() - indexed).toFixed(1)} ms`);

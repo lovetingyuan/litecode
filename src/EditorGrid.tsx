@@ -24,20 +24,21 @@ function PaneLayout({ children, label, onChange, ...props }: AllotmentProps & { 
   useLayoutEffect(() => {
     mounted.current = true;
     describe();
-    if (sizes.current.some(n => n > 0)) onChange?.(sizes.current);
+    if (sizes.current.some(n => n > 0)) {onChange?.(sizes.current);}
     return () => { mounted.current = false; };
+    // oxlint-disable-next-line react/exhaustive-deps -- Publish initial sizes only on mount; later changes are handled by Allotment's onChange.
   }, []);
   function indexOf(target: EventTarget | null) { return sashes().indexOf((target as HTMLElement).closest<HTMLElement>('.sash')!); }
   return <div ref={host} className="pane-layout" onDoubleClickCapture={event => {
-    const index = indexOf(event.target); if (index < 0) return;
+    const index = indexOf(event.target); if (index < 0) {return;}
     event.preventDefault(); event.stopPropagation();
     const next = [...sizes.current]; const half = (next[index] + next[index + 1]) / 2;
     next[index] = half; next[index + 1] = half;
     handle.current?.resize(next); scheduleBackup();
   }} onKeyDown={event => {
-    const index = indexOf(event.target); if (index < 0) return;
+    const index = indexOf(event.target); if (index < 0) {return;}
     const backward = props.vertical ? 'ArrowUp' : 'ArrowLeft', forward = props.vertical ? 'ArrowDown' : 'ArrowRight';
-    if (event.key !== backward && event.key !== forward) return;
+    if (event.key !== backward && event.key !== forward) {return;}
     event.preventDefault(); event.stopPropagation();
     const delta = event.key === forward ? 10 : -10;
     const next = [...sizes.current]; next[index] += delta; next[index + 1] -= delta;
@@ -50,7 +51,7 @@ function PaneLayout({ children, label, onChange, ...props }: AllotmentProps & { 
 
 export function EditorLayoutView({ node }: { node: EditorLayout }) {
   const group = useApp(s => node.type === 'group' ? s.groups.find(g => g.id === node.id) : undefined);
-  if (node.type === 'group') return group ? <EditorGroup group={group} /> : null;
+  if (node.type === 'group') {return group ? <EditorGroup group={group} /> : null;}
   // A changed ancestry can recreate editors; document operations save views first.
   return <EditorSplitView key={`${node.id}:${node.axis}:${node.children.map(child => child.id).join(',')}`} node={node} />;
 }
@@ -73,7 +74,7 @@ export function WorkbenchLayout({ sidebar, children }: { sidebar: ReactNode; chi
   const [width, setWidth] = useState(window.innerWidth - 48);
   useEffect(() => {
     const observer = new ResizeObserver(entries => setWidth(entries[0].contentRect.width));
-    if (host.current) observer.observe(host.current);
+    if (host.current) {observer.observe(host.current);}
     return () => observer.disconnect();
   }, []);
   return <div ref={host} className="workbench-layout"><PaneLayout label="Primary side bar width" proportionalLayout={false} defaultSizes={[sidebarWidth, Math.max(160, width - sidebarWidth)]} onChange={sizes => {

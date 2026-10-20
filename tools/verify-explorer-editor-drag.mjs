@@ -11,7 +11,7 @@ const operations = [];
 let documentsUrl;
 page.on('pageerror', error => errors.push(String(error)));
 page.on('request', request => {
-  if (!documentsUrl && new URL(request.url()).pathname === '/src/documents.ts') documentsUrl = request.url();
+  if (!documentsUrl && new URL(request.url()).pathname === '/src/documents.ts') {documentsUrl = request.url();}
 });
 await page.exposeFunction('recordOperation', command => operations.push(command));
 await page.route('**/src/bridge.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `

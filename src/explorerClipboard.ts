@@ -12,7 +12,7 @@ type ClipboardServices = {
 }
 
 export function pasteDirectory(path: string, directory: boolean) {
-  if (!path) return ''
+  if (!path) {return ''}
   const clean = path.replace(/\/$/, '')
   return directory ? clean : clean.slice(0, Math.max(0, clean.lastIndexOf('/')))
 }
@@ -32,31 +32,31 @@ export function createExplorerClipboard(services: ClipboardServices) {
       const request = ++revision
       internal = null
       remembering = services.read().then(snapshot => {
-        if (request === revision) internal = { paths: [...new Set(paths)], cut, sequence: snapshot.sequence }
+        if (request === revision) {internal = { paths: [...new Set(paths)], cut, sequence: snapshot.sequence }}
       }).finally(() => {
-        if (request === revision) remembering = Promise.resolve()
+        if (request === revision) {remembering = Promise.resolve()}
       })
       return remembering
     },
     async paste(root: string, directory: string, signal: AbortSignal): Promise<CopyReport | null> {
       const request = revision
       await remembering
-      if (signal.aborted || request !== revision) return null
+      if (signal.aborted || request !== revision) {return null}
       const snapshot = await services.read()
-      if (signal.aborted || request !== revision) return null
-      if (internal && internal.sequence !== snapshot.sequence) internal = null
+      if (signal.aborted || request !== revision) {return null}
+      if (internal && internal.sequence !== snapshot.sequence) {internal = null}
       const source = internal ?? { ...snapshot, cut: false }
       const paths = [...new Set(source.paths)]
-      if (!paths.length) return null
+      if (!paths.length) {return null}
       // Copy confirmation belongs to the disk operation, not to Ctrl+C.
-      if (!source.cut && !await services.confirm(paths, directory, signal)) return null
-      if (signal.aborted || request !== revision) return null
+      if (!source.cut && !await services.confirm(paths, directory, signal)) {return null}
+      if (signal.aborted || request !== revision) {return null}
       if (!internal) {
-        if (snapshot.sequence === null) return null
+        if (snapshot.sequence === null) {return null}
         return services.copyExternal(snapshot.sequence, root, directory)
       }
       const current = await services.read()
-      if (signal.aborted || request !== revision) return null
+      if (signal.aborted || request !== revision) {return null}
       if (current.sequence !== snapshot.sequence) {
         internal = null
         throw new Error('The clipboard changed; paste the files again')
@@ -64,7 +64,7 @@ export function createExplorerClipboard(services: ClipboardServices) {
       const report: CopyReport = { copied: [], failed: [] }
       const sources = paths.filter(path => !paths.some(parent => parent !== path && path.startsWith(parent.replace(/\/$/, '') + '/')))
       for (const path of sources) {
-        if (signal.aborted) break
+        if (signal.aborted) {break}
         const destination = directory.replace(/\/$/, '') + '/' + path.replace(/\/$/, '').split('/').pop()!
         try {
           await services.pasteInternal(path, destination, source.cut)

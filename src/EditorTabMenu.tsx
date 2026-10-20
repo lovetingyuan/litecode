@@ -29,9 +29,9 @@ export function EditorTabMenu({ group, documentId, children }: { group: Group; d
     [{ id: sticky ? 'workbench.action.unpinEditor' : 'workbench.action.pinEditor', label: sticky ? 'Unpin' : 'Pin', disabled: false }],
     splitDirections.map(({ id, label }) => ({ id, label, disabled: false })),
   ] : [];
-  return <ContextMenu.Root open={open && !!doc} onOpenChange={next => { if (next) restoreTrigger.current = true; setOpen(next); }}>
+  return <ContextMenu.Root open={open && !!doc} onOpenChange={next => { if (next) {restoreTrigger.current = true;} setOpen(next); }}>
     <ContextMenu.Trigger ref={setTrigger} render={children} onKeyDown={event => {
-      if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+      if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {return;}
       event.preventDefault(); event.stopPropagation();
       const rect = event.currentTarget.getBoundingClientRect();
       event.currentTarget.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.left + 12, clientY: rect.bottom }));

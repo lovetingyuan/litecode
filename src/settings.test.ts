@@ -28,7 +28,7 @@ describe('Annotated settings', () => {
   });
 
   it('rejects malformed configuration instead of replacing it with defaults', () => {
-    for (const text of ['{"broken": }', '[]', 'null', '{ /* unfinished']) expect(() => completeSettings(text)).toThrow();
+    for (const text of ['{"broken": }', '[]', 'null', '{ /* unfinished']) {expect(() => completeSettings(text)).toThrow();}
     expect(parseConfiguration('[ // shortcut\n {"key":"ctrl+s","command":"save"},\n]', true)).toHaveLength(1);
   });
 });

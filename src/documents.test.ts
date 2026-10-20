@@ -33,7 +33,7 @@ class Buffer {
   isDisposed() { return false; }
   dispose() {}
   onDidChangeContent(listener: () => void) { this.listeners.add(listener); return { dispose: () => this.listeners.delete(listener) }; }
-  edit(text: string) { this.text = text; this.version++; for (const listener of this.listeners) listener(); }
+  edit(text: string) { this.text = text; this.version++; for (const listener of this.listeners) {listener();} }
 }
 
 let sequence = 0;
@@ -333,8 +333,8 @@ describe('Media documents', () => {
   });
   it.each(['binary', 'encoding'])('opens a text decoding %s failure as an unsupported editor', async code => {
     vi.mocked(call).mockImplementation(async command => {
-      if (command === 'inspect_file') return { kind: 'text', size: 12, stamp: 'one' } as never;
-      if (command === 'read_document') throw { code, message: 'Unsupported content' };
+      if (command === 'inspect_file') {return { kind: 'text', size: 12, stamp: 'one' } as never;}
+      if (command === 'read_document') {throw { code, message: 'Unsupported content' };}
       return undefined as never;
     });
     const id = await openPath('C:/workspace/unknown');
@@ -363,7 +363,7 @@ describe('Media documents', () => {
     let missing = false;
     vi.mocked(call).mockImplementation(async command => {
       if (command === 'inspect_file') {
-        if (missing) throw { code: 'io', message: 'File missing' };
+        if (missing) {throw { code: 'io', message: 'File missing' };}
         return { kind: 'image', size: 24, stamp: 'new' } as never;
       }
       return undefined as never;
@@ -439,7 +439,7 @@ describe('Automatic saves', () => {
   it('reports failures and continues saving other documents, preserving conflicts', async () => {
     const failed = addDocument(); const good = addDocument();
     vi.mocked(call).mockImplementation(async (command, args) => {
-      if (command === 'save_document' && args?.id === failed.id) throw { code: 'conflict', message: 'File changed on disk' };
+      if (command === 'save_document' && args?.id === failed.id) {throw { code: 'conflict', message: 'File changed on disk' };}
       return 'new-revision' as never;
     });
     await autoSave('onWindowChange');
@@ -466,10 +466,10 @@ describe('Automatic saves', () => {
     await vi.waitFor(() => expect(vi.mocked(call).mock.calls.some(([command]) => command === 'sync_documents')).toBe(true));
     buffer.edit('new edits while saving');
     const queued = autoSave('onFocusChange', id);
-    if (change === 'conflict') patchDoc(id, { conflict: true });
-    else if (change === 'untitled') patchDoc(id, { path: null });
-    else if (change === 'removed') models.delete(id);
-    else setApp({ settings: { 'files.autoSave': change } });
+    if (change === 'conflict') {patchDoc(id, { conflict: true });}
+    else if (change === 'untitled') {patchDoc(id, { path: null });}
+    else if (change === 'removed') {models.delete(id);}
+    else {setApp({ settings: { 'files.autoSave': change } });}
     pending.resolve('new-revision');
     await Promise.all([manual, queued]);
     expect(writes()).toHaveLength(1);
@@ -504,8 +504,8 @@ describe('Automatic saves', () => {
   it.each(['off', 'conflict', 'clean'] as const)('rechecks a pending delay when the document becomes %s', async change => {
     setApp({ settings: { 'files.autoSave': 'afterDelay', 'files.autoSaveDelay': 100 } });
     const { id, buffer } = addDocument({ dirty: false }); buffer.edit('changed');
-    if (change === 'off') setApp({ settings: { 'files.autoSave': 'off' } });
-    else patchDoc(id, change === 'conflict' ? { conflict: true } : { dirty: false });
+    if (change === 'off') {setApp({ settings: { 'files.autoSave': 'off' } });}
+    else {patchDoc(id, change === 'conflict' ? { conflict: true } : { dirty: false });}
     await vi.advanceTimersByTimeAsync(100);
     expect(writes()).toHaveLength(0);
   });

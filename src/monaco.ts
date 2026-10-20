@@ -33,16 +33,16 @@ export function initializeEditor(): Promise<void> {
 }
 
 export function languageFor(path: string): string {
-  if (/(?:^|[\\/])(settings|keybindings)\.json$/i.test(path) || /\.jsonc$/i.test(path)) return 'jsonc';
+  if (/(?:^|[\\/])(settings|keybindings)\.json$/i.test(path) || /\.jsonc$/i.test(path)) {return 'jsonc';}
   const extension = path.split('.').pop()?.toLowerCase();
-  if (extension === 'markdown') return 'markdown';
+  if (extension === 'markdown') {return 'markdown';}
   return ({ ts: 'typescript', tsx: 'typescriptreact', js: 'javascript', jsx: 'javascriptreact', mjs: 'javascript', cjs: 'javascript', json: 'json', jsonc: 'json', rs: 'rust', html: 'html', htm: 'html', css: 'css', scss: 'scss', md: 'markdown', py: 'python', yaml: 'yaml', yml: 'yaml', toml: 'ini', sh: 'shell', ps1: 'powershell', sql: 'sql', xml: 'xml', svg: 'xml', c: 'c', cpp: 'cpp', h: 'cpp', go: 'go', java: 'java', txt: 'plaintext', 'code-search': 'search-result' } as Record<string, string>)[extension ?? ''] ?? 'plaintext';
 }
 
 const loaded = new Set<string>();
 const syntaxes = import.meta.glob<{ language: monaco.languages.IMonarchLanguage; conf: monaco.languages.LanguageConfiguration }>(['/node_modules/monaco-languages/esm/vs/languages/definitions/*/*.js', '!**/register.js']);
 export async function loadSyntax(language: string) {
-  if (loaded.has(language) || language === 'plaintext') return;
+  if (loaded.has(language) || language === 'plaintext') {return;}
   loaded.add(language);
   if (language === 'json' || language === 'jsonc') {
     // JSON's tokenizer lives outside Monaco's Monarch language definitions.
@@ -54,7 +54,7 @@ export async function loadSyntax(language: string) {
   }
   const id = ['typescriptreact', 'javascript', 'javascriptreact'].includes(language) ? 'typescript' : language;
   const loader = syntaxes[`/node_modules/monaco-languages/esm/vs/languages/definitions/${id}/${id}.js`];
-  if (!loader) return;
+  if (!loader) {return;}
   const module = await loader();
   monaco.languages.register({ id: language });
   monaco.languages.setMonarchTokensProvider(language, module.language);

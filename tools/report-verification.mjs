@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 const run = JSON.parse(await readFile('docs/verification/desktop-results.json', 'utf8'));
 const manifest = JSON.parse(await readFile('docs/verification/release-manifest.json', 'utf8'));
-if (!run.release || run.executableSha256 !== manifest.executableSha256) throw new Error('Desktop evidence does not match the packaged Release executable.');
+if (!run.release || run.executableSha256 !== manifest.executableSha256) {throw new Error('Desktop evidence does not match the packaged Release executable.');}
 const machine = JSON.parse((await readFile('docs/verification/machine.json', 'utf8')).replace(/^\uFEFF/, ''));
 const mib = bytes => (bytes / 1024 / 1024).toFixed(1);
 const lines = [

@@ -48,7 +48,7 @@ export function buildSearchResults(results: SearchMatch[], root: string | null) 
   }
   function sort(nodes: SearchNode[]) {
     nodes.sort((a, b) => a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'folder' ? -1 : 1);
-    for (const node of nodes) if (node.kind === 'folder') sort(node.children);
+    for (const node of nodes) {if (node.kind === 'folder') {sort(node.children);}}
   }
   sort(tree);
   return { files, tree, paths: [...files.map(file => file.path), ...[...folders.values()].map(folder => folder.path)] };
@@ -58,15 +58,15 @@ export function searchResultRows(nodes: SearchNode[], collapsed: ReadonlySet<str
   const rows: ResultRow[] = [];
   for (const node of nodes) {
     rows.push({ ...node, depth });
-    if (collapsed.has(node.path)) continue;
-    if (node.kind === 'folder') rows.push(...searchResultRows(node.children, collapsed, depth + 1));
-    else for (const match of node.matches) rows.push({ kind: 'match', ...match, depth: depth + 1 });
+    if (collapsed.has(node.path)) {continue;}
+    if (node.kind === 'folder') {rows.push(...searchResultRows(node.children, collapsed, depth + 1));}
+    else {for (const match of node.matches) {rows.push({ kind: 'match', ...match, depth: depth + 1 });}}
   }
   return rows;
 }
 
 export function searchRowMatches(row: SearchNode | ResultRow): SearchMatch[] {
-  if (row.kind === 'match') return [row.match];
-  if (row.kind === 'file') return row.matches.map(entry => entry.match);
+  if (row.kind === 'match') {return [row.match];}
+  if (row.kind === 'file') {return row.matches.map(entry => entry.match);}
   return row.children.flatMap(searchRowMatches);
 }

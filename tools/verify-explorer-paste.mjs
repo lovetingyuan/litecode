@@ -14,7 +14,7 @@ const root = path.join(run, 'project'), external = path.join(run, 'external'), a
 const port = Number(process.env.LITECODE_PASTE_DEBUG_PORT ?? 9228);
 const endpoint = `http://127.0.0.1:${port}`;
 assert.equal(await fetch(`${endpoint}/json/version`).then(() => true, () => false), false, 'The test debugging port is already in use');
-for (const directory of [appDirectory, path.join(appDirectory, 'data'), external, path.join(external, '中文 文件夹/empty'), path.join(root, 'target'), path.join(root, 'alternate'), path.join(root, 'empty')]) await mkdir(directory, { recursive: true });
+for (const directory of [appDirectory, path.join(appDirectory, 'data'), external, path.join(external, '中文 文件夹/empty'), path.join(root, 'target'), path.join(root, 'alternate'), path.join(root, 'empty')]) {await mkdir(directory, { recursive: true });}
 await writeFile(path.join(external, 'a.txt'), 'native a');
 await writeFile(path.join(external, 'b.txt'), 'native b');
 await writeFile(path.join(external, 'gone.txt'), 'source disappears during confirmation');
@@ -86,11 +86,11 @@ try {
     env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --no-proxy-server` },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  app.stderr.on('data', chunk => { if (String(chunk).includes('panicked')) errors.push(String(chunk)); });
+  app.stderr.on('data', chunk => { if (String(chunk).includes('panicked')) {errors.push(String(chunk));} });
   const started = Date.now();
   while (!await fetch(`${endpoint}/json/version`).then(response => response.ok, () => false)) {
-    if (app.exitCode !== null) throw new Error(`Fixture app exited with ${app.exitCode}`);
-    if (Date.now() - started > 60000) throw new Error('WebView2 debugging did not start');
+    if (app.exitCode !== null) {throw new Error(`Fixture app exited with ${app.exitCode}`);}
+    if (Date.now() - started > 60000) {throw new Error('WebView2 debugging did not start');}
     await new Promise(resolve => setTimeout(resolve, 150));
   }
   browser = await chromium.connectOverCDP(endpoint);

@@ -13,7 +13,7 @@ const errors = [];
 let restored;
 page.on('request', request => {
   const match = new URL(request.url()).pathname.match(/^\/src\/(documents|commands|store)\.ts$/);
-  if (match) urls[match[1]] = request.url();
+  if (match) {urls[match[1]] = request.url();}
 });
 page.on('pageerror', error => errors.push(String(error)));
 await page.addInitScript(() => {
@@ -183,7 +183,7 @@ try {
   await choose('Copy Relative Path');
   assert.equal(await page.evaluate(() => window.__copied), 'C:\\outside.txt');
   await documentAction('newDocument'); await context('Untitled');
-  for (const name of ['Copy Path', 'Copy Relative Path', 'Reveal in File Explorer', 'Reveal in Explorer View']) assert.equal(await item(name).getAttribute('aria-disabled'), 'true');
+  for (const name of ['Copy Path', 'Copy Relative Path', 'Reveal in File Explorer', 'Reveal in Explorer View']) {assert.equal(await item(name).getAttribute('aria-disabled'), 'true');}
   await page.keyboard.press('Escape');
   await reset(); await documentAction('setSticky', docs[2].id, 'one', true);
   restored = await documentAction('session');

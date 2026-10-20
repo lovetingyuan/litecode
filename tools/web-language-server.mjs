@@ -20,13 +20,13 @@ const kind = language === 'html' ? 'html' : language === 'json' || language === 
 const service = kind === 'html' ? html : kind === 'json' ? json : css;
 let configuration = {};
 const workspace = { resolveReference: (ref, base) => new URL(ref, base).toString() };
-function get(params) { const doc = documents.get(params.textDocument.uri); if (!doc) return null; return { doc, parsed: kind === 'html' ? html.parseHTMLDocument(doc) : kind === 'json' ? json.parseJSONDocument(doc) : css.parseStylesheet(doc) }; }
+function get(params) { const doc = documents.get(params.textDocument.uri); if (!doc) {return null;} return { doc, parsed: kind === 'html' ? html.parseHTMLDocument(doc) : kind === 'json' ? json.parseJSONDocument(doc) : css.parseStylesheet(doc) }; }
 connection.onInitialize(params => {
-  if (kind === 'json') json.configure({ validate: true, allowComments: language === 'jsonc', schemas: params.initializationOptions?.schemas ?? [] });
+  if (kind === 'json') {json.configure({ validate: true, allowComments: language === 'jsonc', schemas: params.initializationOptions?.schemas ?? [] });}
   return { capabilities: { textDocumentSync: TextDocumentSyncKind.Incremental, completionProvider: { triggerCharacters: kind === 'html' ? ['<', '/', ' ', '=', '"', '.'] : ['"', ':', '.', '/', '-', '@'], resolveProvider: false }, hoverProvider: true, documentSymbolProvider: true, foldingRangeProvider: true, selectionRangeProvider: true, documentFormattingProvider: true, documentRangeFormattingProvider: true, documentHighlightProvider: kind !== 'json', renameProvider: kind !== 'json', definitionProvider: kind === 'css', referencesProvider: kind === 'css', documentLinkProvider: { resolveProvider: false }, colorProvider: kind !== 'html', codeActionProvider: kind === 'css' } };
 });
-connection.onDidChangeConfiguration(params => { configuration = params.settings ?? {}; if (kind === 'css') css.configure(configuration.css ?? {}); for (const doc of documents.all()) validate(doc); });
-connection.onCompletion(async params => { const x = get(params); if (!x) return null; return kind === 'html' ? html.doComplete(x.doc, params.position, x.parsed, configuration.html) : kind === 'json' ? json.doComplete(x.doc, params.position, x.parsed) : css.doComplete2(x.doc, params.position, x.parsed, workspace); });
+connection.onDidChangeConfiguration(params => { configuration = params.settings ?? {}; if (kind === 'css') {css.configure(configuration.css ?? {});} for (const doc of documents.all()) {validate(doc);} });
+connection.onCompletion(async params => { const x = get(params); if (!x) {return null;} return kind === 'html' ? html.doComplete(x.doc, params.position, x.parsed, configuration.html) : kind === 'json' ? json.doComplete(x.doc, params.position, x.parsed) : css.doComplete2(x.doc, params.position, x.parsed, workspace); });
 connection.onHover(params => { const x = get(params); return x ? service.doHover(x.doc, params.position, x.parsed) : null; });
 connection.onDocumentSymbol(params => { const x = get(params); return x ? service.findDocumentSymbols(x.doc, x.parsed) : []; });
 connection.onFoldingRanges(params => { const x = get(params); return x ? service.getFoldingRanges(x.doc) : []; });
@@ -45,7 +45,7 @@ const timers = new Map();
 async function validate(doc) {
   try {
     const diagnostics = kind === 'json' ? await json.doValidation(doc, json.parseJSONDocument(doc), language === 'jsonc' ? { comments: 'ignore', trailingCommas: 'ignore' } : undefined) : kind === 'css' ? css.doValidation(doc, css.parseStylesheet(doc)) : [];
-    if (documents.get(doc.uri)?.version === doc.version) connection.sendDiagnostics({ uri: doc.uri, version: doc.version, diagnostics });
+    if (documents.get(doc.uri)?.version === doc.version) {connection.sendDiagnostics({ uri: doc.uri, version: doc.version, diagnostics });}
   } catch (e) { connection.console.error(String(e)); }
 }
 documents.onDidChangeContent(({ document }) => { clearTimeout(timers.get(document.uri)); timers.set(document.uri, setTimeout(() => validate(document), 200)); });

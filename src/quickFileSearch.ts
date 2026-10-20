@@ -14,7 +14,7 @@ export class QuickFileSearch {
   private failed = false;
   constructor(private worker: WorkerPort, onError: () => void) {
     worker.onmessage = ({ data }) => {
-      if (data.id !== this.running?.id) return;
+      if (data.id !== this.running?.id) {return;}
       this.running = null;
       const job = this.wanted;
       if (job?.id === data.id && data.version === this.version) { this.wanted = null; job.accept(data.files); }
@@ -30,7 +30,7 @@ export class QuickFileSearch {
   update(message: Exclude<FileSearchMessage, { kind: 'search' }>) {
     ++this.version;
     this.wanted = null;
-    if (!this.failed) this.worker.postMessage(message);
+    if (!this.failed) {this.worker.postMessage(message);}
   }
   search(query: string, accept: Job['accept']) {
     if (this.failed) { accept([]); return; }
@@ -40,7 +40,7 @@ export class QuickFileSearch {
   cancel() { this.wanted = null; }
   dispose() { this.cancel(); this.worker.onmessage = null; this.worker.onerror = null; this.worker.terminate(); }
   private pump() {
-    if (this.running || !this.wanted) return;
+    if (this.running || !this.wanted) {return;}
     this.running = this.wanted;
     const { id, version, query } = this.running;
     this.worker.postMessage({ kind: 'search', id, version, query } satisfies FileSearchMessage);

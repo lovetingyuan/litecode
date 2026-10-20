@@ -85,12 +85,15 @@ HTML/CSS/JSON 的 Microsoft 语言服务随应用提供，需要 Node。JS/TS �
 exe 旁已有 `data/` 时使用便携模式，否则使用 Tauri 的应用数据目录 `com.tingyuan.litecode`。目录包含设置、会话、未保存内容、替换日志和按需工具。备份和设置使用原子写入；文件删除使用回收站。
 
 ```powershell
+npm run lint
 npm test
 npm run test:languages
 cargo test --manifest-path src-tauri/Cargo.toml --locked --all-targets
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 ```
+
+JavaScript / TypeScript 使用 Oxlint 检查前端、测试和工具脚本，启用默认插件及 React 的 correctness 规则；暂不启用 React Compiler 的 `immutability`、`preserve-manual-memoization`、`refs`、`set-state-in-effect` 规则。任何警告或错误都会使检查失败。配置见 `.oxlintrc.json`，扫描遵循 `.gitignore`，并排除 `.agents/` 技能资源及 `src-tauri/tools/` 生成的语言服务包。可执行 `npm run lint:fix` 应用安全的自动修复；类型检查仍由 `npm run build` 中的 TypeScript 完成。
 
 真实桌面端测试需要 `tauri-driver` 和匹配 WebView2 版本的 EdgeDriver；先启动 `tauri-driver --port 4446 --native-driver <msedgedriver.exe 路径>`，然后执行 `npm run test:e2e`，或 `node tools/verify-desktop.mjs --release` 验证发行 exe。脚本创建隔离 fixture、便携数据目录并模拟崩溃，不使用个人工作区文件。
 

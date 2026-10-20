@@ -29,10 +29,10 @@ export function SearchView() {
     const focus = () => { input.current?.focus(); input.current?.select(); };
     window.addEventListener('focus-search', focus);
     const observer = new ResizeObserver(entries => setHeight(entries[0].contentRect.height));
-    if (viewport.current) observer.observe(viewport.current);
+    if (viewport.current) {observer.observe(viewport.current);}
     return () => { window.removeEventListener('focus-search', focus); observer.disconnect(); };
   }, []);
-  useEffect(() => { if (!menu) return; const close = () => setMenu(null); document.addEventListener('click', close); return () => document.removeEventListener('click', close); }, [menu]);
+  useEffect(() => { if (!menu) {return;} const close = () => setMenu(null); document.addEventListener('click', close); return () => document.removeEventListener('click', close); }, [menu]);
   const { files, tree, paths } = useMemo(() => buildSearchResults(results, root), [results, root]);
   const nodes = listMode ? files : tree;
   const allCollapsed = nodes.length > 0 && nodes.every(node => collapsed.has(node.path));
@@ -40,11 +40,11 @@ export function SearchView() {
   const contentHeight = rows.length ? rows.length * resultHeight + resultBottomPadding : 0;
   useLayoutEffect(() => {
     const top = Math.min(viewport.current?.scrollTop ?? 0, Math.max(0, contentHeight - height));
-    if (viewport.current) viewport.current.scrollTop = top;
+    if (viewport.current) {viewport.current.scrollTop = top;}
     setScroll(top);
-    if (selected >= rows.length) setSelected(-1);
+    if (selected >= rows.length) {setSelected(-1);}
   }, [contentHeight, rows.length, height, selected]);
-  function resetSelection() { setSelected(-1); setScroll(0); if (viewport.current) viewport.current.scrollTop = 0; }
+  function resetSelection() { setSelected(-1); setScroll(0); if (viewport.current) {viewport.current.scrollTop = 0;} }
   function search() { clearTimeout(pendingSearch.current); resetSelection(); void runSearch(); }
   function clearResults() {
     clearTimeout(pendingSearch.current); cancelSearch();
@@ -53,13 +53,13 @@ export function SearchView() {
   function update(patch: Partial<Query>) {
     cancelSearch(); resetSelection(); setApp({ query: { ...query, ...patch }, requestId: null, results: [], searchErrors: [], limited: false });
   }
-  function toggle(path: string) { setCollapsed(previous => { const next = new Set(previous); if (next.has(path)) next.delete(path); else next.add(path); return next; }); }
+  function toggle(path: string) { setCollapsed(previous => { const next = new Set(previous); if (next.has(path)) {next.delete(path);} else {next.add(path);} return next; }); }
   function removeRow(row: ResultRow) { const removed = new Set(searchRowMatches(row)); setApp({ results: results.filter(match => !removed.has(match)) }); }
   async function replaceRows(matches: SearchMatch[], preview = false) {
-    if (!preview && matches.length > 1 && await ask('Replace search results?', `Replace ${matches.length} occurrence(s)? Closed files will be saved. Open editors keep unsaved changes. Use Undo Workspace Replacement to undo this operation.`, ['Replace', 'Cancel']) !== 'Replace') return;
-    try { await replaceMatches(matches, replacement, preserve, query, preview); if (!preview) await runSearch(query); } catch (e) { notify(errorMessage(e)); }
+    if (!preview && matches.length > 1 && await ask('Replace search results?', `Replace ${matches.length} occurrence(s)? Closed files will be saved. Open editors keep unsaved changes. Use Undo Workspace Replacement to undo this operation.`, ['Replace', 'Cancel']) !== 'Replace') {return;}
+    try { await replaceMatches(matches, replacement, preserve, query, preview); if (!preview) {await runSearch(query);} } catch (e) { notify(errorMessage(e)); }
   }
-  async function copy(text: string) { if (desktop) await (await import('@tauri-apps/plugin-clipboard-manager')).writeText(text); else await navigator.clipboard.writeText(text); }
+  async function copy(text: string) { if (desktop) {await (await import('@tauri-apps/plugin-clipboard-manager')).writeText(text);} else {await navigator.clipboard.writeText(text);} }
   const first = Math.max(0, Math.floor(scroll / resultHeight) - 5); const visible = rows.slice(first, first + Math.ceil(height / resultHeight) + 12);
   return <section className="view search-view" aria-label="Search" style={{ '--search-result-height': `${resultHeight}px` } as CSSProperties}>
     <div className="view-title"><span>Search</span><div className="actions">
@@ -74,8 +74,8 @@ export function SearchView() {
       <IconButton className="icon-button search-replace-toggle" icon={replace ? 'chevron-down' : 'chevron-right'} label="Toggle Replace" aria-expanded={replace} aria-controls="search-replace-row" onClick={() => setReplace(!replace)} />
       <div className="search-query-row"><div className="input-options"><textarea ref={input} value={query.text} rows={Math.min(6, query.text.split('\n').length)} placeholder="Search" aria-label="Search text" onChange={e => update({ text: e.target.value })} onKeyDown={e => {
         if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) { e.preventDefault(); search(); }
-        if (e.key === 'Escape') cancelSearch();
-        if (e.altKey && e.key === 'ArrowUp' && history.length) update({ text: history[Math.min(history.indexOf(query.text) + 1, history.length - 1)] });
+        if (e.key === 'Escape') {cancelSearch();}
+        if (e.altKey && e.key === 'ArrowUp' && history.length) {update({ text: history[Math.min(history.indexOf(query.text) + 1, history.length - 1)] });}
       }} /><div className="actions">
         <IconButton className={`icon-button option${query.caseSensitive ? ' active' : ''}`} icon="case-sensitive" label="Match Case (Alt+C)" aria-pressed={query.caseSensitive} onClick={() => update({ caseSensitive: !query.caseSensitive })} />
         <IconButton className={`icon-button option${query.wholeWord ? ' active' : ''}`} icon="whole-word" label="Match Whole Word (Alt+W)" aria-pressed={query.wholeWord} onClick={() => update({ wholeWord: !query.wholeWord })} />
@@ -99,19 +99,19 @@ export function SearchView() {
     {errors.map((e, i) => <p key={i} className="inline-error" role="alert">{e}</p>)}
     <div className="search-results" ref={viewport} tabIndex={0} role="tree" aria-label="Search results" onScroll={e => setScroll(e.currentTarget.scrollTop)} onKeyDown={e => {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault(); if (!rows.length) return;
+        e.preventDefault(); if (!rows.length) {return;}
         const index = Math.min(rows.length - 1, Math.max(0, selected < 0 ? 0 : selected + (e.key === 'ArrowDown' ? 1 : -1))); setSelected(index);
         const top = viewport.current?.scrollTop ?? 0;
-        if (index * resultHeight < top) viewport.current?.scrollTo({ top: index * resultHeight });
-        else if ((index + 1) * resultHeight > top + height) viewport.current?.scrollTo({ top: (index + 1) * resultHeight - height });
+        if (index * resultHeight < top) {viewport.current?.scrollTo({ top: index * resultHeight });}
+        else if ((index + 1) * resultHeight > top + height) {viewport.current?.scrollTo({ top: (index + 1) * resultHeight - height });}
       }
-      const row = rows[selected]; if (!row) return;
-      if (e.key === 'Enter') { e.preventDefault(); if (row.kind !== 'match') toggle(row.path); else void openMatch(row.match).catch(e => notify(errorMessage(e))); }
-      if (e.key === 'ArrowRight' && row.kind !== 'match') { e.preventDefault(); if (collapsed.has(row.path)) toggle(row.path); }
-      if (e.key === 'ArrowLeft' && row.kind !== 'match') { e.preventDefault(); if (!collapsed.has(row.path)) toggle(row.path); }
-      if (e.key === 'Delete') removeRow(row);
+      const row = rows[selected]; if (!row) {return;}
+      if (e.key === 'Enter') { e.preventDefault(); if (row.kind !== 'match') {toggle(row.path);} else {void openMatch(row.match).catch(e => notify(errorMessage(e)));} }
+      if (e.key === 'ArrowRight' && row.kind !== 'match') { e.preventDefault(); if (collapsed.has(row.path)) {toggle(row.path);} }
+      if (e.key === 'ArrowLeft' && row.kind !== 'match') { e.preventDefault(); if (!collapsed.has(row.path)) {toggle(row.path);} }
+      if (e.key === 'Delete') {removeRow(row);}
     }}>
-      <div style={{ height: contentHeight, position: 'relative' }}>{visible.map((row, offset) => <div role="treeitem" aria-level={row.depth + 1} aria-selected={selected === first + offset} aria-expanded={row.kind !== 'match' ? !collapsed.has(row.path) : undefined} aria-label={row.kind !== 'match' ? `${row.name}, ${row.count} matches` : `${basename(row.match.path)}:${row.match.line}:${row.match.column}: ${row.match.preview}`} key={row.kind !== 'match' ? row.path : `${row.index}:${row.match.path}`} className={`result-row ${row.kind} ${selected === first + offset ? 'selected' : ''}`} style={{ top: (first + offset) * resultHeight, paddingLeft: 18 + row.depth * 12 + (row.kind === 'match' ? 18 : 0) }} onClick={() => { setSelected(first + offset); viewport.current?.focus(); if (row.kind !== 'match') toggle(row.path); else void openMatch(row.match).catch(e => notify(errorMessage(e))); }} onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, row }); }}>
+      <div style={{ height: contentHeight, position: 'relative' }}>{visible.map((row, offset) => <div role="treeitem" aria-level={row.depth + 1} aria-selected={selected === first + offset} aria-expanded={row.kind !== 'match' ? !collapsed.has(row.path) : undefined} aria-label={row.kind !== 'match' ? `${row.name}, ${row.count} matches` : `${basename(row.match.path)}:${row.match.line}:${row.match.column}: ${row.match.preview}`} key={row.kind !== 'match' ? row.path : `${row.index}:${row.match.path}`} className={`result-row ${row.kind} ${selected === first + offset ? 'selected' : ''}`} style={{ top: (first + offset) * resultHeight, paddingLeft: 18 + row.depth * 12 + (row.kind === 'match' ? 18 : 0) }} onClick={() => { setSelected(first + offset); viewport.current?.focus(); if (row.kind !== 'match') {toggle(row.path);} else {void openMatch(row.match).catch(e => notify(errorMessage(e)));} }} onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, row }); }}>
         {!listMode && Array.from({ length: row.depth }, (_, level) => <span key={level} className="result-indent-guide" aria-hidden="true" style={{ left: 26 + level * 12 }} />)}
         {row.kind !== 'match' ? <><Icon name={collapsed.has(row.path) ? 'chevron-right' : 'chevron-down'} />{row.kind === 'file' && <span className="result-file-icon"><FileIcon language={languageFor(row.path)} /></span>}<span className="result-filename" title={row.name}>{row.name}</span>{listMode && <span className="muted result-path" title={relative(row.path)}>{relative(row.path).split(/[\\/]/).slice(0, -1).join('\\')}</span>}<span className="count">{row.count}</span></> : <><span className="result-preview" title={`${relative(row.match.path)}:${row.match.line}:${row.match.column}\n${row.match.preview}`}>{highlight(row.match)}</span>{replace && <button className="inline-action" aria-label="Replace Match" title="Replace Match" onClick={e => { e.stopPropagation(); void replaceRows([row.match]); }}><Icon name="replace" /></button>}<button className="inline-action" aria-label="Remove Result" title="Remove Result" onClick={e => { e.stopPropagation(); removeRow(row); }}><Icon name="close" /></button></>}
       </div>)}</div>

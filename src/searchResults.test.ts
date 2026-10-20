@@ -22,7 +22,7 @@ describe('Search result layouts', () => {
       ['app', 0, 4], ['src', 1, 4], ['maps', 2, 2], ['maps-other', 2, 1],
     ]);
     expect(rows.find(row => row.kind === 'file' && row.name === 'Map.tsx')?.depth).toBe(3);
-    for (const row of rows) if (row.kind === 'match') expect(results[row.index]).toBe(row.match);
+    for (const row of rows) {if (row.kind === 'match') {expect(results[row.index]).toBe(row.match);}}
     expect(searchRowMatches(tree[0])).toHaveLength(4);
   });
 

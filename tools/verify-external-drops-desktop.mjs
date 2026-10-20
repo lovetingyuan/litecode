@@ -19,9 +19,10 @@ await copyFile(binary, path.join(app, 'LiteCode.exe'));
 await writeFile(path.join(app, 'data/session-main.json'), JSON.stringify({ root, documents: [], session: {} }));
 let session;
 async function request(method, route, body) {
+  // oxlint-disable-next-line unicorn/no-invalid-fetch-options -- The caller supplies the HTTP method; GET requests omit the body.
   const response = await fetch(endpoint + route, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   const payload = await response.json();
-  if (payload.value?.error) throw new Error(JSON.stringify(payload.value));
+  if (payload.value?.error) {throw new Error(JSON.stringify(payload.value));}
   return payload.value;
 }
 const route = suffix => `/session/${session}${suffix}`;
@@ -29,7 +30,7 @@ const exec = (script, args = []) => request('POST', route('/execute/sync'), { sc
 async function wait(script, message) {
   const start = Date.now();
   while (Date.now() - start < 20000) {
-    if (await exec(script)) return;
+    if (await exec(script)) {return;}
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error(`${message}: ${await exec('return document.body.innerText.slice(-900)')}`);
@@ -74,10 +75,10 @@ try {
   await wait('return !document.querySelector(".modal-actions")', 'Replace did not close confirmation');
   const started = Date.now();
   while (await readFile(path.join(root, 'target/hello 中文.txt'), 'utf8') !== 'replacement') {
-    if (Date.now() - started > 10000) throw new Error('Replacement did not reach disk');
+    if (Date.now() - started > 10000) {throw new Error('Replacement did not reach disk');}
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   console.log('PASS: collision Skip and Replace through native IPC');
 } finally {
-  if (session) await request('DELETE', route('')).catch(() => {});
+  if (session) {await request('DELETE', route('')).catch(() => {});}
 }

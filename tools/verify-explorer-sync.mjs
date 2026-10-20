@@ -19,7 +19,7 @@ let restored = false;
 page.on('pageerror', error => errors.push(String(error)));
 page.on('request', request => {
   const name = new URL(request.url()).pathname.match(/^\/src\/(documents|store|Explorer)\.tsx?$/)?.[1];
-  if (name && !urls[name]) urls[name] = request.url();
+  if (name && !urls[name]) {urls[name] = request.url();}
 });
 await page.addInitScript(() => {
   // Delay chosen Worker inputs to exercise stale responses without replacing its implementation.
@@ -31,8 +31,8 @@ await page.addInitScript(() => {
       this.addEventListener('message', () => { window.treeWorkerReplies++; });
     }
     postMessage(message, ...args) {
-      if (window.treeWorkerDelay) setTimeout(() => super.postMessage(message, ...args), window.treeWorkerDelay);
-      else super.postMessage(message, ...args);
+      if (window.treeWorkerDelay) {setTimeout(() => super.postMessage(message, ...args), window.treeWorkerDelay);}
+      else {super.postMessage(message, ...args);}
     }
   };
 });
@@ -78,7 +78,7 @@ const open = (path, options = {}) => action('documents', 'openPath', `${root}/${
 async function scrollTop(value) {
   return tree.evaluate((host, value) => {
     const scroller = host.shadowRoot.querySelector('[data-file-tree-virtualized-scroll]');
-    if (value !== undefined) scroller.scrollTop = value;
+    if (value !== undefined) {scroller.scrollTop = value;}
     return scroller.scrollTop;
   }, value);
 }
@@ -89,7 +89,7 @@ async function revealed(path) {
     const selected = [...(shadow?.querySelectorAll('[aria-selected="true"]') ?? [])];
     const row = selected[0];
     const scroller = shadow?.querySelector('[data-file-tree-virtualized-scroll]');
-    if (selected.length !== 1 || row.dataset.itemPath !== path || !scroller) return false;
+    if (selected.length !== 1 || row.dataset.itemPath !== path || !scroller) {return false;}
     const bounds = row.getBoundingClientRect();
     const viewport = scroller.getBoundingClientRect();
     return bounds.top >= viewport.top - 1 && bounds.bottom <= viewport.bottom + 1 && viewport.height > 0;
@@ -141,7 +141,7 @@ try {
     assert.equal(metrics.bottomGap, 32, 'The last row has 32px of scrollable space below it');
     assert.equal(metrics.outsideGap, 0, 'No fixed gap is reserved outside the scroller');
     assert.equal(metrics.scrollTop, metrics.max, 'The scrollbar reaches the end of the padding');
-    if (height === 820) await page.screenshot({ path: `${output}/scrollable-bottom-spacing.png` });
+    if (height === 820) {await page.screenshot({ path: `${output}/scrollable-bottom-spacing.png` });}
     await scrollTop(metrics.max - 16);
     await page.waitForTimeout(100);
     assert.equal(await row(files.at(-1)).evaluate(element => {
@@ -277,7 +277,7 @@ try {
     window.refreshFocus = document.activeElement;
     window.recordRefresh = true;
     const sample = () => {
-      if (!window.recordRefresh) return;
+      if (!window.recordRefresh) {return;}
       const shadow = document.querySelector('file-tree-container')?.shadowRoot;
       window.refreshFrames.push({
         expanded: ['alpha/', 'beta/', 'unrelated/'].map(path => shadow?.querySelector(`[data-item-path="${path}"]`)?.getAttribute('aria-expanded')),

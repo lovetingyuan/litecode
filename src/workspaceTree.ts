@@ -6,7 +6,7 @@ const scans = new Map<string, { pending: boolean; promise: Promise<void> }>();
 
 export function refreshTree(): Promise<void> {
   const root = useApp.getState().root;
-  if (!root) return Promise.resolve();
+  if (!root) {return Promise.resolve();}
   const previous = scans.get(root);
   if (previous) {
     previous.pending = true;
@@ -22,9 +22,9 @@ export function refreshTree(): Promise<void> {
         scan.pending = false;
         try {
           const tree = await call<TreeSnapshot>('scan_workspace');
-          if (useApp.getState().root === root) setApp({ tree, treeRoot: root });
+          if (useApp.getState().root === root) {setApp({ tree, treeRoot: root });}
         } catch (error) {
-          if (useApp.getState().root === root) notify(errorMessage(error));
+          if (useApp.getState().root === root) {notify(errorMessage(error));}
         }
       }
     } finally {

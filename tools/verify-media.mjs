@@ -26,7 +26,7 @@ wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8
 wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
 wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
 wav.write('data', 36); wav.writeUInt32LE(wav.length - 44, 40);
-for (let n = 0; n < 16000; n++) wav.writeInt16LE(Math.round(Math.sin(n * 2 * Math.PI * 440 / 8000) * 8000), 44 + n * 2);
+for (let n = 0; n < 16000; n++) {wav.writeInt16LE(Math.round(Math.sin(n * 2 * Math.PI * 440 / 8000) * 8000), 44 + n * 2);}
 await writeFile(path.join(root, 'tone.wav'), wav);
 await writeFile(path.join(root, 'animation.gif'), Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
 const server = createServer();
@@ -40,8 +40,8 @@ const errors = [], checks = [];
 try {
   const endpoint = `http://127.0.0.1:${port}`;
   for (let attempt = 0; attempt < 120; attempt++) {
-    if (child.exitCode !== null) throw new Error(`App exited ${child.exitCode}: ${log}`);
-    if (await fetch(`${endpoint}/json/version`).then(r => r.ok).catch(() => false)) break;
+    if (child.exitCode !== null) {throw new Error(`App exited ${child.exitCode}: ${log}`);}
+    if (await fetch(`${endpoint}/json/version`).then(r => r.ok).catch(() => false)) {break;}
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   browser = await chromium.connectOverCDP(endpoint);
@@ -71,7 +71,7 @@ try {
     const images = Object.fromEntries(['png', 'jpeg', 'webp'].map(type => [type, canvas.toDataURL(`image/${type}`).split(',')[1]]));
     return { images };
   });
-  for (const [type, bytes] of Object.entries(fixtures.images)) await writeFile(path.join(root, `image #+中文.${type === 'jpeg' ? 'JpEg' : type}`), Buffer.from(bytes, 'base64'));
+  for (const [type, bytes] of Object.entries(fixtures.images)) {await writeFile(path.join(root, `image #+中文.${type === 'jpeg' ? 'JpEg' : type}`), Buffer.from(bytes, 'base64'));}
   await copyFile(new URL('./fixtures/media.webm', import.meta.url), path.join(root, 'movie.webm'));
   const bitmap = Buffer.alloc(58); bitmap.write('BM'); bitmap.writeUInt32LE(58, 2); bitmap.writeUInt32LE(54, 10); bitmap.writeUInt32LE(40, 14); bitmap.writeInt32LE(1, 18); bitmap.writeInt32LE(1, 22); bitmap.writeUInt16LE(1, 26); bitmap.writeUInt16LE(24, 28); bitmap[54] = 255;
   await writeFile(path.join(root, 'pixel.bmp'), bitmap);
@@ -177,13 +177,13 @@ try {
   await page.getByText('The file could not be found. It may have been moved or deleted.', { exact: true }).waitFor();
   checks.push('Media rename preserves tab and zoom; deletion displays file missing state');
   const backup = JSON.parse(await readFile(path.join(data, 'session-main.json'), 'utf8'));
-  for (const id of [audioId, videoId]) assert.equal(backup.documents.find(d => d.id === id).text, '');
+  for (const id of [audioId, videoId]) {assert.equal(backup.documents.find(d => d.id === id).text, '');}
   assert.equal(errors.length, 0, errors.join('\n'));
   await writeFile(path.join(run, 'report.json'), JSON.stringify({ checks, errors, log }, null, 2));
   console.log(JSON.stringify({ run, checks, errors }, null, 2));
 } catch (error) {
   if (page) { await page.screenshot({ path: path.join(run, 'failure.png') }).catch(() => {}); console.error(await page.locator('body').innerText().catch(() => '')); }
-  if (page) console.error(JSON.stringify(await page.evaluate(() => ({ images: [...document.images].map(i => ({ src: i.src, width: i.naturalWidth, complete: i.complete, html: i.outerHTML })), resources: performance.getEntriesByType('resource').filter(e => e.name.includes('media.localhost')).map(e => ({ name: e.name, duration: e.duration })), preview: document.querySelector('.media-preview')?.outerHTML })).catch(() => null), null, 2));
+  if (page) {console.error(JSON.stringify(await page.evaluate(() => ({ images: [...document.images].map(i => ({ src: i.src, width: i.naturalWidth, complete: i.complete, html: i.outerHTML })), resources: performance.getEntriesByType('resource').filter(e => e.name.includes('media.localhost')).map(e => ({ name: e.name, duration: e.duration })), preview: document.querySelector('.media-preview')?.outerHTML })).catch(() => null), null, 2));}
   console.error(log); throw error;
 } finally {
   await browser?.close().catch(() => {}); child.kill();

@@ -11,7 +11,7 @@ export function ask(title: string, message: string, choices: string[], options?:
       if (options?.signal?.aborted) { resolve(null); next(); return; }
       let settled = false;
       const finish = (choice: string | null) => {
-        if (settled) return;
+        if (settled) {return;}
         settled = true;
         options?.signal?.removeEventListener('abort', cancel);
         useDialog.setState({ request: null }); resolve(choice); next();
@@ -31,7 +31,7 @@ export function input(title: string, value = ''): Promise<string | null> {
 }
 export function DialogHost() {
   const request = useDialog(s => s.request);
-  return <Dialog.Root open={!!request} onOpenChange={open => { if (!open) request?.resolve(null); }}>
+  return <Dialog.Root open={!!request} onOpenChange={open => { if (!open) {request?.resolve(null);} }}>
     <Dialog.Portal><Dialog.Backdrop className="modal-backdrop" /><Dialog.Popup className={`modal-panel${request?.items ? ' move-confirmation' : ''}`}>
       {request?.items && <><Icon name="info" className="move-info" /><IconButton icon="close" label="Close" className="move-close" onClick={() => request.resolve(null)} /></>}
       <Dialog.Title>{request?.title}</Dialog.Title>

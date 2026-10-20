@@ -15,7 +15,7 @@ const errors = [];
 page.on('pageerror', error => errors.push(String(error)));
 page.on('request', request => {
   const name = new URL(request.url()).pathname.match(/^\/src\/(documents|store)\.tsx?$/)?.[1];
-  if (name && !urls[name]) urls[name] = request.url();
+  if (name && !urls[name]) {urls[name] = request.url();}
 });
 await page.addInitScript(({ paths, root }) => {
   window.moveFixture = { paths, root, calls: [], executionDelay: 0, scanDelay: 0, failAfter: null };
@@ -94,7 +94,7 @@ async function over(target) {
 async function drop(from, target) { await beginDrag(from); await over(target); await page.mouse.up(); }
 async function multiSelect(paths) {
   await row(paths[0]).click();
-  for (const path of paths.slice(1)) await row(path).click({ modifiers: ['Control'] });
+  for (const path of paths.slice(1)) {await row(path).click({ modifiers: ['Control'] });}
 }
 async function noDialog() { assert.equal(await dialog.count(), 0); }
 async function confirm() { await dialog.waitFor(); await dialog.getByRole('button', { name: 'Move', exact: true }).click(); await dialog.waitFor({ state: 'detached' }); }
@@ -125,9 +125,9 @@ try {
   for (const cancel of ['escape', 'close', 'backdrop']) {
     await drop('source/a.txt', row('target/'));
     await dialog.waitFor();
-    if (cancel === 'escape') await page.keyboard.press('Escape');
-    if (cancel === 'close') await dialog.getByRole('button', { name: 'Close', exact: true }).click();
-    if (cancel === 'backdrop') await page.mouse.click(4, 100);
+    if (cancel === 'escape') {await page.keyboard.press('Escape');}
+    if (cancel === 'close') {await dialog.getByRole('button', { name: 'Close', exact: true }).click();}
+    if (cancel === 'backdrop') {await page.mouse.click(4, 100);}
     await dialog.waitFor({ state: 'detached' });
     assert.equal(await executions(), 0);
     assert.deepEqual(await selected(), ['source/a.txt', 'source/b.txt']);
@@ -223,7 +223,7 @@ try {
   await noDialog();
   console.log('PASS: Shift range selection, same-directory no-op and descendant drop rejection');
 
-  if (await row('source/folder/').getAttribute('aria-expanded') !== 'true') await row('source/folder/').click();
+  if (await row('source/folder/').getAttribute('aria-expanded') !== 'true') {await row('source/folder/').click();}
   await multiSelect(['source/a.txt', 'source/folder/deep.txt', 'source/folder/']);
   await drop('source/folder/', row('target/'));
   await dialog.waitFor();

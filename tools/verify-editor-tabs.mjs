@@ -14,7 +14,7 @@ const errors = [];
 let restoreSession = false;
 let documentsUrl;
 page.on('request', request => {
-  if (!documentsUrl && new URL(request.url()).pathname === '/src/documents.ts') documentsUrl = request.url();
+  if (!documentsUrl && new URL(request.url()).pathname === '/src/documents.ts') {documentsUrl = request.url();}
 });
 page.on('pageerror', error => errors.push(String(error)));
 await page.route('**/src/bridge.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
@@ -82,7 +82,7 @@ try {
   const overlay = page.locator('.editor-tabs-scrollbar').first();
   const slider = overlay.locator('.editor-tabs-scrollbar-thumb');
   assert.equal(await overlay.isVisible(), false, 'No scrollbar is shown when tabs fit');
-  for (const name of files.slice(1)) await open(name, true);
+  for (const name of files.slice(1)) {await open(name, true);}
   await page.screenshot({ path: `${output}/overflow.png` });
   assert.ok((await geometry()).scrollWidth > (await geometry()).width);
   assert.equal(await bar().evaluate(element => element.offsetHeight - element.clientHeight), 0, 'The tab scrollbar does not reserve layout height');
@@ -210,7 +210,7 @@ try {
   const secondGroup = await documentAction('splitGroup');
   await visible('The source group is revealed after splitting');
   await visible('The new group reveals its active tab', 1);
-  for (const name of files) await documentAction('openPath', `C:/tab-fixture/${name}`, { group: secondGroup, pinned: true });
+  for (const name of files) {await documentAction('openPath', `C:/tab-fixture/${name}`, { group: secondGroup, pinned: true });}
   await visible('New tabs in a split group are revealed', 1);
   await bar().evaluate(element => { element.scrollLeft = 0; });
   await documentAction('openPath', `C:/tab-fixture/${files[0]}`, { group: secondGroup });

@@ -31,9 +31,9 @@ export const useApp = create<State>(set => ({
     const changed = !!next.groups && (ids.length !== state.groups.length || ids.some((id, i) => id !== state.groups[i].id));
     if (changed || 'editorLayout' in next) {
       let layout = 'editorLayout' in next ? next.editorLayout ?? null : state.editorLayout;
-      if (!('editorLayout' in next) && layout) for (const id of layoutGroups(layout)) if (!ids.includes(id)) layout = layout && removeLayoutGroup(layout, id);
+      if (!('editorLayout' in next) && layout) {for (const id of layoutGroups(layout)) {if (!ids.includes(id)) {layout = layout && removeLayoutGroup(layout, id);}}}
       next.editorLayout = ids.length ? restoreLayout(layout, ids) : null;
-      if (next.editorLayout) next.groups = layoutGroups(next.editorLayout).map(id => groups.find(g => g.id === id)!);
+      if (next.editorLayout) {next.groups = layoutGroups(next.editorLayout).map(id => groups.find(g => g.id === id)!);}
     }
     if (changed || next.activeGroup !== undefined || next.groupMru !== undefined) {
       const mru = [...new Set([...(next.groupMru ?? state.groupMru), ...ids])].filter(id => ids.includes(id));

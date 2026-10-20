@@ -20,7 +20,7 @@ for (const [file, text] of Object.entries({
   'tracked.txt': 'tracked despite matching ignore rule',
   'src/.gitignore': 'cache/\n', 'src/cache/cached.txt': 'nested ignored child',
   'server/api/hello.txt': 'visible before server is ignored',
-})) await writeFile(path.join(root, file), text);
+})) {await writeFile(path.join(root, file), text);}
 function git(...args) {
   const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true });
   assert.equal(result.status, 0, result.stderr);
@@ -48,9 +48,9 @@ try {
   const endpoint = `http://127.0.0.1:${port}`;
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    if (launchError) throw launchError;
-    if (child.exitCode !== null) throw new Error(`Native app exited: ${child.exitCode}`);
-    if (await fetch(`${endpoint}/json/version`).then(r => r.ok).catch(() => false)) break;
+    if (launchError) {throw launchError;}
+    if (child.exitCode !== null) {throw new Error(`Native app exited: ${child.exitCode}`);}
+    if (await fetch(`${endpoint}/json/version`).then(r => r.ok).catch(() => false)) {break;}
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   browser = await chromium.connectOverCDP(endpoint);
@@ -159,7 +159,7 @@ try {
   throw error;
 } finally {
   // Only the isolated process created above is terminated.
-  if (page) await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('plugin:window|destroy', { label: 'main' })).catch(() => {});
+  if (page) {await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('plugin:window|destroy', { label: 'main' })).catch(() => {});}
   await browser?.close().catch(() => {});
-  if (child.exitCode === null && child.pid) child.kill();
+  if (child.exitCode === null && child.pid) {child.kill();}
 }

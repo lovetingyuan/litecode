@@ -7,8 +7,8 @@ import { mkdir, copyFile, writeFile, readFile, access } from 'node:fs/promises';
 const run = path.resolve('.verification', `explorer-moves-desktop-${Date.now()}`);
 const app = path.join(run, 'app'), data = path.join(app, 'data'), root = path.join(run, 'fixture');
 await mkdir(data, { recursive: true });
-for (const dir of ['source/folder', 'target', 'secondary/source/folder', 'secondary/target']) await mkdir(path.join(root, dir), { recursive: true });
-for (const file of ['source/a.txt', 'source/b.txt', 'source/folder/deep.txt', 'secondary/source/a.txt', 'secondary/source/b.txt', 'secondary/source/folder/deep.txt']) await writeFile(path.join(root, file), `disk ${file}`);
+for (const dir of ['source/folder', 'target', 'secondary/source/folder', 'secondary/target']) {await mkdir(path.join(root, dir), { recursive: true });}
+for (const file of ['source/a.txt', 'source/b.txt', 'source/folder/deep.txt', 'secondary/source/a.txt', 'secondary/source/b.txt', 'secondary/source/folder/deep.txt']) {await writeFile(path.join(root, file), `disk ${file}`);}
 await copyFile('src-tauri/target/debug/litecode.exe', path.join(app, 'LiteCode.exe'));
 await writeFile(path.join(data, 'session-main.json'), JSON.stringify({ root, documents: [], session: {} }));
 await writeFile(path.join(data, 'settings.json'), JSON.stringify({ 'files.autoSave': 'off' }));
@@ -16,22 +16,23 @@ const endpoint = process.env.LITECODE_DRIVER_URL ?? 'http://127.0.0.1:4447';
 let session;
 const url = route => `/session/${session}${route}`;
 async function request(method, route, body) {
+  // oxlint-disable-next-line unicorn/no-invalid-fetch-options -- The caller supplies the HTTP method; GET requests omit the body.
   const response = await fetch(endpoint + route, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   const result = await response.json();
-  if (result.value?.error) throw new Error(`${result.value.error}: ${result.value.message}`);
+  if (result.value?.error) {throw new Error(`${result.value.error}: ${result.value.message}`);}
   return result.value;
 }
 async function exec(script, args = []) { return request('POST', url('/execute/sync'), { script, args }); }
 async function asyncExec(script, args = []) { return request('POST', url('/execute/async'), { script, args }); }
 async function invoke(command, args = {}) {
   const result = await asyncExec('const done=arguments[arguments.length-1]; window.__TAURI_INTERNALS__.invoke(arguments[0], arguments[1]).then(value=>done({value}),error=>done({error}));', [command, args]);
-  if (result.error) throw new Error(JSON.stringify(result.error));
+  if (result.error) {throw new Error(JSON.stringify(result.error));}
   return result.value;
 }
 async function wait(script, message, timeout = 30000) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
-    if (await exec(script)) return;
+    if (await exec(script)) {return;}
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error(message);
@@ -59,7 +60,7 @@ async function screenshot(name) {
 }
 async function openAndEdit(file) {
   const result = await asyncExec(`const done=arguments[arguments.length-1]; import('/src/documents.ts').then(async d=>{const id=await d.openPath(arguments[0],{pinned:true}); d.models.get(id).setValue('unsaved native edit');done({id});}).catch(e=>done({error:String(e)}));`, [file]);
-  if (result.error) throw new Error(result.error);
+  if (result.error) {throw new Error(result.error);}
   return result.id;
 }
 async function exercise(base, name) {
@@ -117,7 +118,7 @@ try {
   let handles;
   for (let i = 0; i < 100; i++) {
     handles = await request('GET', url('/window/handles'));
-    if (handles.length > before.length) break;
+    if (handles.length > before.length) {break;}
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   const other = handles.find(h => !before.includes(h));
@@ -133,5 +134,5 @@ try {
   }
   throw error;
 } finally {
-  if (session) await request('DELETE', url('')).catch(() => {});
+  if (session) {await request('DELETE', url('')).catch(() => {});}
 }

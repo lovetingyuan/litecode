@@ -14,7 +14,7 @@ const urls = {}, errors = [];
 page.on('pageerror', error => errors.push(String(error)));
 page.on('request', request => {
   const match = new URL(request.url()).pathname.match(/^\/src\/(store|documents)\.ts$/);
-  if (match) urls[match[1]] = request.url();
+  if (match) {urls[match[1]] = request.url();}
 });
 await page.route('**/src/bridge.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
 export const desktop = false;
@@ -141,7 +141,7 @@ try {
   await button('Toggle Search Details').click();
   assert.equal(await search.locator('input[type=checkbox],select').count(), 0);
   await shot('03-details');
-  for (const [label, field] of [['Match Case (Alt+C)', 'caseSensitive'], ['Match Whole Word (Alt+W)', 'wholeWord'], ['Use Regular Expression (Alt+R)', 'regex'], ['Search only Changed Files', 'changedOnly'], ['Search only in Open Editors', 'openOnly'], ['Use Exclude Settings and Ignore Files', 'useIgnore']]) await assertToggle(label, field);
+  for (const [label, field] of [['Match Case (Alt+C)', 'caseSensitive'], ['Match Whole Word (Alt+W)', 'wholeWord'], ['Use Regular Expression (Alt+R)', 'regex'], ['Search only Changed Files', 'changedOnly'], ['Search only in Open Editors', 'openOnly'], ['Use Exclude Settings and Ignore Files', 'useIgnore']]) {await assertToggle(label, field);}
   await search.getByLabel('files to include', { exact: true }).fill('*.md');
   await search.getByLabel('files to exclude', { exact: true }).fill('**/vendor/**');
   await settle();
@@ -151,14 +151,14 @@ try {
 
   const sash = page.getByRole('separator', { name: 'Primary side bar width' });
   await sash.focus();
-  for (let i = 0; i < 17; i++) await sash.press('ArrowLeft');
+  for (let i = 0; i < 17; i++) {await sash.press('ArrowLeft');}
   await page.waitForFunction(() => document.querySelector('.search-view').getBoundingClientRect().width < 270);
   await shot('04-narrow');
   assert.equal(await search.locator('.count').evaluateAll(elements => elements.every(e => {
     const row = e.parentElement.getBoundingClientRect(), r = e.getBoundingClientRect();
     return r.x >= row.x && r.right <= row.right;
   })), true, 'Count badges remain visible in a narrow sidebar');
-  for (let i = 0; i < 17; i++) await sash.press('ArrowRight');
+  for (let i = 0; i < 17; i++) {await sash.press('ArrowRight');}
 
   // Opening a preview must retain the original UTF-16 location after clipping.
   const distant = { ...matches[0], preview: 'x'.repeat(500) + 'function tail', column: 501, endColumn: 509 };

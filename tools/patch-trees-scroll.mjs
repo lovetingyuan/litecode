@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 // application-owned drop request so confirmation never needs an optimistic move.
 const root = new URL('../node_modules/@pierre/trees/', import.meta.url);
 const { version } = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'));
-if (version !== '1.0.0-beta.6') throw new Error('Review the trees scroll and drag patches before upgrading @pierre/trees.');
+if (version !== '1.0.0-beta.6') {throw new Error('Review the trees scroll and drag patches before upgrading @pierre/trees.');}
 
 const patches = [
   ['dist/model/layout.js', [
@@ -51,10 +51,10 @@ const updates = patches.map(([path, replacements]) => {
   const file = new URL(path, root);
   let source = readFileSync(file, 'utf8');
   for (const [before, after] of replacements) {
-    if (source.includes(after)) continue;
-    if (source.split(before).length !== 2) throw new Error(`Cannot apply trees scroll/drag patch to ${path}: ${before.slice(0, 90)}`);
+    if (source.includes(after)) {continue;}
+    if (source.split(before).length !== 2) {throw new Error(`Cannot apply trees scroll/drag patch to ${path}: ${before.slice(0, 90)}`);}
     source = source.replace(before, after);
   }
   return { file, source };
 });
-for (const { file, source } of updates) writeFileSync(file, source);
+for (const { file, source } of updates) {writeFileSync(file, source);}

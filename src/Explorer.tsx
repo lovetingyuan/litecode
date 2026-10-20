@@ -91,7 +91,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     renaming: { onRename: e => mutate(e.sourcePath, e.destinationPath), onError: notify },
     dragAndDrop: {
       canDrag: paths => {
-        if (moveBusy.current || !rootRef.current) return false
+        if (moveBusy.current || !rootRef.current) {return false}
         draggedPaths.current = paths
         return true
       },
@@ -111,7 +111,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   const rootRef = useRef(root)
   rootRef.current = root
   const clipboardRef = useRef<ReturnType<typeof createExplorerClipboard> | null>(null)
-  if (!clipboardRef.current) clipboardRef.current = createExplorerClipboard({
+  if (!clipboardRef.current) {clipboardRef.current = createExplorerClipboard({
     read: () => desktop ? call<FileClipboard>('read_file_clipboard') : Promise.resolve({ sequence: null, paths: [] }),
     confirm: async (paths, directory, signal) => (await ask(
       `Copy ${paths.length === 1 ? `'${basename(paths[0])}'` : `the following ${paths.length} files and folders`} into '${basename(directory)}'?`,
@@ -124,12 +124,12 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     pasteInternal: async (source, destination, cut) => {
       moveExecuting.current = true
       await call('file_operation', { operation: { kind: cut ? 'rename' : 'copy', path: source, destination } })
-      if (cut) await renameDocumentPaths(source, destination)
+      if (cut) {await renameDocumentPaths(source, destination)}
     },
-  })
+  })}
   async function paste(path: string) {
     const base = rootRef.current
-    if (!base || moveBusy.current) return
+    if (!base || moveBusy.current) {return}
     const parent = pasteDirectory(path, model.getItem(path)?.isDirectory() ?? false)
     const destination = parent ? join(base, parent) : base
     const abort = new AbortController()
@@ -137,17 +137,17 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     moveBusy.current = true
     const operation = operationQueue.current.then(async () => {
       try {
-        if (abort.signal.aborted) return
+        if (abort.signal.aborted) {return}
         const report = await clipboardRef.current!.paste(base, destination, abort.signal)
-        if (abort.signal.aborted || rootRef.current !== base || !report) return
+        if (abort.signal.aborted || rootRef.current !== base || !report) {return}
         if (report.copied.length) {
           pendingMoveSelection.current = report.copied.map(item => relative(item.to, base))
           revealPending.current = false
           setExpanded(true)
         }
-        if (report.failed.length) notify(`Pasted ${report.copied.length} item(s).\n${report.failed.map(item => `${pathTitle(item.path)}: ${item.message}`).join('\n')}`)
+        if (report.failed.length) {notify(`Pasted ${report.copied.length} item(s).\n${report.failed.map(item => `${pathTitle(item.path)}: ${item.message}`).join('\n')}`)}
       } catch (error) {
-        if (!abort.signal.aborted) notify(errorMessage(error))
+        if (!abort.signal.aborted) {notify(errorMessage(error))}
       } finally {
         const executed = moveExecuting.current
         moveExecuting.current = false
@@ -157,7 +157,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
           }
         } finally {
           moveBusy.current = false
-          if (pasteAbort.current === abort) pasteAbort.current = null
+          if (pasteAbort.current === abort) {pasteAbort.current = null}
         }
       }
     })
@@ -167,7 +167,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   useEffect(() => registerExternalExplorer({
     resolve: targets => {
       const container = targets.find(target => target instanceof HTMLElement && target.matches('.explorer')) as HTMLElement | undefined
-      if (!container || !rootRef.current) return null
+      if (!container || !rootRef.current) {return null}
       const row = targets.find(target => target instanceof HTMLElement && target.hasAttribute('data-item-path')) as HTMLElement | undefined
       const path = row?.dataset.itemPath
       const item = path ? model.getItem(path) : null
@@ -176,19 +176,19 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       const folderRow = directory ? treeContainer?.shadowRoot?.querySelector<HTMLElement>(`[data-item-path="${CSS.escape(directory)}"]`) : null
       return {
         element: folderRow ?? (directory && row ? row : container), directory,
-        hover: item?.isDirectory() ? () => { if ('expand' in item) item.expand() } : undefined,
+        hover: item?.isDirectory() ? () => { if ('expand' in item) {item.expand()} } : undefined,
         scroll: treeContainer?.shadowRoot?.querySelector<HTMLElement>('[data-file-tree-virtualized-scroll]') ?? undefined,
       }
     },
     copy: async (drop, directory, signal) => {
       const base = rootRef.current
-      if (!base || signal.aborted) return
+      if (!base || signal.aborted) {return}
       if (moveBusy.current) { notify('Another file operation is in progress. Please drag the items again.'); return }
       moveBusy.current = true
       let executed = false
       const operation = operationQueue.current.then(async () => {
         try {
-          if (signal.aborted || rootRef.current !== base) return
+          if (signal.aborted || rootRef.current !== base) {return}
           const args = { batchId: drop.batchId, expectedRoot: base, targetDirectory: directory ? join(base, directory) : base }
           const report = await copyDroppedItems(drop.items, {
             plan: index => call<ExternalCopyPlan>('plan_external_copy', { ...args, index }),
@@ -201,13 +201,13 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
               return call('copy_external_item', { ...args, index, expectedTarget: plan.existing, replace: plan.existing !== null })
             },
           }, signal)
-          if (rootRef.current !== base || signal.aborted) return
+          if (rootRef.current !== base || signal.aborted) {return}
           if (report.copied.length) {
             pendingMoveSelection.current = report.copied.map(item => relative(item.to, base))
             revealPending.current = false
             setExpanded(true)
           }
-          if (report.failed.length) notify(`Copied ${report.copied.length} item(s).\n${report.failed.map(item => `${pathTitle(item.path)}: ${item.message}`).join('\n')}`)
+          if (report.failed.length) {notify(`Copied ${report.copied.length} item(s).\n${report.failed.map(item => `${pathTitle(item.path)}: ${item.message}`).join('\n')}`)}
           if (report.copied.length === 1) {
             const copied = report.copied[0]
             if (drop.items.some(item => normalize(item.path) === normalize(copied.from) && !item.directory)) {
@@ -215,10 +215,10 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
             }
           }
         } catch (error) {
-          if (!signal.aborted) notify(errorMessage(error))
+          if (!signal.aborted) {notify(errorMessage(error))}
         } finally {
           moveExecuting.current = false
-          try { if (executed && rootRef.current === base) await refreshTree() }
+          try { if (executed && rootRef.current === base) {await refreshTree()} }
           finally { moveBusy.current = false }
         }
       })
@@ -227,17 +227,17 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     },
   }), [model])
   function rootContext(event: MouseEvent<HTMLElement>) {
-    if (!rootRef.current || isEditableTreeEvent(event.nativeEvent)) return
-    if (event.nativeEvent.composedPath().some(target => target instanceof HTMLElement && target.hasAttribute('data-item-path'))) return
+    if (!rootRef.current || isEditableTreeEvent(event.nativeEvent)) {return}
+    if (event.nativeEvent.composedPath().some(target => target instanceof HTMLElement && target.hasAttribute('data-item-path'))) {return}
     event.preventDefault()
     const anchor = { getBoundingClientRect: () => DOMRect.fromRect({ x: event.clientX, y: event.clientY, width: 1, height: 1 }) }
     // Base UI accepts a virtual anchor for the tree's empty area and workspace heading.
     setContext({ path: '', anchor })
   }
   function clipboardKey(event: KeyboardEvent<HTMLElement>, path: string) {
-    if (isEditableTreeEvent(event.nativeEvent) || event.altKey || event.shiftKey || !event.ctrlKey) return false
+    if (isEditableTreeEvent(event.nativeEvent) || event.altKey || event.shiftKey || !event.ctrlKey) {return false}
     const kind = ({ c: 'copy', x: 'cut', v: 'paste' } as Record<string, string>)[event.key.toLowerCase()]
-    if (!kind) return false
+    if (!kind) {return false}
     event.preventDefault()
     event.stopPropagation()
     void action(kind, path)
@@ -246,7 +246,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   async function requestMove(event: FileTreeDropContext) {
     const base = rootRef.current
     const planned = treeMovePlan(event.draggedPaths, event.target.directoryPath)
-    if (!base || moveBusy.current || !planned?.length) return
+    if (!base || moveBusy.current || !planned?.length) {return}
     moveBusy.current = true
     const abort = new AbortController()
     moveAbort.current = abort
@@ -254,14 +254,14 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     let releaseDocuments: (() => void) | undefined
     try {
       await operationQueue.current
-      if (abort.signal.aborted) return
+      if (abort.signal.aborted) {return}
       const args = {
         sources: planned.map(p => join(base, p.from)),
         targetDirectory: event.target.directoryPath ? join(base, event.target.directoryPath) : base,
         expectedRoot: base,
       }
       const moves = await call<FileMove[]>('plan_file_moves', args)
-      if (abort.signal.aborted || !moves.length) return
+      if (abort.signal.aborted || !moves.length) {return}
       const names = moves.map(move => basename(move.from))
       const destination = event.target.directoryPath?.replace(/\/$/, '') || basename(base)
       const choice = await ask(
@@ -271,10 +271,10 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
           signal: abort.signal,
         },
       )
-      if (choice !== 'Move' || abort.signal.aborted) return
+      if (choice !== 'Move' || abort.signal.aborted) {return}
       moveExecuting.current = true
       releaseDocuments = await beginDocumentMove(moves.map(move => move.from))
-      if (abort.signal.aborted) return
+      if (abort.signal.aborted) {return}
       const report = await call<MoveReport>('move_files', args)
       // Always rebind successful disk moves, including a partially failed batch.
       await renameDocuments(report.moved)
@@ -288,9 +288,9 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         model.batch(operations)
         revealPending.current = false
       }
-      if (report.failed.length) notify(`Moved ${report.moved.length} item(s). The remaining items were not moved.\n${report.failed.map(f => `${relative(f.path, base)}: ${f.message}`).join('\n')}`)
+      if (report.failed.length) {notify(`Moved ${report.moved.length} item(s). The remaining items were not moved.\n${report.failed.map(f => `${relative(f.path, base)}: ${f.message}`).join('\n')}`)}
     } catch (e) {
-      if (!abort.signal.aborted) notify(errorMessage(e))
+      if (!abort.signal.aborted) {notify(errorMessage(e))}
     } finally {
       releaseDocuments?.()
       const executed = moveExecuting.current
@@ -305,20 +305,20 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         }
       } finally {
         moveBusy.current = false
-        if (moveAbort.current === abort) moveAbort.current = null
+        if (moveAbort.current === abort) {moveAbort.current = null}
       }
     }
   }
   function openTreeFile(event: Event, pinned = false) {
     // Rows live in the tree's shadow DOM; ignore rename inputs and empty space.
     const targets = event.composedPath()
-    if (targets.some(target => target instanceof HTMLInputElement)) return false
+    if (targets.some(target => target instanceof HTMLInputElement)) {return false}
     const row = targets.find(
       target => target instanceof HTMLElement && target.hasAttribute('data-item-path'),
     ) as HTMLElement | undefined
     const path = row?.dataset.itemPath
     const item = path ? model.getItem(path) : null
-    if (!path || !item || item.isDirectory() || !rootRef.current) return false
+    if (!path || !item || item.isDirectory() || !rootRef.current) {return false}
     void openPath(join(rootRef.current, path), { pinned, preserveFocus: !pinned }).catch(e =>
       notify(errorMessage(e)),
     )
@@ -326,7 +326,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   }
   function mutate(from: string, to: string) {
     const root = rootRef.current
-    if (!root) return
+    if (!root) {return}
     operationQueue.current = operationQueue.current.then(async () => {
       try {
         await call('file_operation', {
@@ -358,22 +358,22 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       }
     })
     w.onmessage = (event: MessageEvent<{ id: number; root: string; paths: string[] }>) => {
-      if (moveExecuting.current) return
+      if (moveExecuting.current) {return}
       const state = useApp.getState()
       if (event.data.id === generation.current && event.data.root === state.root && state.treeRoot === state.root) {
-        if (appliedRoot !== event.data.root) sync.reset(event.data.paths)
-        else sync.update(event.data.paths)
+        if (appliedRoot !== event.data.root) {sync.reset(event.data.paths)}
+        else {sync.update(event.data.paths)}
         appliedRoot = event.data.root
         const moved = pendingMoveSelection.current?.flatMap(path => model.getItem(path)?.getPath() ?? [])
         if (moved) {
           pendingMoveSelection.current = null
           revealPending.current = false
-          for (const selected of model.getSelectedPaths()) model.getItem(selected)?.deselect()
+          for (const selected of model.getSelectedPaths()) {model.getItem(selected)?.deselect()}
           for (const path of moved) {
             const parts = path.replace(/\/$/, '').split('/')
             for (let depth = 1; depth < parts.length; depth++) {
               const parent = model.getItem(parts.slice(0, depth).join('/'))
-              if (parent && 'expand' in parent) parent.expand()
+              if (parent && 'expand' in parent) {parent.expand()}
             }
             model.getItem(path)?.select()
           }
@@ -396,7 +396,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   }, [model])
   useEffect(() => {
     if (root && treeRoot === root)
-      worker.current?.postMessage({ id: ++generation.current, root, paths: tree.paths })
+      {worker.current?.postMessage({ id: ++generation.current, root, paths: tree.paths })}
   }, [tree.paths, root, treeRoot])
   useEffect(() => {
     model.setGitStatus(
@@ -421,23 +421,23 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   }, [])
   const active = docs[groups.find(g => g.id === activeGroup)?.active ?? '']
   useEffect(() => {
-    if (!moveExecuting.current && !pendingMoveSelection.current) revealPending.current = true
+    if (!moveExecuting.current && !pendingMoveSelection.current) {revealPending.current = true}
   }, [activeGroup, active?.path, tabRevealRequest, root, sidebar])
   useEffect(() => {
-    if (moveExecuting.current || pendingMoveSelection.current) return
+    if (moveExecuting.current || pendingMoveSelection.current) {return}
     // A newer editor activation supersedes an explicit reveal waiting for tree data.
     const pending = explicitReveal.current
     if (pending && (pending.group !== activeGroup || pending.activePath !== active?.path || pending.request !== tabRevealRequest))
-      explicitReveal.current = null
+      {explicitReveal.current = null}
     // Collapsing the workspace is a user action, not a request to reveal again.
     const collapsed = wasExpanded.current && !expanded
     const reopened = !wasExpanded.current && expanded
     wasExpanded.current = expanded
-    if (collapsed) revealPending.current = false
-    if (reopened) revealPending.current = true
-    if ((collapsed && !explicitReveal.current) || sidebar !== 'explorer') return
-    if (!revealPending.current && !explicitReveal.current) return
-    if (prepared.id !== generation.current || prepared.root !== root || treeRoot !== root) return
+    if (collapsed) {revealPending.current = false}
+    if (reopened) {revealPending.current = true}
+    if ((collapsed && !explicitReveal.current) || sidebar !== 'explorer') {return}
+    if (!revealPending.current && !explicitReveal.current) {return}
+    if (prepared.id !== generation.current || prepared.root !== root || treeRoot !== root) {return}
     const focus = explicitReveal.current !== null
     const path = explicitReveal.current?.path ?? active?.path
     const base = root ? visiblePath(root).replace(/[\\/]+$/, '') : null
@@ -452,7 +452,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       : prepared.paths.find(p => normalize(p) === normalize(requestedPath))
     const item = canonicalPath ? model.getItem(canonicalPath) : null
     // A newly opened file can precede the scan that first includes it.
-    if (!item) return
+    if (!item) {return}
     if (item.isDirectory()) {
       explicitReveal.current = null
       revealPending.current = false
@@ -469,10 +469,10 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     const parts = target.split('/')
     for (let depth = 1; depth < parts.length; depth++) {
       const parent = model.getItem(parts.slice(0, depth).join('/'))
-      if (parent && 'expand' in parent) parent.expand()
+      if (parent && 'expand' in parent) {parent.expand()}
     }
     for (const selected of model.getSelectedPaths()) {
-      if (selected !== target) model.getItem(selected)?.deselect()
+      if (selected !== target) {model.getItem(selected)?.deselect()}
     }
     item.select()
     model.focusPath(target)
@@ -491,7 +491,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   }, [model, activeGroup, active?.path, tabRevealRequest, root, treeRoot, sidebar, prepared, expanded, explicitRequest])
 
   async function action(kind: string, path = model.getFocusedPath() ?? '') {
-    if (!root) return
+    if (!root) {return}
     const handle = model.getItem(path)
     const selected = model.getSelectedPaths()
     const paths = selected.includes(path) ? [...selected] : [path]
@@ -505,15 +505,15 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       }
       if (kind === 'copy' || kind === 'cut') {
         const items = paths.filter(Boolean)
-        if (items.length) await clipboardRef.current!.remember(items.map(p => join(root, p)), kind === 'cut')
+        if (items.length) {await clipboardRef.current!.remember(items.map(p => join(root, p)), kind === 'cut')}
         return
       }
       if (kind === 'fullPath' || kind === 'relativePath') {
         const text = paths
           .map(p => (kind === 'fullPath' ? join(root, p).replace(/\//g, '\\') : p))
           .join('\r\n')
-        if (desktop) await (await import('@tauri-apps/plugin-clipboard-manager')).writeText(text)
-        else await navigator.clipboard.writeText(text)
+        if (desktop) {await (await import('@tauri-apps/plugin-clipboard-manager')).writeText(text)}
+        else {await navigator.clipboard.writeText(text)}
         return
       }
       if (kind === 'reveal') {
@@ -522,13 +522,13 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       }
       if (kind === 'newFile' || kind === 'newFolder') {
         const name = await input(kind === 'newFile' ? 'New File' : 'New Folder')
-        if (!name) return
+        if (!name) {return}
         const parent = handle?.isDirectory()
           ? path.replace(/\/$/, '')
           : path.split('/').slice(0, -1).join('/')
         const target = join(root, parent ? `${parent}/${name}` : name)
         await call('file_operation', { operation: { kind, path: target } })
-        if (kind === 'newFile') await openPath(target, { pinned: true })
+        if (kind === 'newFile') {await openPath(target, { pinned: true })}
       }
       if (kind === 'delete') {
         if (
@@ -537,12 +537,12 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
             'Cancel',
           ])) !== 'Move to Recycle Bin'
         )
-          return
+          {return}
         const filtered = paths.filter(
           p => !paths.some(parent => parent !== p && p.startsWith(parent.replace(/\/$/, '') + '/')),
         )
         for (const path of filtered)
-          await call('file_operation', { operation: { kind: 'delete', path: join(root, path) } })
+          {await call('file_operation', { operation: { kind: 'delete', path: join(root, path) } })}
       }
       if (kind === 'paste') { await paste(path); return }
       await refreshTree()
@@ -579,11 +579,11 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   return (
     <section className="explorer view" aria-label="Explorer" tabIndex={-1}
       onContextMenu={rootContext}
-      onKeyDown={event => { if (!event.defaultPrevented) clipboardKey(event, '') }}
+      onKeyDown={event => { if (!event.defaultPrevented) {clipboardKey(event, '')} }}
       onClick={event => {
         if (event.button === 0 && !isEditableTreeEvent(event.nativeEvent)
           && !event.nativeEvent.composedPath().some(target => target instanceof HTMLElement && target.hasAttribute('data-item-path'))
-          && !(event.target instanceof Element && event.target.closest('button, [role="menuitem"]'))) event.currentTarget.focus({ preventScroll: true })
+          && !(event.target instanceof Element && event.target.closest('button, [role="menuitem"]'))) {event.currentTarget.focus({ preventScroll: true })}
       }}>
       <div className="view-title">
         <span>EXPLORER</span>
@@ -607,7 +607,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         <>
           <div className="section-heading" data-drop-target={rootDropTarget}
             onDragOver={e => {
-              if (!draggedPaths.current.length || moveBusy.current) return
+              if (!draggedPaths.current.length || moveBusy.current) {return}
               e.preventDefault()
               const allowed = !!treeMovePlan(draggedPaths.current, null)?.length
               e.dataTransfer.dropEffect = allowed ? 'move' : 'none'
@@ -617,7 +617,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
             onDrop={e => {
               e.preventDefault()
               setRootDropTarget(false)
-              if (draggedPaths.current.length) void requestMove({ draggedPaths: draggedPaths.current, target: { kind: 'root', directoryPath: null, hoveredPath: null, flattenedSegmentPath: null } })
+              if (draggedPaths.current.length) {void requestMove({ draggedPaths: draggedPaths.current, target: { kind: 'root', directoryPath: null, hoveredPath: null, flattenedSegmentPath: null } })}
               draggedPaths.current = []
             }}
           >
@@ -645,7 +645,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
                     .filter(p => p.endsWith('/'))
                     .forEach(p => {
                       const i = model.getItem(p.slice(0, -1))
-                      if (i && 'collapse' in i) i.collapse()
+                      if (i && 'collapse' in i) {i.collapse()}
                     })
                 }
               />
@@ -657,7 +657,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
               className="file-tree"
               style={treeStyle}
               onDragStart={e => {
-                if (e.defaultPrevented || !rootRef.current || !draggedPaths.current.length) return
+                if (e.defaultPrevented || !rootRef.current || !draggedPaths.current.length) {return}
                 e.dataTransfer.setData(explorerDragType, JSON.stringify({ root: rootRef.current, paths: draggedPaths.current }))
                 e.dataTransfer.effectAllowed = 'copyMove'
               }}
@@ -667,17 +667,17 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
                 const row = e.nativeEvent.composedPath().find(
                   target => target instanceof HTMLElement && target.hasAttribute('data-item-path'),
                 ) as HTMLElement | undefined
-                if (row?.dataset.itemPath) row.title = pathTitle(join(root, row.dataset.itemPath))
+                if (row?.dataset.itemPath) {row.title = pathTitle(join(root, row.dataset.itemPath))}
               }}
               onClick={e => {
-                if (e.detail === 2 || e.ctrlKey || e.metaKey || e.shiftKey) return
-                if (e.detail !== 0 && useApp.getState().settings['workbench.list.openMode'] === 'doubleClick') return
+                if (e.detail === 2 || e.ctrlKey || e.metaKey || e.shiftKey) {return}
+                if (e.detail !== 0 && useApp.getState().settings['workbench.list.openMode'] === 'doubleClick') {return}
                 openTreeFile(e.nativeEvent)
               }}
               onDoubleClick={e => { openTreeFile(e.nativeEvent, true) }}
               onKeyDown={e => {
-                if (isEditableTreeEvent(e.nativeEvent)) return
-                if (clipboardKey(e, model.getFocusedPath() ?? '')) return
+                if (isEditableTreeEvent(e.nativeEvent)) {return}
+                if (clipboardKey(e, model.getFocusedPath() ?? '')) {return}
                 if (e.key === 'Enter' && openTreeFile(e.nativeEvent, true)) {
                   e.preventDefault()
                 } else if (e.key === 'F2') {

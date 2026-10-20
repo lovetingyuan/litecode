@@ -19,8 +19,8 @@ export const splitDirections = [
 ] as const;
 function splitEditor(context?: EditorContext, direction?: SplitDirection) {
   const target = editorTarget(context);
-  if (target) return splitGroup(target.group.id, target.doc.id, direction);
-  if (!context) return splitGroup(undefined, undefined, direction);
+  if (target) {return splitGroup(target.group.id, target.doc.id, direction);}
+  if (!context) {return splitGroup(undefined, undefined, direction);}
 }
 export function editorTarget(context?: EditorContext) {
   const s = useApp.getState();
@@ -34,34 +34,34 @@ export function canRevealInExplorer(path: string | null) {
 }
 async function copyEditorPath(context: EditorContext | undefined, useRelative: boolean) {
   const path = editorTarget(context)?.doc.path;
-  if (!path) return;
+  if (!path) {return;}
   const text = useRelative && canRevealInExplorer(path) ? relative(path).replace(/\//g, '\\') : pathTitle(path);
-  if (desktop) await (await import('@tauri-apps/plugin-clipboard-manager')).writeText(text);
-  else await navigator.clipboard.writeText(text);
+  if (desktop) {await (await import('@tauri-apps/plugin-clipboard-manager')).writeText(text);}
+  else {await navigator.clipboard.writeText(text);}
 }
 function closeEditorTabs(context: EditorContext | undefined, mode: Parameters<typeof closeTabs>[2]) {
   const target = editorTarget(context);
-  if (target) return closeTabs(target.doc.id, target.group.id, mode);
+  if (target) {return closeTabs(target.doc.id, target.group.id, mode);}
 }
 function pinEditor(context: EditorContext | undefined, sticky: boolean) {
   const target = editorTarget(context);
-  if (target) setSticky(target.doc.id, target.group.id, sticky);
+  if (target) {setSticky(target.doc.id, target.group.id, sticky);}
 }
 export function quick(value: string) { setApp({ quick: value }); }
 export async function openFolder(newWindow = false, recentPath?: string) {
-  const path = recentPath ?? await call<string | null>('pick_path', { kind: 'folder' }); if (!path) return;
+  const path = recentPath ?? await call<string | null>('pick_path', { kind: 'folder' }); if (!path) {return;}
   await checkpoint();
   const same = await call<boolean>('open_workspace', { path, newWindow });
   if (same) { setApp({ root: path }); await refreshTree(); }
 }
 export async function openFile() {
-  const path = await call<string | null>('pick_path', { kind: 'file' }); if (path) await openPath(path, { pinned: true });
+  const path = await call<string | null>('pick_path', { kind: 'file' }); if (path) {await openPath(path, { pinned: true });}
 }
 function action(id: string) { return () => editor()?.getAction(id)?.run(); }
 function trigger(id: string) { return () => editor()?.trigger('keyboard', id, null); }
 async function openSettings() {
   const id = await openPath(await call<string>('settings_path', { kind: 'settings' }), { pinned: true });
-  if (!id) return;
+  if (!id) {return;}
   const m = models.get(id)!; const text = completeSettings(m.getValue());
   if (text !== m.getValue()) {
     m.pushStackElement(); m.pushEditOperations([], [{ range: m.getFullModelRange(), text }], () => null); m.pushStackElement();
@@ -83,10 +83,10 @@ export const commands: Command[] = [
   { id: 'workbench.action.files.saveAs', label: 'Save As…', key: 'Ctrl+Shift+S', menu: 'File', run: () => save(activeDoc()?.id, true) },
   { id: 'workbench.action.files.saveAll', label: 'Save All', key: 'Ctrl+K S', menu: 'File', run: saveAll },
   { id: 'workbench.action.closeActiveEditor', label: 'Close Editor', key: 'Ctrl+F4', aliases: ['Ctrl+W'], menu: 'File', run: context => {
-    const target = editorTarget(context); if (!target) return;
+    const target = editorTarget(context); if (!target) {return;}
     if (!context && target.group.sticky?.includes(target.doc.id)) {
       const next = target.group.tabs.find(id => !target.group.sticky?.includes(id));
-      if (next) showDocument(next, { group: target.group.id });
+      if (next) {showDocument(next, { group: target.group.id });}
       return;
     }
     return closeDocument(target.doc.id, target.group.id);
@@ -98,10 +98,10 @@ export const commands: Command[] = [
   { id: 'copyFilePath', label: 'Copy Path', key: 'Shift+Alt+C', run: context => copyEditorPath(context, false) },
   { id: 'copyRelativeFilePath', label: 'Copy Relative Path', key: 'Ctrl+K Ctrl+Shift+C', run: context => copyEditorPath(context, true) },
   { id: 'revealFileInOS', label: 'Reveal in File Explorer', key: 'Shift+Alt+R', run: context => {
-    const path = editorTarget(context)?.doc.path; if (path) return call('reveal_path', { path });
+    const path = editorTarget(context)?.doc.path; if (path) {return call('reveal_path', { path });}
   } },
   { id: 'workbench.files.action.showActiveFileInExplorer', label: 'Reveal in Explorer View', run: context => {
-    const path = editorTarget(context)?.doc.path; if (path && canRevealInExplorer(path)) revealInTree(path);
+    const path = editorTarget(context)?.doc.path; if (path && canRevealInExplorer(path)) {revealInTree(path);}
   } },
   { id: 'workbench.action.pinEditor', label: 'Pin', key: 'Ctrl+K Shift+Enter', run: context => pinEditor(context, true) },
   { id: 'workbench.action.unpinEditor', label: 'Unpin', key: 'Ctrl+K Shift+Enter', run: context => pinEditor(context, false) },
@@ -147,7 +147,7 @@ export const commands: Command[] = [
   { id: 'workbench.action.openSettingsJson', label: 'Preferences: Open User Settings (JSON)', run: openSettings },
   { id: 'workbench.action.openGlobalKeybindingsFile', label: 'Preferences: Open Keyboard Shortcuts (JSON)', run: async () => openPath(await call('settings_path', { kind: 'keybindings' }), { pinned: true }) },
   { id: 'litecode.importSettings', label: 'Preferences: Review VS Code Settings Import', run: async () => {
-    const root = useApp.getState().root; if (!root) throw new Error('Open a workspace containing .vscode/settings.json first.');
+    const root = useApp.getState().root; if (!root) {throw new Error('Open a workspace containing .vscode/settings.json first.');}
     const disk = await call<{ text: string }>('read_document', { path: join(root, '.vscode/settings.json') });
     const settings = parseConfiguration(disk.text);
     const { settingsSchemas } = await import('./languages'); const keys = new Set(Object.keys(settingsSchemas()[0].schema.properties));
@@ -156,8 +156,8 @@ export const commands: Command[] = [
     newDocument(`# VS Code settings import review\n\nCopy the supported settings below into Preferences: Open User Settings (JSON), or .litecode/settings.json.\n\nThe original .vscode/settings.json remains unchanged.\n\nSupported:\n\n\x60\x60\x60json\n${JSON.stringify(supported, null, 2)}\n\x60\x60\x60\n\nIgnored settings:\n${ignored.map(key => `- ${key}`).join('\n') || '(none)'}\n`, 'Settings Import.md');
   } },
   { id: 'litecode.setLanguage', label: 'Change Language Mode', run: async () => {
-    const doc = activeDoc(); if (!doc) return; const value = await input('Language identifier', doc.language); if (!value) return;
-    const { monaco, loadSyntax } = await import('./monaco'); await loadSyntax(value); const m = models.get(doc.id); if (m) monaco.editor.setModelLanguage(m, value);
+    const doc = activeDoc(); if (!doc) {return;} const value = await input('Language identifier', doc.language); if (!value) {return;}
+    const { monaco, loadSyntax } = await import('./monaco'); await loadSyntax(value); const m = models.get(doc.id); if (m) {monaco.editor.setModelLanguage(m, value);}
     setApp(s => ({ docs: { ...s.docs, [doc.id]: { ...doc, language: value } } }));
   } },
   { id: 'litecode.about', label: 'About LiteCode', menu: 'Help', run: () => notify('LiteCode 0.1.0 · Tauri 2 / React / Monaco\nWindows x64 · Dark Modern\nSee docs/verification/MATRIX.md for implementation and verification status.') },
@@ -183,14 +183,14 @@ function defaultBindings(context: Record<string, string | boolean>, bindings = u
 }
 export function commandShortcut(id: string, context: Record<string, string | boolean>, bindings = useApp.getState().keybindings) {
   const custom = [...bindings].reverse().find(binding => binding.command === id && resolveBinding(bindings, binding.key, context).command === id);
-  if (custom) return custom.key;
+  if (custom) {return custom.key;}
   return defaultBindings(context, bindings).find(binding => binding.command.id === id && !resolveBinding(bindings, binding.key, context).command)?.key;
 }
 
 let chord = '';
 export function installKeys() {
   function handler(e: KeyboardEvent) {
-    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
+    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {return;}
     if (e.isComposing || useApp.getState().quick !== null || document.querySelector('.modal-panel, .diff-panel, .editor-tab-menu')) { chord = ''; return; }
     const target = e.target as HTMLElement;
     const typing = ['INPUT', 'TEXTAREA'].includes(target.tagName) && !target.closest('.monaco-editor');
@@ -203,11 +203,11 @@ export function installKeys() {
     const wasChord = !!chord; chord = '';
     if (binding.prefix || !typing && defaults.some(c => normalizeKey(c.key).startsWith(`${sequence} `))) {
       e.preventDefault(); e.stopPropagation(); chord = sequence;
-      setTimeout(() => { if (chord === sequence) chord = ''; }, 3000); return;
+      setTimeout(() => { if (chord === sequence) {chord = '';} }, 3000); return;
     }
     if (binding.command || wasChord) {
       const id = binding.command ?? defaults.find(c => normalizeKey(c.key) === sequence)?.command.id;
-      e.preventDefault(); e.stopPropagation(); if (id) void execute(id); return;
+      e.preventDefault(); e.stopPropagation(); if (id) {void execute(id);} return;
     }
     // Text-editing shortcuts belong to Monaco or the focused input, preserving its context rules.
     const global = defaults.filter(c => !['Edit', 'Selection'].includes(c.command.menu ?? '') && !['F2', 'F12', 'Shift+F12', 'Shift+Alt+F'].includes(c.key));
@@ -215,7 +215,7 @@ export function installKeys() {
     if (command && (!typing || ['Ctrl+S', 'Ctrl+Shift+S', 'Ctrl+Shift+P', 'Ctrl+P', 'Ctrl+Shift+F', 'Ctrl+O'].includes(key))) { e.preventDefault(); e.stopPropagation(); void execute(command); }
     if (key === 'Ctrl+Tab' && !typing) {
       e.preventDefault(); e.stopPropagation(); const s = useApp.getState(); const g = s.groups.find(g => g.id === s.activeGroup)!;
-      const id = g.tabs[(g.tabs.indexOf(g.active ?? '') + 1) % g.tabs.length]; if (id) showDocument(id);
+      const id = g.tabs[(g.tabs.indexOf(g.active ?? '') + 1) % g.tabs.length]; if (id) {showDocument(id);}
     }
   }
   window.addEventListener('keydown', handler, true);

@@ -24,7 +24,7 @@ export function useQuickFiles(query: string | null, root: string | null, paths: 
   useEffect(() => {
     if (query === null) { service.current?.cancel(); return; }
     service.current?.search(query, files => {
-      if (latest.current !== request) return;
+      if (latest.current !== request) {return;}
       startTransition(() => setResult({ request, files }));
     });
     return () => service.current?.cancel();

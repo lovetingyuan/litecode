@@ -10,7 +10,7 @@ function fixture(paths: string[]) {
   cleanups.push(() => { sync.dispose(); model.cleanUp() })
   const directory = (path: string) => {
     const item = model.getItem(path)
-    if (!item || !('expand' in item)) throw new Error(`Missing directory: ${path}`)
+    if (!item || !('expand' in item)) {throw new Error(`Missing directory: ${path}`)}
     return item
   }
   return { model, sync, directory }
