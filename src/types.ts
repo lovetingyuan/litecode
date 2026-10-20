@@ -1,8 +1,11 @@
 export type AppError = { code: string; message: string };
 export type DiskDocument = { path: string; text: string; revision: string; encoding: string; eol: string };
-export type Mirror = { id: string; path: string | null; text: string; version: number; revision: string | null; encoding: string; dirty: boolean; language?: string; name?: string; searchQuery?: Query };
-export type Doc = Omit<Mirror, 'text'> & { name: string; language: string; eol: string; large?: boolean; conflict?: boolean; deleted?: boolean; searchQuery?: Query };
-export type Group = { id: string; tabs: string[]; active: string | null; preview: string | null; sticky?: string[]; views: Record<string, unknown> };
+export type FileKind = 'text' | 'image' | 'svg' | 'video' | 'audio' | 'binary';
+export type FileInfo = { kind: FileKind; size: number; stamp: string };
+export type MediaView = { mode?: 'text' | 'image' | 'markdown'; scale?: number | 'fit'; scrollLeft?: number; scrollTop?: number };
+export type Mirror = { id: string; path: string | null; text: string; version: number; revision: string | null; encoding: string; dirty: boolean; language?: string; name?: string; searchQuery?: Query; kind?: FileKind; fileInfo?: FileInfo };
+export type Doc = Omit<Mirror, 'text'> & { name: string; language: string; eol: string; large?: boolean; conflict?: boolean; deleted?: boolean; searchQuery?: Query; imageSize?: { width: number; height: number } };
+export type Group = { id: string; tabs: string[]; active: string | null; preview: string | null; sticky?: string[]; views: Record<string, unknown>; mediaViews?: Record<string, MediaView> };
 export type Location = { id: string; path?: string | null; line: number; column: number };
 export type Session = { groups: Group[]; activeGroup: string; sidebar: string; sidebarWidth: number; history: Location[]; historyIndex: number; query?: Query; searchHistory?: string[] };
 export type Keybinding = { key: string; command: string; when?: string };

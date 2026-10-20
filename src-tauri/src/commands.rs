@@ -243,6 +243,13 @@ pub async fn scan_workspace(
 }
 
 #[tauri::command]
+pub async fn inspect_file(window: WebviewWindow, state: State<'_, AppState>, path: String) -> Result<crate::media::FileInfo> {
+    let path = state.authorize(window.label(), &path)?;
+    tauri::async_runtime::spawn_blocking(move || crate::media::inspect(&path))
+        .await.map_err(|e| AppError::new("read", e.to_string()))?
+}
+
+#[tauri::command]
 pub async fn read_document(
     window: WebviewWindow,
     state: State<'_, AppState>,
@@ -277,6 +284,9 @@ pub async fn save_document(
         let mirror = windows
             .get(window.label())
             .and_then(|w| w.documents.get(&id));
+        if mirror.is_some_and(|m| !m.kind.is_text()) {
+            return Err(AppError::new("binary", "Media and binary previews cannot be saved as text."));
+        }
         if mirror.is_some_and(|m| m.version > version) {
             return Err(AppError::new(
                 "stale",
@@ -318,6 +328,9 @@ pub async fn sync_documents(
     session: serde_json::Value,
 ) -> Result<()> {
     for doc in &documents {
+        if !doc.kind.is_text() && (!doc.text.is_empty() || doc.dirty) {
+            return Err(AppError::new("binary", "Binary recovery records cannot contain text edits."));
+        }
         if let Some(path) = &doc.path {
             state.authorize(window.label(), path)?;
         }

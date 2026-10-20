@@ -1,9 +1,11 @@
 mod commands;
 mod configuration;
 mod error;
-mod files;
+mod file_clipboard;
 mod file_moves;
+mod files;
 mod lsp;
+mod media;
 mod replacement;
 mod search;
 mod state;
@@ -15,7 +17,7 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    media::register(tauri::Builder::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -61,11 +63,14 @@ pub fn run() {
             commands::open_workspace,
             commands::scan_workspace,
             commands::read_document,
+            commands::inspect_file,
             commands::save_document,
             commands::sync_documents,
             commands::file_operation,
             file_moves::plan_file_moves,
             file_moves::move_files,
+            file_clipboard::read_file_clipboard,
+            file_clipboard::paste_file_clipboard,
             commands::reveal_path,
             commands::settings_path,
             commands::explicit_open,

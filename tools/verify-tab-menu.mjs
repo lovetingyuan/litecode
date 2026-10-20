@@ -23,12 +23,14 @@ await page.addInitScript(() => {
 });
 await page.route('**/src/bridge.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
 export const desktop = false;
+export const mediaSource = path => path;
 export const errorMessage = e => e?.message ?? String(e);
 export const channel = fn => ({ onmessage: fn });
 export async function bootstrap() {
  return {root:'C:/tab-fixture',documents:${JSON.stringify(docs)},session:${JSON.stringify(restored ?? { groups: [{ id: 'one', tabs: docs.map(d => d.id), active: docs[1].id, preview: null, views: {} }], activeGroup: 'one' })},recent:[],settings:{},keybindings:[],warnings:[],dataDir:''};
 }
 export async function call(command, args) {
+ if(command === 'inspect_file') return {kind:'text',size:20,stamp:'fixture'};
  if(command === 'scan_workspace') return {paths:${JSON.stringify(['nested/', ...files])},git:[],branch:null,warnings:[],truncated:false};
  if(command === 'read_document') return {text:args.path+' content',encoding:'utf8',eol:'LF',revision:'fixture'};
  if(command === 'reveal_path') { window.__revealed.push(args.path); return; }
@@ -142,6 +144,7 @@ try {
   assert.deepEqual((await state()).groups[0].tabs, [docs[0].id, docs[2].id]);
   await tab('c.txt, unsaved').click(); await chord('Control+k', 'w');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.locator('.modal-panel').waitFor({ state: 'detached' });
   assert.equal(await tab('c.txt, unsaved').count(), 1);
   await chord('Control+k', 'w'); await page.getByRole('button', { name: "Don't Save", exact: true }).click();
   await tab('c.txt, unsaved').waitFor({ state: 'detached' });

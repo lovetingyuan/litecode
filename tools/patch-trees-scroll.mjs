@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
-// Keep the beta.6 fixes reproducible: scroll padding and an application-owned
-// drop request, so confirming or cancelling never requires an optimistic move.
+// Keep the beta.6 fixes reproducible: scroll padding, ignore inheritance and an
+// application-owned drop request so confirmation never needs an optimistic move.
 const root = new URL('../node_modules/@pierre/trees/', import.meta.url);
 const { version } = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'));
 if (version !== '1.0.0-beta.6') throw new Error('Review the trees scroll and drag patches before upgrading @pierre/trees.');
@@ -12,6 +12,9 @@ const patches = [
       'const totalHeight = totalRowCount * metrics.itemHeight + Math.max(0, metrics.paddingBottom ?? 0);'],
   ]],
   ['dist/render/FileTreeView.js', [
+    // Positive and negative ancestor matches belong to the current ignore set.
+    ['const ignoredInheritanceCache = useMemo(() => /* @__PURE__ */ new Map(), []);',
+      'const ignoredInheritanceCache = useMemo(() => /* @__PURE__ */ new Map(), [ignoredGitDirectories]);'],
     ['"data-file-tree-virtualized-root": "true",',
       '"data-file-tree-root-drag-target": dragTarget?.kind === "root" ? "true" : void 0,\n\t\t"data-file-tree-virtualized-root": "true",'],
     ['if (!(rowButton instanceof HTMLElement)) return null;',

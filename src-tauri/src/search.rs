@@ -367,7 +367,7 @@ pub async fn search_start(
             .ok_or_else(|| AppError::new("window", "Window not initialized"))?;
         (
             w.root.clone(),
-            w.documents.values().cloned().collect::<Vec<_>>(),
+            w.documents.values().filter(|m| m.kind.is_text()).cloned().collect::<Vec<_>>(),
         )
     };
     let task = Arc::new(SearchTask {

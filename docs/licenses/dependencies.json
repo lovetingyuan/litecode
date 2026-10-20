@@ -1573,6 +1573,15 @@
     }
   },
   {
+    "name": "typescript-language-server",
+    "version": "6.0.2",
+    "license": "Apache-2.0",
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/typescript-language-server/typescript-language-server.git"
+    }
+  },
+  {
     "name": "undici-types",
     "version": "8.9.0",
     "license": "MIT",

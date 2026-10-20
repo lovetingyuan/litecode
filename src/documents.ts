@@ -2,7 +2,8 @@ import { monaco, languageFor, loadSyntax } from './monaco';
 import { call, desktop, errorMessage } from './bridge';
 import { useApp, setApp, notify, activeDoc } from './store';
 import { ask } from './dialog';
-import type { DiskDocument, Doc, Group, Mirror, Location, Session } from './types';
+import type { DiskDocument, Doc, Group, Mirror, Location, Session, FileInfo, MediaView } from './types';
+import { isMarkdownDocument, isTextDocument, isTextView } from './media';
 import { ensureLanguage, releaseLanguageDocument, formatModel, canFormat } from './languages';
 import { parseConfiguration } from './settings';
 
@@ -41,27 +42,44 @@ export const relative = (path: string, root = useApp.getState().root) => {
   const value = visiblePath(path).replace(/\\/g, '/'); const base = root ? visiblePath(root).replace(/\\/g, '/') : null;
   return base && value.toLowerCase().startsWith(base.toLowerCase() + '/') ? value.slice(base.length + 1) : value;
 };
-export const editor = () => editors.get(useApp.getState().activeGroup);
+export const editor = () => {
+  const s = useApp.getState(); const group = s.groups.find(g => g.id === s.activeGroup); const doc = group?.active ? s.docs[group.active] : undefined;
+  return doc && !isTextView(doc, group) ? undefined : editors.get(s.activeGroup);
+};
 export const model = (id = activeDoc()?.id) => id ? models.get(id) : undefined;
 
 export function patchDoc(id: string, patch: Partial<Doc>) {
   setApp(s => s.docs[id] ? { docs: { ...s.docs, [id]: { ...s.docs[id], ...patch } } } : {});
 }
 
+export function patchMediaView(groupId: string, id: string, patch: Partial<MediaView>) {
+  setApp(s => ({ groups: s.groups.map(g => g.id === groupId ? { ...g, mediaViews: { ...g.mediaViews, [id]: { ...g.mediaViews?.[id], ...patch } } } : g) }));
+  scheduleBackup();
+}
+
+export function focusDocument(groupId = useApp.getState().activeGroup) {
+  const s = useApp.getState(); const group = s.groups.find(g => g.id === groupId); const doc = group?.active ? s.docs[group.active] : undefined;
+  if (!doc || isTextView(doc, group)) editors.get(groupId)?.focus();
+  else if (typeof document !== 'undefined') {
+    const preview = document.querySelector<HTMLElement>(`[data-group-id="${CSS.escape(groupId)}"] :is(.media-preview, .markdown-preview)`);
+    (preview?.querySelector<HTMLElement>('.image-viewport') ?? preview)?.focus({ preventScroll: true });
+  }
+}
+
 export function session(): Session {
   const s = useApp.getState();
   for (const g of s.groups) {
     const e = editors.get(g.id);
-    if (g.active && e) g.views[g.active] = e.saveViewState();
+    if (g.active && e && s.docs[g.active] && isTextView(s.docs[g.active], g)) g.views[g.active] = e.saveViewState();
   }
   return { groups: s.groups, activeGroup: s.activeGroup, sidebar: s.sidebar ?? '', sidebarWidth: s.sidebarWidth, history: s.history, historyIndex: s.historyIndex, query: s.query, searchHistory: s.searchHistory };
 }
 
 export async function checkpoint() {
   if (!desktop) return;
-  const docs: Mirror[] = Object.values(useApp.getState().docs).flatMap(doc => {
+  const docs: Mirror[] = Object.values(useApp.getState().docs).map(doc => {
     const m = models.get(doc.id);
-    return m ? [{ id: doc.id, path: doc.path, text: m.getValue(), version: doc.version, revision: doc.revision, encoding: doc.encoding, dirty: doc.dirty, language: doc.language, name: doc.name, searchQuery: doc.searchQuery }] : [];
+    return { id: doc.id, path: doc.path, text: m?.getValue() ?? '', version: doc.version, revision: doc.revision, encoding: doc.encoding, dirty: doc.dirty, language: doc.language, name: doc.name, searchQuery: doc.searchQuery, kind: doc.kind, fileInfo: doc.fileInfo };
   });
   const currentSession = session();
   checkpointQueue = checkpointQueue.catch(() => {}).then(() => call<void>('sync_documents', { documents: docs, session: currentSession }));
@@ -99,27 +117,38 @@ export function restoreDocument(mirror: Mirror) {
   const detected = languageFor(mirror.path ?? '');
   // Older sessions stored JSX files as plain TypeScript/JavaScript.
   const language = detected === 'jsonc' || detected === 'typescriptreact' && mirror.language === 'typescript' || detected === 'javascriptreact' && mirror.language === 'javascript' ? detected : mirror.language ?? detected;
-  const doc: Doc = { ...mirror, name: mirror.name ?? (mirror.path ? basename(mirror.path) : 'Untitled'), language, eol: mirror.text.includes('\r\n') ? 'CRLF' : 'LF' };
-  attachDocument(doc, mirror.text, mirror.dirty);
+  const kind = (!mirror.kind || mirror.kind === 'text') && /\.svg$/i.test(mirror.path ?? '') ? 'svg' : mirror.kind ?? 'text';
+  const doc: Doc = { ...mirror, kind, name: mirror.name ?? (mirror.path ? basename(mirror.path) : 'Untitled'), language, eol: mirror.text.includes('\r\n') ? 'CRLF' : 'LF' };
+  if (isTextDocument(doc)) attachDocument(doc, mirror.text, mirror.dirty);
+  else attachPreviewDocument(doc);
+}
+
+function attachPreviewDocument(doc: Doc) {
+  setApp(s => ({ docs: { ...s.docs, [doc.id]: { ...doc, dirty: false } } }));
+  scheduleBackup();
 }
 
 export async function openPath(path: string, options: { pinned?: boolean; group?: string; line?: number; column?: number; background?: boolean; preserveFocus?: boolean; force?: boolean } = {}) {
   const existing = Object.values(useApp.getState().docs).find(d => d.path && normalize(d.path) === normalize(path));
   let id = existing?.id;
   if (!id) {
-    let disk: DiskDocument;
-    try { disk = await call<DiskDocument>('read_document', { path, force: options.force ?? false }); }
+    const fileInfo = await call<FileInfo>('inspect_file', { path });
+    let kind = fileInfo.kind;
+    let disk: DiskDocument | undefined;
+    try { if (kind === 'text' || kind === 'svg') disk = await call<DiskDocument>('read_document', { path, force: options.force ?? false }); }
     catch (e) {
       if ((e as { code?: string }).code === 'largeFile' && await ask('Open large file?', errorMessage(e), ['Open Anyway', 'Cancel']) === 'Open Anyway') return openPath(path, { ...options, force: true });
-      throw e;
+      if (['binary', 'encoding'].includes((e as { code?: string }).code ?? '')) kind = 'binary';
+      else throw e;
     }
     const duplicate = Object.values(useApp.getState().docs).find(d => d.path && normalize(d.path) === normalize(path));
     if (duplicate) id = duplicate.id;
     else {
       id = monaco.Uri.file(visiblePath(path)).toString();
       const language = languageFor(path);
-      attachDocument({ id, path, name: basename(path), language, encoding: disk.encoding, eol: disk.eol, dirty: false, version: 1, revision: disk.revision, large: options.force }, disk.text);
-      if (path.endsWith('.code-search')) {
+      const doc: Doc = { id, path, name: basename(path), language, kind, fileInfo: { ...fileInfo, kind }, encoding: disk?.encoding ?? 'utf8', eol: disk?.eol ?? 'LF', dirty: false, version: 1, revision: disk?.revision ?? null, large: options.force };
+      if (disk) attachDocument(doc, disk.text); else attachPreviewDocument(doc);
+      if (disk && path.endsWith('.code-search')) {
         try { const query = JSON.parse(disk.text.split('\n')[0].replace(/^# Query: /, '')); patchDoc(id, { searchQuery: query }); } catch { notify('This Search Editor file has an invalid query header. Its text is still available for editing.'); }
       }
     }
@@ -161,7 +190,9 @@ export function setSticky(id: string, groupId: string, sticky: boolean) {
 export function showDocument(id: string, options: { pinned?: boolean; group?: string; line?: number; column?: number; background?: boolean; preserveFocus?: boolean } = {}) {
   const s = useApp.getState();
   const groupId = options.group ?? s.activeGroup;
-  setApp({ groups: s.groups.map(g => {
+  if (options.line && (s.docs[id]?.kind === 'svg' || s.docs[id] && isMarkdownDocument(s.docs[id]))) patchMediaView(groupId, id, { mode: 'text' });
+  const groups = useApp.getState().groups;
+  setApp({ groups: groups.map(g => {
     if (g.id !== groupId) return g;
     let tabs = [...g.tabs];
     const existing = tabs.includes(id);
@@ -179,7 +210,7 @@ export function showDocument(id: string, options: { pinned?: boolean; group?: st
     requestAnimationFrame(() => {
       const e = editors.get(groupId);
       if (e && options.line) { e.setPosition({ lineNumber: options.line, column: options.column ?? 1 }); e.revealLineInCenterIfOutsideViewport(options.line); }
-      if (!options.preserveFocus) e?.focus();
+      if (!options.preserveFocus) focusDocument(groupId);
     });
   }
   scheduleBackup();
@@ -208,7 +239,7 @@ async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMod
     if (documentMove && ticket > documentMove.drainThrough) await documentMove.done;
     let doc = useApp.getState().docs[id];
     let m = models.get(id);
-    if (!doc || !m) return;
+    if (!doc || !m || !isTextDocument(doc)) return;
     if (autoSaveMode && (useApp.getState().settings['files.autoSave'] !== autoSaveMode || !doc.path || !doc.dirty || doc.conflict)) return;
     let path = doc.path;
     let revision = doc.revision;
@@ -233,6 +264,10 @@ async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMod
       savedVersions.set(id, alternativeVersion);
       savedEncodings.set(id, doc.encoding);
       patchDoc(id, { path, name: basename(path), revision: newRevision, dirty: alternativeVersion !== m.getAlternativeVersionId(), conflict: false, deleted: false });
+      if (doc.kind === 'svg') {
+        const fileInfo = await call<FileInfo>('inspect_file', { path });
+        patchDoc(id, { fileInfo });
+      }
       if (saveAs || !doc.path) {
         rebindDocument(id, path);
         m = models.get(id)!;
@@ -280,7 +315,7 @@ export async function closeDocument(id: string, groupId = useApp.getState().acti
     return { groups, activeGroup };
   });
   if (!useApp.getState().groups.some(g => g.tabs.includes(id))) disposeDocument(id);
-  if (s.activeGroup === groupId) requestAnimationFrame(() => editor()?.focus());
+  if (s.activeGroup === groupId) requestAnimationFrame(() => focusDocument());
   scheduleBackup();
   return true;
 }
@@ -306,21 +341,27 @@ export async function closeTabs(id: string, groupId: string, mode: CloseTabsMode
 }
 
 function disposeDocument(id: string) {
+  detachModel(id);
+  setApp(s => { const docs = { ...s.docs }; delete docs[id]; return { docs }; });
+}
+
+function detachModel(id: string) {
   releaseLanguageDocument(id);
   subscriptions.get(id)?.dispose(); subscriptions.delete(id);
   clearTimeout(autoTimers.get(id)); autoTimers.delete(id);
-  models.get(id)?.dispose(); models.delete(id); savedVersions.delete(id); savedEncodings.delete(id);
-  setApp(s => { const docs = { ...s.docs }; delete docs[id]; return { docs }; });
+  const m = models.get(id);
+  if (m) for (const e of editors.values()) if (e.getModel() === m) e.setModel(null);
+  m?.dispose(); models.delete(id); savedVersions.delete(id); savedEncodings.delete(id);
 }
 
 export function splitGroup(groupId = useApp.getState().activeGroup, documentId?: string) {
   const s = useApp.getState(); const source = s.groups.find(g => g.id === groupId)!;
   const id = documentId ?? source.active;
-  if (source.active && editors.has(source.id)) source.views[source.active] = editors.get(source.id)!.saveViewState();
-  const group: Group = { id: crypto.randomUUID(), tabs: id ? [id] : [], active: id, preview: null, sticky: [], views: id && source.views[id] ? { [id]: source.views[id] } : {} };
+  if (source.active && editors.has(source.id) && isTextView(s.docs[source.active], source)) source.views[source.active] = editors.get(source.id)!.saveViewState();
+  const group: Group = { id: crypto.randomUUID(), tabs: id ? [id] : [], active: id, preview: null, sticky: [], views: id && source.views[id] ? { [id]: source.views[id] } : {}, mediaViews: id && source.mediaViews?.[id] ? { [id]: { ...source.mediaViews[id] } } : {} };
   const groups = [...s.groups]; groups.splice(groups.indexOf(source) + 1, 0, group);
   setApp({ groups, activeGroup: group.id }); scheduleBackup();
-  requestAnimationFrame(() => editors.get(group.id)?.focus());
+  requestAnimationFrame(() => focusDocument(group.id));
   return group.id;
 }
 
@@ -339,7 +380,7 @@ export function moveTab(id: string, from: string, to: string, before?: string) {
         tabs.splice(target, 0, id);
         if (sticky) pinned.splice(target, 0, id);
       }
-      return normalizeGroup({ ...g, tabs, sticky: pinned, active: g.id === to ? id : g.active === id ? tabs[0] ?? null : g.active, preview: g.preview === id ? null : g.preview });
+      return normalizeGroup({ ...g, tabs, sticky: pinned, ...(g.id === to ? { views: { ...g.views, [id]: source.views[id] }, mediaViews: { ...g.mediaViews, [id]: { ...source.mediaViews?.[id] } } } : {}), active: g.id === to ? id : g.active === id ? tabs[0] ?? null : g.active, preview: g.preview === id ? null : g.preview });
     }), activeGroup: to };
   }); scheduleBackup();
 }
@@ -356,7 +397,7 @@ export function addHistory(location: Location) {
 export async function navigate(direction: number) {
   const s = useApp.getState(); const index = s.historyIndex + direction; const location = s.history[index];
   if (!location) return;
-  if (!models.has(location.id)) {
+  if (!s.docs[location.id]) {
     const uri = monaco.Uri.parse(location.id); const path = location.path ?? (uri.scheme === 'file' ? uri.fsPath : null); if (!path) return;
     const id = await openPath(path, { pinned: true, line: location.line, column: location.column });
     if (id) location.id = id;
@@ -369,14 +410,45 @@ export async function refreshDocuments() {
   for (const doc of Object.values(useApp.getState().docs)) {
     if (!doc.path || isMoving(doc.path)) continue;
     try {
+      const info = await call<FileInfo>('inspect_file', { path: doc.path });
+      const current = useApp.getState().docs[doc.id];
+      if (!current || current.path !== doc.path || isMoving(doc.path)) continue;
+      if (!isTextDocument(doc)) {
+        if (info.kind === 'text' || info.kind === 'svg') {
+          try {
+            const disk = await call<DiskDocument>('read_document', { path: doc.path, force: true });
+            if (useApp.getState().docs[doc.id]?.path !== doc.path || isMoving(doc.path)) continue;
+            attachDocument({ ...current, kind: info.kind, fileInfo: info, encoding: disk.encoding, eol: disk.eol, revision: disk.revision, deleted: false, conflict: false }, disk.text);
+          } catch (e) {
+            if (!['binary', 'encoding'].includes((e as { code?: string }).code ?? '')) throw e;
+            patchDoc(doc.id, { kind: 'binary', fileInfo: { ...info, kind: 'binary' }, deleted: false, conflict: false, imageSize: undefined });
+          }
+        } else patchDoc(doc.id, { kind: info.kind, fileInfo: info, deleted: false, conflict: false });
+        continue;
+      }
+      if (info.kind !== 'text' && info.kind !== 'svg') {
+        if (current.dirty) { patchDoc(doc.id, { conflict: true }); continue; }
+        detachModel(doc.id);
+        patchDoc(doc.id, { kind: info.kind, fileInfo: info, deleted: false, conflict: false, imageSize: undefined });
+        continue;
+      }
       const disk = await call<DiskDocument>('read_document', { path: doc.path, force: true, encoding: doc.encoding });
       const latest = useApp.getState().docs[doc.id];
-      if (!latest || latest.path !== doc.path || isMoving(doc.path) || disk.revision === latest.revision) continue;
+      if (!latest || latest.path !== doc.path || isMoving(doc.path)) continue;
+      if (disk.revision === latest.revision) { patchDoc(doc.id, { kind: info.kind, fileInfo: info, deleted: false }); continue; }
       if (latest.dirty) { patchDoc(doc.id, { conflict: true }); continue; }
       const m = models.get(doc.id); if (!m) continue;
       m.setValue(disk.text); savedVersions.set(doc.id, m.getAlternativeVersionId());
-      patchDoc(doc.id, { revision: disk.revision, dirty: false, conflict: false, deleted: false });
-    } catch (e) { if ((e as { code?: string }).code === 'io' && useApp.getState().docs[doc.id]?.path === doc.path && !isMoving(doc.path)) patchDoc(doc.id, { deleted: true, conflict: true }); }
+      patchDoc(doc.id, { revision: disk.revision, kind: info.kind, fileInfo: info, dirty: false, conflict: false, deleted: false });
+    } catch (e) {
+      const latest = useApp.getState().docs[doc.id];
+      if (!latest || latest.path !== doc.path || isMoving(doc.path)) continue;
+      if ((e as { code?: string }).code === 'io') patchDoc(doc.id, { deleted: true, conflict: isTextDocument(latest) });
+      else if (['binary', 'encoding'].includes((e as { code?: string }).code ?? '')) {
+        if (latest.dirty) patchDoc(doc.id, { conflict: true });
+        else { detachModel(doc.id); patchDoc(doc.id, { kind: 'binary', imageSize: undefined }); }
+      }
+    }
   }
 }
 
@@ -388,6 +460,7 @@ export async function resolveConflict(id: string, action: 'reload' | 'overwrite'
   if (action === 'reload') {
     const m = models.get(id)!; m.pushStackElement(); m.pushEditOperations([], [{ range: m.getFullModelRange(), text: disk.text }], () => null); m.pushStackElement();
     savedVersions.set(id, m.getAlternativeVersionId()); patchDoc(id, { dirty: false, revision: disk.revision, conflict: false, deleted: false });
+    if (doc.kind === 'svg') patchDoc(id, { fileInfo: await call<FileInfo>('inspect_file', { path: doc.path }) });
   } else { patchDoc(id, { revision: disk.revision }); await save(id); }
   scheduleBackup();
 }
@@ -408,7 +481,12 @@ export async function renameDocuments(moves: { from: string; to: string }[]) {
 }
 
 function rebindDocument(id: string, path: string) {
-  const doc = useApp.getState().docs[id]; const old = models.get(id); if (!doc || !old) return;
+  const doc = useApp.getState().docs[id]; const old = models.get(id); if (!doc) return;
+  if (!old) {
+    patchDoc(id, { path, name: basename(path), deleted: false });
+    setApp(s => ({ history: s.history.map(location => location.id === id ? { ...location, path } : location) }));
+    return;
+  }
   const uri = monaco.Uri.file(visiblePath(path)); if (old.uri.toString() === uri.toString()) return;
   const views = [...editors.values()].filter(e => e.getModel() === old).map(e => ({ e, view: e.saveViewState() }));
   const text = old.getValue(); releaseLanguageDocument(id); subscriptions.get(id)?.dispose(); subscriptions.delete(id);

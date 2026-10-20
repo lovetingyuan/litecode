@@ -3,6 +3,10 @@ import { mkdir, copyFile, cp, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+if (process.argv.includes('--git-ignore')) {
+  await import('./verify-git-ignore.mjs');
+  process.exit(0);
+}
 const release = process.argv.includes('--release');
 const installTools = process.argv.includes('--install-tools');
 const run = path.resolve('.verification', `desktop-${Date.now()}`);

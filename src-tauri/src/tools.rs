@@ -135,11 +135,21 @@ pub fn server_spec(window: &WebviewWindow, state: &AppState, language: &str) -> 
             let script = settings["litecode.typescriptLanguageServerPath"]
                 .as_str()
                 .map(PathBuf::from)
-                .unwrap_or_else(|| tools.join("typescript-language-server/lib/cli.mjs"));
+                .unwrap_or_else(|| {
+                    let installed = tools.join("typescript-language-server/lib/cli.mjs");
+                    if installed.is_file() {
+                        installed
+                    } else {
+                        packaged(
+                            window,
+                            "typescript/node_modules/typescript-language-server/lib/cli.mjs",
+                        )
+                    }
+                });
             if !script.is_file() {
                 return Err(AppError::new(
                     "missingTool",
-                    "TypeScript language tools are missing. Run 'Language Tools: Install JavaScript/TypeScript Tools', or configure litecode.typescriptLanguageServerPath. Existing project dependencies are never installed automatically.",
+                    "TypeScript language server is missing. Check litecode.typescriptLanguageServerPath or reinstall LiteCode. For source builds, run npm run build:tools. Existing project dependencies are never installed automatically.",
                 ));
             }
             Ok(ServerSpec {

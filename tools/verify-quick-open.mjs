@@ -69,10 +69,12 @@ for (const [file, names] of Object.entries({ App: ['App'], Explorer: ['Explorer'
 }
 await page.route('**/src/bridge.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
 export const desktop = false;
+export const mediaSource = path => path;
 export const errorMessage = e => e?.message ?? String(e);
 export const channel = fn => ({ onmessage: fn });
 export async function bootstrap() { return {root:null,documents:[],session:{},recent:['C:/quick-fixture'],settings:{},keybindings:[],warnings:[],dataDir:''}; }
 export async function call(command, args) {
+ if (command === 'inspect_file') return {kind:'text',size:20,stamp:'fixture'};
  if (command === 'read_document') { window.__opened = args.path; return {text:'one\\ntwo\\nthree',encoding:'utf8',eol:'LF',revision:'fixture'}; }
  if (command === 'explicit_open') return args.path;
  if (command === 'language_document' || command === 'search_cancel' || command === 'search_ack') return;

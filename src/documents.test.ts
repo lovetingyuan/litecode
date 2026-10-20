@@ -18,7 +18,7 @@ vi.mock('./languages', () => ({ ensureLanguage: vi.fn(), releaseLanguageDocument
 import { call } from './bridge';
 import { monaco, languageFor } from './monaco';
 import { canFormat, formatModel } from './languages';
-import { attachDocument, autoSave, editors, models, normalize, openPath, patchDoc, restoreDocument, save, session, showDocument, visiblePath, closeDocument, closeTabs, tabsToClose, keepOpen, normalizeGroup, setSticky, moveTab, splitGroup } from './documents';
+import { attachDocument, autoSave, editors, models, normalize, openPath, patchDoc, restoreDocument, save, session, showDocument, visiblePath, closeDocument, closeTabs, tabsToClose, keepOpen, normalizeGroup, setSticky, moveTab, splitGroup, checkpoint, patchMediaView, refreshDocuments, renameDocuments } from './documents';
 import { ask } from './dialog';
 import { setApp, useApp } from './store';
 
@@ -189,7 +189,7 @@ describe('Opening documents', () => {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 0; });
     const { id } = addDocument();
     setApp({ activeGroup: 'group', groups: [{ id: 'group', tabs: [], active: null, preview: null, views: {} }], history: [], historyIndex: -1 });
-    const editor = { focus: vi.fn(), setPosition: vi.fn(), revealLineInCenterIfOutsideViewport: vi.fn() };
+    const editor = { focus: vi.fn(), setPosition: vi.fn(), revealLineInCenterIfOutsideViewport: vi.fn(), getModel: () => null, setModel: vi.fn(), saveViewState: () => null };
     editors.set('group', editor as unknown as Monaco.editor.IStandaloneCodeEditor);
     return { id, editor };
   }
@@ -204,9 +204,10 @@ describe('Opening documents', () => {
 
   it('loads a new file and preserves focus while still revealing the requested location', async () => {
     const { editor } = setup();
-    vi.mocked(call).mockResolvedValueOnce({ text: 'fresh', encoding: 'utf8', eol: 'LF', revision: 'new' });
+    vi.mocked(call).mockResolvedValueOnce({ kind: 'text', size: 5, stamp: 'fresh' }).mockResolvedValueOnce({ text: 'fresh', encoding: 'utf8', eol: 'LF', revision: 'new' });
     vi.mocked(monaco.editor.createModel).mockReturnValueOnce(new Buffer('fresh') as unknown as Monaco.editor.ITextModel);
     const id = await openPath('C:/workspace/fresh.txt', { preserveFocus: true, line: 3, column: 2 });
+    expect(models.get(id)?.getValue()).toBe('fresh');
     expect(useApp.getState().groups[0]).toMatchObject({ active: id, preview: id });
     expect(editor.setPosition).toHaveBeenCalledWith({ lineNumber: 3, column: 2 });
     expect(editor.focus).not.toHaveBeenCalled();
@@ -257,6 +258,103 @@ describe('Opening documents', () => {
     Object.assign(editor, { saveViewState: () => null });
     showDocument(id);
     expect(session()).not.toHaveProperty('tabRevealRequests');
+  });
+});
+
+describe('Media documents', () => {
+  beforeEach(() => {
+    setApp({ activeGroup: 'one', groups: [{ id: 'one', tabs: [], active: null, preview: null, views: {} }], history: [], historyIndex: -1 });
+  });
+  it('recognizes legacy SVG recovery records after the backend supplies its text default', () => {
+    const text = '<svg><rect/></svg>';
+    vi.mocked(monaco.editor.createModel).mockReturnValueOnce(new Buffer(text) as unknown as Monaco.editor.ITextModel);
+    restoreDocument({ id: 'legacy-svg', path: 'C:/workspace/old.SVG', kind: 'text', text, dirty: true, version: 3, revision: 'old', encoding: 'utf8' });
+    expect(useApp.getState().docs['legacy-svg']).toMatchObject({ kind: 'svg', dirty: true, version: 3 });
+    expect(models.get('legacy-svg')?.getValue()).toBe(text);
+  });
+  it.each(['image', 'video', 'audio', 'binary'] as const)('opens and restores %s without a text model or save operation', async kind => {
+    vi.mocked(call).mockImplementation(async command => command === 'inspect_file' ? { kind, size: 123, stamp: 'one' } : undefined as never);
+    const id = await openPath(`C:/workspace/file.${kind}`, { pinned: true });
+    expect(models.has(id)).toBe(false);
+    expect(useApp.getState().docs[id].kind).toBe(kind);
+    await save(id);
+    expect(writes()).toHaveLength(0);
+    await checkpoint();
+    const snapshot = vi.mocked(call).mock.calls.filter(([command]) => command === 'sync_documents').slice(-1)[0]![1]!;
+    const mirror = (snapshot.documents as import('./types').Mirror[])[0];
+    expect(mirror).toMatchObject({ id, kind, text: '', dirty: false });
+    restoreDocument(mirror);
+    expect(models.has(id)).toBe(false);
+  });
+  it.each(['binary', 'encoding'])('opens a text decoding %s failure as an unsupported editor', async code => {
+    vi.mocked(call).mockImplementation(async command => {
+      if (command === 'inspect_file') return { kind: 'text', size: 12, stamp: 'one' } as never;
+      if (command === 'read_document') throw { code, message: 'Unsupported content' };
+      return undefined as never;
+    });
+    const id = await openPath('C:/workspace/unknown');
+    expect(useApp.getState().docs[id].kind).toBe('binary');
+    expect(models.has(id)).toBe(false);
+  });
+  it('preserves the SVG buffer, dirty flag and independent group modes through backup', async () => {
+    vi.mocked(call).mockImplementation(async command => command === 'inspect_file'
+      ? { kind: 'svg', size: 20, stamp: 'one' } as never
+      : command === 'read_document' ? { text: '<svg/>', encoding: 'utf8', eol: 'LF', revision: 'svg' } as never : undefined as never);
+    const buffer = new Buffer('<svg/>');
+    vi.mocked(monaco.editor.createModel).mockReturnValueOnce(buffer as unknown as Monaco.editor.ITextModel);
+    const id = await openPath('C:/workspace/icon.svg', { pinned: true });
+    patchMediaView('one', id, { mode: 'text', scale: 1.5 });
+    buffer.edit('<svg><rect/></svg>');
+    const other = splitGroup('one');
+    patchMediaView(other, id, { mode: 'image', scale: 2 });
+    expect(useApp.getState().groups[0].mediaViews?.[id]).toMatchObject({ mode: 'text', scale: 1.5 });
+    expect(useApp.getState().groups[1].mediaViews?.[id]).toMatchObject({ mode: 'image', scale: 2 });
+    await checkpoint();
+    expect(writes()).toHaveLength(0);
+    const args = vi.mocked(call).mock.calls.filter(([command]) => command === 'sync_documents').slice(-1)[0]![1]!;
+    expect((args.documents as import('./types').Mirror[])[0]).toMatchObject({ text: '<svg><rect/></svg>', dirty: true, kind: 'svg' });
+  });
+  it('refreshes, renames and marks a missing media file without text reads', async () => {
+    let missing = false;
+    vi.mocked(call).mockImplementation(async command => {
+      if (command === 'inspect_file') {
+        if (missing) throw { code: 'io', message: 'File missing' };
+        return { kind: 'image', size: 24, stamp: 'new' } as never;
+      }
+      return undefined as never;
+    });
+    const id = await openPath('C:/workspace/image.png', { pinned: true });
+    await renameDocuments([{ from: 'C:/workspace/image.png', to: 'C:/workspace/renamed.png' }]);
+    expect(useApp.getState().docs[id].path).toBe('C:/workspace/renamed.png');
+    await refreshDocuments();
+    expect(useApp.getState().docs[id].fileInfo?.stamp).toBe('new');
+    expect(vi.mocked(call).mock.calls.some(([command]) => command === 'read_document')).toBe(false);
+    missing = true; await refreshDocuments();
+    expect(useApp.getState().docs[id]).toMatchObject({ deleted: true, conflict: false });
+  });
+});
+
+describe('Markdown view navigation', () => {
+  it('switches only the destination group to text when revealing a source line', () => {
+    const { id } = addDocument({ language: 'markdown', dirty: false });
+    setApp({ activeGroup: 'one', groups: ['one', 'two'].map(group => ({ id: group, tabs: [id], active: id, preview: null, views: {}, mediaViews: { [id]: { mode: 'markdown', scrollTop: 150 } } })) });
+    showDocument(id, { group: 'two', line: 8, column: 3 });
+    expect(useApp.getState().groups[0].mediaViews?.[id]).toEqual({ mode: 'markdown', scrollTop: 150 });
+    expect(useApp.getState().groups[1].mediaViews?.[id]).toEqual({ mode: 'text', scrollTop: 150 });
+  });
+  it('copies the view on split and move, and keeps buffer contents in the session backup', async () => {
+    const { id, buffer } = addDocument({ language: 'markdown' });
+    setApp({ activeGroup: 'one', groups: [{ id: 'one', tabs: [id], active: id, preview: null, views: {}, mediaViews: { [id]: { mode: 'markdown', scrollTop: 180 } } }] });
+    const split = splitGroup();
+    patchMediaView(split, id, { mode: 'text' });
+    expect(useApp.getState().groups[0].mediaViews?.[id]?.mode).toBe('markdown');
+    moveTab(id, split, 'one');
+    expect(useApp.getState().groups[0].mediaViews?.[id]).toEqual({ mode: 'text', scrollTop: 180 });
+    buffer.edit('# Unsaved Markdown');
+    await checkpoint();
+    const backup = vi.mocked(call).mock.calls.filter(([command]) => command === 'sync_documents').slice(-1)[0]![1]!;
+    expect((backup.documents as import('./types').Mirror[])[0]).toMatchObject({ language: 'markdown', text: '# Unsaved Markdown', dirty: true });
+    expect((backup.session as import('./types').Session).groups[0].mediaViews?.[id]).toEqual({ mode: 'text', scrollTop: 180 });
   });
 });
 

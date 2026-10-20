@@ -50,7 +50,7 @@ class NativeFiles extends RegisteredFileSystemProvider {
   override async writeFile(uri: monaco.Uri, bytes: Uint8Array) {
     const id = await openPath(uri.fsPath, { pinned: true, background: true });
     if (!id) throw new Error('Could not open workspace edit target');
-    const m = models.get(id)!;
+    const m = models.get(id); if (!m) throw new Error('Cannot apply text edits to a media or binary preview');
     m.pushStackElement(); m.pushEditOperations([], [{ range: m.getFullModelRange(), text: new TextDecoder().decode(bytes) }], () => null); m.pushStackElement();
     await checkpoint();
   }
@@ -152,7 +152,7 @@ async function applyWorkspaceEdit(edit: import('vscode-languageserver-protocol')
     for (const [uri, target] of targets) {
       const path = monaco.Uri.parse(uri).fsPath; await call('language_document', { path });
       const id = await openPath(path, { pinned: true, background: true }); if (!id) throw new Error('Cannot open edit target');
-      const m = models.get(id)!;
+      const m = models.get(id); if (!m) throw new Error('Cannot apply text edits to a media or binary preview');
       if (target.version != null && target.version !== m.getVersionId()) throw new Error(`${path} changed after the language server computed its edits`);
       prepared.push({ m, expected: m.getVersionId(), edits: target.edits.map(e => ({ range: new monaco.Range(e.range.start.line + 1, e.range.start.character + 1, e.range.end.line + 1, e.range.end.character + 1), text: e.newText })) });
     }

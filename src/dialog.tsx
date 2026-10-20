@@ -2,10 +2,10 @@ import { create } from 'zustand';
 import { Dialog } from '@base-ui/react/dialog';
 import { Icon, IconButton } from './ui';
 
-type Request = { title: string; message?: string; items?: string[]; value?: string; choices: string[]; resolve: (choice: string | null, value?: string) => void };
+type Request = { title: string; message?: string; items?: string[]; itemsLabel?: string; value?: string; choices: string[]; resolve: (choice: string | null, value?: string) => void };
 const useDialog = create<{ request: Request | null }>(() => ({ request: null }));
 let queue = Promise.resolve();
-export function ask(title: string, message: string, choices: string[], options?: { items?: string[]; signal?: AbortSignal }): Promise<string | null> {
+export function ask(title: string, message: string, choices: string[], options?: { items?: string[]; itemsLabel?: string; signal?: AbortSignal }): Promise<string | null> {
   return new Promise(resolve => {
     queue = queue.then(() => new Promise<void>(next => {
       if (options?.signal?.aborted) { resolve(null); next(); return; }
@@ -18,7 +18,7 @@ export function ask(title: string, message: string, choices: string[], options?:
       };
       const cancel = () => finish(null);
       options?.signal?.addEventListener('abort', cancel, { once: true });
-      useDialog.setState({ request: { title, message, items: options?.items, choices, resolve: finish } });
+      useDialog.setState({ request: { title, message, items: options?.items, itemsLabel: options?.itemsLabel, choices, resolve: finish } });
     }));
   });
 }
@@ -36,7 +36,7 @@ export function DialogHost() {
       {request?.items && <><Icon name="info" className="move-info" /><IconButton icon="close" label="Close" className="move-close" onClick={() => request.resolve(null)} /></>}
       <Dialog.Title>{request?.title}</Dialog.Title>
       <Dialog.Description>{request?.message}</Dialog.Description>
-      {request?.items && <ul className="move-items" aria-label="Items to move">{request.items.map((item, i) => <li key={`${i}:${item}`} title={item}>{item}</li>)}</ul>}
+      {request?.items && <ul className="move-items" aria-label={request.itemsLabel ?? 'Items to move'}>{request.items.map((item, i) => <li key={`${i}:${item}`} title={item}>{item}</li>)}</ul>}
       <form onSubmit={e => { e.preventDefault(); const text = new FormData(e.currentTarget).get('value'); request?.resolve(request.choices[0], typeof text === 'string' ? text : undefined); }}>
         {request?.value !== undefined && <input name="value" defaultValue={request.value} autoFocus aria-label={request.title} />}
         <div className="modal-actions">{request?.choices.map((choice, i) => <button autoFocus={!!request.items && i === 0} className={i === 0 ? 'primary' : ''} key={choice} type={i === 0 ? 'submit' : 'button'} onClick={i === 0 ? undefined : () => request.resolve(choice)}>{choice}</button>)}</div>

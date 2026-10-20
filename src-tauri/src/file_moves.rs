@@ -28,7 +28,7 @@ pub struct MoveReport {
     pub failed: Vec<MoveFailure>,
 }
 
-fn visible(path: &Path) -> String {
+pub(crate) fn visible(path: &Path) -> String {
     let text = path.to_string_lossy();
     if let Some(unc) = text.strip_prefix("\\\\?\\UNC\\") {
         format!("//{unc}").replace('\\', "/")
@@ -39,7 +39,7 @@ fn visible(path: &Path) -> String {
     }
 }
 
-fn key(path: &Path) -> String {
+pub(crate) fn key(path: &Path) -> String {
     let path = visible(path);
     if cfg!(windows) {
         path.to_lowercase()
@@ -48,7 +48,7 @@ fn key(path: &Path) -> String {
     }
 }
 
-fn within(path: &Path, root: &Path) -> bool {
+pub(crate) fn within(path: &Path, root: &Path) -> bool {
     let path = key(path);
     let root = key(root);
     path == root || path.starts_with(&(root.trim_end_matches('/').to_owned() + "/"))
@@ -147,7 +147,7 @@ fn plan(root: &Path, sources: &[String], target: &Path) -> Result<Vec<FileMove>>
     Ok(moves)
 }
 
-fn workspace(state: &AppState, label: &str, expected_root: &str) -> Result<PathBuf> {
+pub(crate) fn workspace(state: &AppState, label: &str, expected_root: &str) -> Result<PathBuf> {
     let expected = canonical(Path::new(expected_root))?;
     let windows = state.windows.lock().unwrap();
     let root = windows
@@ -157,7 +157,7 @@ fn workspace(state: &AppState, label: &str, expected_root: &str) -> Result<PathB
     if key(root) != key(&expected) {
         return Err(AppError::new(
             "workspace",
-            "The workspace changed; drag the items again",
+            "The workspace changed; try the operation again",
         ));
     }
     Ok(root.clone())

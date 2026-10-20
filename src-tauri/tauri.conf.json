@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.tingyuan.litecode",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run build:tools && npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build:tools && npm run build",
     "frontendDist": "../dist"
@@ -23,13 +23,13 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: media: http: https:; media-src 'self' blob: media: http://media.localhost; font-src 'self' data:; worker-src 'self' blob:; connect-src ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "resources": ["tools/*"],
+    "resources": ["tools/**/*"],
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper", "silent": false },
       "nsis": { "installMode": "currentUser" }

@@ -25,6 +25,10 @@ pub struct Mirror {
     pub encoding: String,
     pub dirty: bool,
     #[serde(default)]
+    pub kind: crate::media::FileKind,
+    #[serde(default)]
+    pub file_info: Option<crate::media::FileInfo>,
+    #[serde(default)]
     pub language: Option<String>,
     #[serde(default)]
     pub name: Option<String>,

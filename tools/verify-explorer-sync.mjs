@@ -38,6 +38,7 @@ await page.addInitScript(() => {
 });
 await page.route('**/src/bridge.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
 export const desktop = false;
+export const mediaSource = path => path;
 export const errorMessage = e => e?.message ?? String(e);
 export const channel = fn => ({ onmessage: fn });
 export async function bootstrap() {
@@ -52,6 +53,7 @@ export async function bootstrap() {
     keybindings: [], warnings: [], dataDir: '' };
 }
 export async function call(command, args) {
+  if (command === 'inspect_file') return {kind:'text',size:20,stamp:'fixture'};
   if (command === 'scan_workspace') {
     await new Promise(resolve => setTimeout(resolve, 80));
     return { paths: ${JSON.stringify(paths)}, git: [], branch: null, warnings: [], truncated: false };

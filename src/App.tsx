@@ -17,6 +17,8 @@ import { DiffViewer } from './DiffViewer';
 import { Icon, IconButton } from './ui';
 import './App.css';
 import { initializeLanguages } from './languages';
+import { isTextView } from './media';
+import { MediaStatus } from './MediaStatus';
 
 let startup: Promise<void> | undefined;
 function start() {
@@ -28,7 +30,9 @@ function start() {
     for (const mirror of boot.documents) restoreDocument(mirror);
     const session = boot.session ?? {};
     if (session.query) setApp({ query: session.query, searchHistory: session.searchHistory ?? [] });
-    const valid = session.groups?.map(g => normalizeGroup({ ...g, tabs: g.tabs.filter(id => models.has(id)), active: g.active && models.has(g.active) ? g.active : g.tabs.find(id => models.has(id)) ?? null, views: g.views ?? {} }));
+    const docs = useApp.getState().docs;
+    const legacySvg = boot.documents.filter(d => (!d.kind || d.kind === 'text') && /\.svg$/i.test(d.path ?? '')).map(d => d.id);
+    const valid = session.groups?.map(g => normalizeGroup({ ...g, tabs: g.tabs.filter(id => !!docs[id]), active: g.active && docs[g.active] ? g.active : g.tabs.find(id => !!docs[id]) ?? null, views: g.views ?? {}, mediaViews: { ...Object.fromEntries(legacySvg.filter(id => g.tabs.includes(id)).map(id => [id, { mode: 'text' as const }])), ...g.mediaViews } }));
     setApp({ ready: true, ...(valid?.length ? { groups: valid, activeGroup: session.activeGroup && valid.some(g => g.id === session.activeGroup) ? session.activeGroup : valid[0].id } : {}), sidebarWidth: session.sidebarWidth ?? 260, sidebar: session.sidebar === 'search' ? 'search' : 'explorer', history: session.history ?? [], historyIndex: session.historyIndex ?? -1 });
     if (boot.warnings.length) notify(boot.warnings.join('\n'));
     if (boot.root) await refreshTree();
@@ -61,7 +65,8 @@ export default function App() {
     })().catch(e => notify(errorMessage(e)));
     return () => { disposed = true; cleanups.forEach(fn => fn()); };
   }, []);
-  const doc = s.docs[s.groups.find(g => g.id === s.activeGroup)?.active ?? ''];
+  const group = s.groups.find(g => g.id === s.activeGroup);
+  const doc = s.docs[group?.active ?? ''];
   const showWelcome = s.ready && !s.root && s.groups.every(group => group.tabs.length === 0);
   useEffect(() => { if (desktop) void getCurrentWindow().setTitle(`${doc?.dirty ? '● ' : ''}${doc?.name ? `${doc.name} — ` : ''}${s.root ? `${basename(s.root)} — ` : ''}LiteCode`); }, [doc?.name, doc?.dirty, s.root]);
   function windowAction(action: 'minimize' | 'maximize' | 'close') {
@@ -94,7 +99,7 @@ export default function App() {
       </main></>}
       {!s.ready && <div className="startup" role="status">{fatal ? <><Icon name="error" /><p>{fatal}</p><button onClick={() => location.reload()}>Reload</button></> : <><span className="spinner" /><p>Starting editor services…</p></>}</div>}
     </div>
-    <footer className="statusbar"><div className="status-left"><span className="remote-indicator" title="Local window"><Icon name="remote" /></span>{s.tree.branch && <span className="status-item" title="Current Git branch"><Icon name="source-control" />{s.tree.branch}</span>}<button title="Show Problems" onClick={() => void editor()?.getAction('editor.action.marker.next')?.run()}><Icon name="error" />{diagnostics.errors}<Icon name="warning" />{diagnostics.warnings}</button></div><div className="status-right">{doc && <><button onClick={() => setApp({ quick: ':' })}>Ln {s.cursor.line}, Col {s.cursor.column}{s.cursor.selected ? ` (${s.cursor.selected} selected)` : ''}</button><button onClick={() => void changeIndent()}>Spaces: {String(s.settings['editor.tabSize'] ?? 4)}</button><button onClick={() => void changeEncoding()}>{doc.encoding.toUpperCase().replace('UTF8', 'UTF-8')}</button><button onClick={() => { const m = models.get(doc.id); if (m) m.pushEOL(doc.eol === 'LF' ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF); }}>{doc.eol}</button><button onClick={() => void execute('litecode.setLanguage')}>{doc.language === 'plaintext' ? 'Plain Text' : doc.language}</button></>}{s.searching && <span>Searching…</span>}<span className="status-item" title={s.languageStatus}><Icon name="check" /></span><button title="Notifications" onClick={() => notify(s.notice ?? 'No new notifications.')} aria-label="Notifications"><Icon name="bell" /></button></div></footer>
+    <footer className="statusbar"><div className="status-left"><span className="remote-indicator" title="Local window"><Icon name="remote" /></span>{s.tree.branch && <span className="status-item" title="Current Git branch"><Icon name="source-control" />{s.tree.branch}</span>}<button title="Show Problems" onClick={() => void editor()?.getAction('editor.action.marker.next')?.run()}><Icon name="error" />{diagnostics.errors}<Icon name="warning" />{diagnostics.warnings}</button></div><div className="status-right">{doc && isTextView(doc, group) && <><button onClick={() => setApp({ quick: ':' })}>Ln {s.cursor.line}, Col {s.cursor.column}{s.cursor.selected ? ` (${s.cursor.selected} selected)` : ''}</button><button onClick={() => void changeIndent()}>Spaces: {String(s.settings['editor.tabSize'] ?? 4)}</button><button onClick={() => void changeEncoding()}>{doc.encoding.toUpperCase().replace('UTF8', 'UTF-8')}</button><button onClick={() => { const m = models.get(doc.id); if (m) m.pushEOL(doc.eol === 'LF' ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF); }}>{doc.eol}</button><button onClick={() => void execute('litecode.setLanguage')}>{doc.language === 'plaintext' ? 'Plain Text' : doc.language}</button></>}{doc && group && !isTextView(doc, group) && <MediaStatus doc={doc} group={group} />}{s.searching && <span>Searching…</span>}<span className="status-item" title={s.languageStatus}><Icon name="check" /></span><button title="Notifications" onClick={() => notify(s.notice ?? 'No new notifications.')} aria-label="Notifications"><Icon name="bell" /></button></div></footer>
     {s.notice && <div className="notification" role="status"><Icon name="info" /><p>{s.notice}</p><IconButton icon="close" label="Dismiss Notification" onClick={() => setApp({ notice: null })} /></div>}
     {s.ready && <><QuickOpen /><DiffViewer /></>}<DialogHost />
   </div>;

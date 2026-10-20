@@ -17,7 +17,7 @@
     "search.exclude": { "type": "object", "additionalProperties": { "type": "boolean" }, "default": {}, "description": "搜索排除规则，键为 glob 模式，值为是否排除。当前为兼容导入保留；实际排除条件请在搜索面板填写。" },
     "litecode.nodePath": { "type": ["string", "null"], "default": null, "description": "Node.js 可执行文件路径。null 表示优先使用应用安装的 Node.js，再从 PATH 查找。Windows 路径中的反斜杠需要写成双反斜杠。" },
     "typescript.native.serverPath": { "type": ["string", "null"], "default": null, "description": "TypeScript Native 的 tsgo.exe 路径。null 表示优先使用应用安装的工具，再从 PATH 查找。TypeScript 7 之前的项目使用兼容语言服务器。" },
-    "litecode.typescriptLanguageServerPath": { "type": ["string", "null"], "default": null, "description": "TypeScript 兼容语言服务器的 lib/cli.mjs 路径。null 表示使用应用安装的语言工具，需要 Node.js。" },
+    "litecode.typescriptLanguageServerPath": { "type": ["string", "null"], "default": null, "description": "TypeScript 兼容语言服务器的 lib/cli.mjs 路径。null 表示优先使用应用安装的语言工具，否则使用应用内置服务器；优先加载项目 TypeScript，无项目版本时使用服务器附带版本。需要 Node.js 22.22.2 或更高版本。" },
     "rust-analyzer.server.path": { "type": ["string", "null"], "default": null, "description": "rust-analyzer 可执行文件路径。null 表示从 PATH 查找项目的 Rust 工具链。" },
     "oxfmt.path": { "type": ["string", "null"], "default": null, "description": "Oxfmt 可执行文件路径。null 表示先从 PATH 查找，再尝试项目和应用安装的 Oxfmt。" }
   }

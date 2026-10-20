@@ -1,11 +1,13 @@
 import { spawn } from 'node:child_process';
-import { writeFile, mkdir, readFile } from 'node:fs/promises';
-import { pathToFileURL } from 'node:url';
+import { writeFile, mkdir, readFile, cp, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 const results = [];
 async function test(language, text, check, options = {}) {
-  const child = spawn(process.execPath, ['src-tauri/tools/web-language-server.cjs', '--stdio', language], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  const root = options.root ?? path.resolve('.verification');
+  const child = spawn(process.execPath, options.server ? [options.server, '--stdio'] : [path.resolve('src-tauri/tools/web-language-server.cjs'), '--stdio', language], { cwd: root, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   let buffer = Buffer.alloc(0); let id = 0; let stderr = ''; const pending = new Map(); const notifications = [];
   child.stdin.on('error', () => {});
   child.on('exit', code => { for (const { reject, timer } of pending.values()) { clearTimeout(timer); reject(new Error(`${language} exited (${code}): ${stderr}`)); } pending.clear(); });
@@ -28,15 +30,25 @@ async function test(language, text, check, options = {}) {
     child.stdin.write(`Content-Length: ${bytes.length}\r\n\r\n`); child.stdin.write(bytes); return promise;
   }
   try {
-    const initialization = await send('initialize', { processId: process.pid, rootUri: pathToFileURL(path.resolve('.verification')).href, capabilities: { textDocument: { completion: { completionItem: { snippetSupport: true } } } }, initializationOptions: { schemas: options.schemas ?? [] } }, true);
+    const initialization = await send('initialize', { processId: process.pid, rootUri: pathToFileURL(root).href, capabilities: { textDocument: { publishDiagnostics: {}, completion: { completionItem: { snippetSupport: true } } } }, initializationOptions: { schemas: options.schemas ?? [] } }, true);
     await send('initialized', {});
-    const uri = pathToFileURL(path.resolve('.verification', options.filename ?? `test.${language}`)).href;
+    const uri = pathToFileURL(path.join(root, options.filename ?? `test.${language}`)).href;
     await send('textDocument/didOpen', { textDocument: { uri, languageId: language, version: 1, text } });
     await check({ send, uri, notifications, initialization });
-    results.push({ language, passed: true, capabilities: initialization.capabilities });
-    await send('shutdown', null, true); await send('exit');
-  } finally { child.kill(); for (const { timer } of pending.values()) clearTimeout(timer); }
+    results.push({ language, ...(options.source ? { typescriptSource: options.source } : {}), passed: true, capabilities: initialization.capabilities });
+  } finally {
+    if (child.exitCode === null) {
+      await send('shutdown', null, true).catch(() => {});
+      await send('exit');
+      await new Promise(resolve => {
+        const timer = setTimeout(() => { child.kill(); resolve(); }, 2000);
+        child.once('exit', () => { clearTimeout(timer); resolve(); });
+      });
+    }
+    for (const { timer } of pending.values()) clearTimeout(timer);
+  }
 }
+await mkdir('.verification', { recursive: true });
 await test('json', '{ invalid }', async ({ notifications }) => {
   const start = Date.now(); while (!notifications.some(n => n.method === 'textDocument/publishDiagnostics') && Date.now() - start < 5000) await new Promise(resolve => setTimeout(resolve, 30));
   assert.ok(notifications.find(n => n.method === 'textDocument/publishDiagnostics')?.params.diagnostics.length > 0);
@@ -61,4 +73,39 @@ await test('css', 'a { colour: red; }', async ({ notifications, send, uri }) => 
   assert.ok(notifications.find(n => n.method === 'textDocument/publishDiagnostics')?.params.diagnostics.length > 0);
   const symbols = await send('textDocument/documentSymbol', { textDocument: { uri } }, true); assert.ok(symbols.length > 0);
 });
-await mkdir('docs/verification', { recursive: true }); await writeFile('docs/verification/language-server-results.json', JSON.stringify(results, null, 2)); console.log(results.map(r => `${r.language}: passed`).join('\n'));
+// Run a relocated copy outside the repository so the fallback cannot accidentally
+// resolve the development checkout's TypeScript. Exercise spaces and Unicode too.
+const isolated = await mkdtemp(path.join(tmpdir(), 'litecode-typescript-中文 '));
+try {
+  const packaged = path.join(isolated, 'app', 'tools', 'typescript');
+  await cp('src-tauri/tools/typescript', packaged, { recursive: true });
+  for (const source of ['bundled', 'workspace']) {
+    const root = path.join(isolated, source);
+    await mkdir(root);
+    if (source === 'workspace') {
+      await mkdir(path.join(root, 'node_modules'));
+      await symlink(path.join(packaged, 'node_modules', 'typescript'), path.join(root, 'node_modules', 'typescript'), process.platform === 'win32' ? 'junction' : 'dir');
+    }
+    await writeFile(path.join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, types: [] }, include: ['*.ts'] }));
+    const text = 'export const greeting = "hello";\nconst invalid: number = greeting;\ngreeting.toU';
+    await writeFile(path.join(root, 'test.ts'), text);
+    await test('typescript', text, async ({ send, uri, notifications }) => {
+      const initialized = Date.now();
+      while (!notifications.some(n => n.method === '$/typescriptVersion') && Date.now() - initialized < 5000) await new Promise(resolve => setTimeout(resolve, 30));
+      const version = notifications.find(n => n.method === '$/typescriptVersion');
+      assert.equal(version?.params.source, source);
+      assert.equal(version?.params.version, '6.0.3');
+      const completion = await send('textDocument/completion', { textDocument: { uri }, position: { line: 2, character: 12 } }, true);
+      assert.ok((completion.items ?? completion).some(item => item.label === 'toUpperCase'), JSON.stringify(completion));
+      const definitions = await send('textDocument/definition', { textDocument: { uri }, position: { line: 1, character: 25 } }, true);
+      assert.ok(definitions.some(definition => fileURLToPath(definition.uri).toLowerCase() === fileURLToPath(uri).toLowerCase() && definition.range.start.line === 0), JSON.stringify(definitions));
+      const start = Date.now();
+      while (!notifications.some(n => n.method === 'textDocument/publishDiagnostics' && n.params.diagnostics.some(d => d.code === 2322)) && Date.now() - start < 8000) await new Promise(resolve => setTimeout(resolve, 30));
+      assert.ok(notifications.some(n => n.method === 'textDocument/publishDiagnostics' && n.params.diagnostics.some(d => d.code === 2322)), 'Expected string-to-number diagnostic');
+    }, { root, server: path.join(packaged, 'node_modules', 'typescript-language-server', 'lib', 'cli.mjs'), filename: 'test.ts', source });
+  }
+} finally {
+  assert.equal(path.dirname(isolated), tmpdir());
+  await rm(isolated, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+await mkdir('docs/verification', { recursive: true }); await writeFile('docs/verification/language-server-results.json', JSON.stringify(results, null, 2)); console.log(results.map(r => `${r.language}${r.typescriptSource ? ` (${r.typescriptSource})` : ''}: passed`).join('\n'));

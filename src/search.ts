@@ -1,8 +1,9 @@
 import { call, channel, errorMessage } from './bridge';
 import { useApp, setApp, notify } from './store';
-import { checkpoint, newDocument, openPath, models, showDocument, normalize, relative, patchDoc, basename, editor } from './documents';
+import { checkpoint, newDocument, openPath, models, showDocument, normalize, relative, patchDoc, basename, editor, patchMediaView } from './documents';
 import { monaco } from './monaco';
 import type { SearchMatch, DiskDocument } from './types';
+import { isTextDocument } from './media';
 
 export async function runSearch(query = useApp.getState().query) {
   const previous = useApp.getState().requestId;
@@ -32,6 +33,7 @@ export function cancelSearch() {
 }
 
 export async function openMatch(match: SearchMatch, side = false, group?: string) {
+  if (match.documentId && useApp.getState().docs[match.documentId]?.kind === 'svg') patchMediaView(group ?? useApp.getState().activeGroup, match.documentId, { mode: 'text' });
   if (match.documentId && models.has(match.documentId)) showDocument(match.documentId, { pinned: side, group, line: match.line, column: match.column });
   else await openPath(match.path, { pinned: side, group, line: match.line, column: match.column });
   const e = editor();
@@ -64,6 +66,7 @@ export async function replaceMatches(matches: SearchMatch[], replacement: string
     try {
       const first = list[0];
       const doc = first.documentId ? useApp.getState().docs[first.documentId] : Object.values(useApp.getState().docs).find(d => d.path && normalize(d.path) === normalize(first.path));
+      if (doc && !isTextDocument(doc)) throw new Error(`${relative(first.path)} is no longer a text document. Search again.`);
       let disk: DiskDocument | undefined;
       if (!doc) { disk = await call<DiskDocument>('read_document', { path: first.path }); temporary = monaco.editor.createModel(disk.text); }
       const m = doc ? models.get(doc.id)! : temporary!;
@@ -130,6 +133,7 @@ export async function createSearchEditor(query = useApp.getState().query, matche
     if (!context) { for (const hit of hits) lines.push(`  ${hit.line}:${hit.column}: ${hit.preview.replace(/\r?\n/g, '\n      ')}`); continue; }
     try {
       const doc = hits[0].documentId ? useApp.getState().docs[hits[0].documentId] : Object.values(useApp.getState().docs).find(d => d.path && normalize(d.path) === normalize(path));
+      if (doc && !isTextDocument(doc)) throw new Error('This file is no longer a text document.');
       const text = doc ? models.get(doc.id)!.getValue() : (await call<DiskDocument>('read_document', { path })).text;
       const source = text.split(/\r?\n/); const included = new Set<number>();
       for (const hit of hits) for (let n = Math.max(1, hit.line - context); n <= Math.min(source.length, hit.endLine + context); n++) included.add(n);

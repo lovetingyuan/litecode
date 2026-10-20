@@ -22,6 +22,7 @@ await page.addInitScript(({ paths, root }) => {
 }, { paths: initialPaths, root });
 await page.route('**/src/bridge.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
 export const desktop = false;
+export const mediaSource = path => path;
 export const errorMessage = e => e?.message ?? String(e);
 export const channel = fn => ({ onmessage: fn });
 export async function bootstrap() { return { root: ${JSON.stringify(root)}, documents: [], session: {}, recent: [], settings: {}, keybindings: [], warnings: [], dataDir: '' }; }
@@ -37,6 +38,7 @@ function plan(args) {
   return moves;
 }
 export async function call(command, args) {
+  if (command === 'inspect_file') return {kind:'text',size:20,stamp:'fixture'};
   const f = window.moveFixture;
   f.calls.push({ command, args });
   if (command === 'scan_workspace') { await new Promise(resolve => setTimeout(resolve, f.scanDelay)); return { paths: [...f.paths], git: [], branch: null, warnings: [], truncated: false }; }

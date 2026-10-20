@@ -19,6 +19,12 @@ describe('React language modes', () => {
   });
 });
 
+describe('Markdown language detection', () => {
+  it.each(['README.md', 'AGENTS.MD', 'guide.markdown', '中文.MarkDown'])('identifies %s as Markdown', path => {
+    expect(languageFor(path)).toBe('markdown');
+  });
+});
+
 describe('JSON syntax loading', () => {
   it('registers and reuses tokenizers for JSON and JSONC documents', async () => {
     for (const path of ['package.json', 'settings.json', 'keybindings.json', 'config.jsonc']) {

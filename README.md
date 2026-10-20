@@ -29,6 +29,12 @@ node tools/package-portable.mjs
 
 ## 文件、搜索与编辑
 
+- Markdown（`.md` / `.markdown`）默认文本编辑，可在面包屑右侧切换 `Text Editor` / `Markdown Preview`。预览支持常用 Markdown、表格和任务列表，展示当前未保存内容；可通过现有分栏功能一侧编辑、一侧实时预览。切换保留编辑位置和撤销历史，各分组独立保存视图与预览滚动位置，并随会话恢复。
+- Markdown 支持文内标题锚点、本地图片与文件链接，以及 HTTP/HTTPS 图片；本地路径相对文档目录解析并沿用窗口的文件访问授权，未保存文档的相对资源需要先保存才能解析。网页和邮件链接通过系统默认程序打开；原始 HTML 不参与渲染，不支持 Mermaid、数学公式、代码语法着色或滚动同步。
+- 支持 JPG/JPE/JPEG、PNG、BMP、GIF、ICO、WebP、AVIF、SVG 图片预览，默认适应窗口；点击放大、Ctrl+点击缩小、Ctrl+滚轮连续缩放，聚焦预览后可用 `+` / `-` / `0` 放大、缩小、恢复原始尺寸。底部显示缩放、原始宽高和文件大小，点击缩放可选择比例或 `Whole Image`。
+- SVG 默认图片预览，可在面包屑右侧切换 `Image Preview` / `Text Editor`；预览使用当前未保存的源码，切换保留撤销历史，各分组可独立选择视图。媒体标签、视图和缩放随会话恢复。
+- 支持 MP4/WebM 视频和 MP3/WAV/OGG/OGA 音频的原生播放控件，播放能力取决于 Windows WebView2 的编解码器。媒体通过按窗口授权的本地协议加载，音视频支持 Range 请求及进度拖动；其他二进制文件或不支持的文本编码在编辑区域展示提示。
+
 - 未打开文件夹且没有文件标签时，编辑区显示初始页，提供新建文件、打开文件、打开文件夹及最近文件夹入口；关闭全部单文件标签后会返回初始页。
 - `Ctrl+P` 打开文件；支持路径、`:行:列`，以及 `>` 命令、`@` 当前文档符号、`#` 工作区符号、`%` Quick Search、`?` 帮助。
 - 文件树默认单击预览并保留树中焦点，双击或按 `Enter` 固定文件并聚焦编辑器。兼容 VS Code 的 `workbench.list.openMode`：`singleClick`（默认）或 `doubleClick`（单击仅选中）；可在用户设置或 `.litecode/settings.json` 中修改，保存后即时生效。
@@ -48,9 +54,11 @@ node tools/package-portable.mjs
 
 设置文件和快捷键文件使用 JSONC：扩展名仍为 `.json`，支持 `//`、`/* ... */` 注释和末尾逗号。打开用户设置命令会补全全部设置的默认值，并为每项添加中文说明及默认值注释；已有值、自写注释和未知字段保留，补全内容可撤销，保存后写入文件。默认值、用户设置、工作区设置按顺序覆盖；删除配置项后恢复下层设置或默认值。语言服务提供设置说明悬停、补全和校验，JSONC 格式化会保留注释。普通 JSON 文件仍进行严格校验。
 
-HTML/CSS/JSON 的 Microsoft 语言服务随应用提供，需要 Node。JS/TS 工具按需安装；项目使用 TypeScript 7 之前的版本时使用项目 tsserver 与兼容 LSP。Rust 使用项目工具链的 rust-analyzer / rustfmt。
+HTML/CSS/JSON 的 Microsoft 语言服务随应用提供，需要 Node。JS/TS 内置 `typescript-language-server` 6.0.2 和 TypeScript 6.0.3，使用系统 Node.js（22.22.2 或更高版本），不随安装包携带 Node.js；已有 Node.js 时打开文件即可启动语言服务，无需执行工具安装命令。兼容服务器优先使用项目 TypeScript，无项目版本时使用内置 TypeScript。项目使用 TypeScript 7 之前的版本时使用兼容 LSP；其他项目在有原生服务器时优先使用原生服务。Rust 使用项目工具链的 rust-analyzer / rustfmt。
 
-首次打开 JS/TS 文件提示缺少语言工具时，按 `Ctrl+Shift+P` 执行 `Language Tools: Install JavaScript/TypeScript Tools`。该命令会下载校验并安装 Node.js 和语言工具，成功后自动重新连接已打开文件的语言服务；不会安装或修改项目依赖。命令 `Language Tools: Install Verified Node.js Runtime` 可单独安装 Node.js，成功后同样自动重新连接；`Language: Restart Language Services` 可手动重新连接。安装失败保留已有工具。首次离线运行需预先准备工具或配置路径；本环境的应用内下载成功路径尚未验证。
+源代码开发和发行构建都会运行 `build:tools` 准备内置语言服务。系统 Node.js 无法从 PATH 找到时，可设置 `litecode.nodePath` 指向 `node.exe`，然后执行 `Language: Restart Language Services`。已有配置路径和用户安装的服务器优先于内置服务器。
+
+需要额外的原生服务和格式化工具时，可按 `Ctrl+Shift+P` 执行 `Language Tools: Install JavaScript/TypeScript Tools`。该可选命令会下载校验并安装 Node.js 和语言工具，成功后自动重新连接已打开文件的语言服务；不会安装或修改项目依赖。命令 `Language Tools: Install Verified Node.js Runtime` 可单独安装 Node.js，成功后同样自动重新连接；安装失败保留已有工具。本环境的应用内下载成功路径尚未验证。
 
 常用配置：
 
@@ -88,5 +96,11 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 标签栏浏览器回归：先启动 `npm run dev`，再执行 `node tools/verify-editor-tabs.mjs`（需要已安装的 Microsoft Edge）。脚本仅模拟 IPC 数据，使用真实文件树、标签栏和 Monaco，覆盖标签定位、文件树焦点、手动滚动、后台打开、预览、分栏、会话恢复与配色；截图保存至 `.verification/editor-tabs/`。
 
 文件树与编辑器双向联动回归：启动 `npm run dev` 后执行 `node tools/verify-explorer-sync.mjs`（需要 Microsoft Edge）。切换活动编辑器会展开父目录、选中文件并尽量滚动到视野中部，同时保留编辑器焦点；直接操作文件树时保持条目位置稳定。脚本覆盖居中定位、鼠标/键盘切换、分组、导航、侧栏恢复、Windows 路径和异步树数据更新；截图保存至 `.verification/explorer-sync/`。
+
+媒体预览桌面回归：完成 `cargo build --manifest-path src-tauri/Cargo.toml` 并启动 `npm run dev` 后，执行 `node tools/verify-media.mjs`。脚本在隔离的便携式 Tauri/WebView2 实例中使用真实 IPC 和媒体协议，覆盖图片解码、缩放与滚动恢复、SVG 未保存预览与分屏、会话恢复、二进制提示、音视频播放和文件外部变化；截图及报告保存至 `.verification/media-*/`。也可用 `--app <exe路径>` 指定待测程序。
+
+Windows 文件树支持粘贴资源管理器复制的文件、文件夹和多选项目：选中文件夹后按 `Ctrl+V` 或右键选择 Paste，复制前会列出项目及目标目录并要求确认。选中文件时使用其父目录，工作区标题或空白区域使用根目录；重名项目按 `name copy.ext`、`name copy 2.ext` 递增，来源保持不变。目录联接、符号链接和虚拟附件不支持。应用内复制/剪切仍可使用，系统剪贴板变化后旧记录失效。
+
+真实粘贴回归：执行 `cargo build --manifest-path src-tauri/Cargo.toml` 并启动 `npm run dev` 后，运行 `node tools/verify-explorer-paste.mjs`。脚本使用隔离便携实例、真实 Windows 文件剪贴板和 WebView2，覆盖确认/取消、递归复制、重名、根目录目标、重命名输入框、应用内复制/剪切和过期请求；退出时恢复原剪贴板，截图及结果保存在 `.verification/explorer-paste-*/`。
 
 Trees 官方 skill 已通过 `npx skills add pierrecomputer/pierre --skill trees` 安装到 `.agents/skills/trees`，集成使用官方 React、prepared input、主题和交互 API。依赖锁定在 npm / Cargo lockfile；第三方许可在 [docs/licenses](docs/licenses/)，发行资源带有完整 notices。重新生成清单用 `node tools/notices.mjs`。

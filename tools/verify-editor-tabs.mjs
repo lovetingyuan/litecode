@@ -19,6 +19,7 @@ page.on('request', request => {
 page.on('pageerror', error => errors.push(String(error)));
 await page.route('**/src/bridge.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
 export const desktop = false;
+export const mediaSource = path => path;
 export const errorMessage = e => e?.message ?? String(e);
 export const channel = fn => ({ onmessage: fn });
 export async function bootstrap() {
@@ -27,6 +28,7 @@ export async function bootstrap() {
  return {root:'C:/tab-fixture',documents,session,recent:[],settings:{},keybindings:[],warnings:[],dataDir:''};
 }
 export async function call(command, args) {
+ if(command === 'inspect_file') return {kind:'text',size:20,stamp:'fixture'};
  if(command === 'scan_workspace') return {paths:${JSON.stringify(paths)},git:[],branch:null,warnings:[],truncated:false};
  if(command === 'read_document') return {text:args.path+' content',encoding:'utf8',eol:'LF',revision:'fixture'};
  throw new Error('Unexpected fixture command: '+command);

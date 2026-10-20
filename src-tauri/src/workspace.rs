@@ -99,6 +99,7 @@ pub fn scan(root: &Path) -> Result<TreeSnapshot> {
             .include_untracked(true)
             .recurse_untracked_dirs(true)
             .include_ignored(true)
+            .recurse_ignored_dirs(false)
             .renames_head_to_index(true)
             .renames_index_to_workdir(true);
         match repo.statuses(Some(&mut options)) {
@@ -107,6 +108,9 @@ pub fn scan(root: &Path) -> Result<TreeSnapshot> {
                     let Some(relative) = entry.path() else {
                         continue;
                     };
+                    // Path operations on Windows strip a trailing separator.
+                    // The tree needs it to inherit ignored directory statuses.
+                    let is_directory = relative.ends_with('/');
                     let full = repo_path.join(relative);
                     let Ok(relative) = full.strip_prefix(root) else {
                         continue;
@@ -127,8 +131,12 @@ pub fn scan(root: &Path) -> Result<TreeSnapshot> {
                     } else {
                         "modified"
                     };
+                    let mut path = relative.to_string_lossy().replace('\\', "/");
+                    if is_directory && !path.ends_with('/') {
+                        path.push('/');
+                    }
                     snapshot.git.push(GitEntry {
-                        path: relative.to_string_lossy().replace('\\', "/"),
+                        path,
                         status: status.into(),
                     });
                 }
@@ -182,6 +190,107 @@ pub fn watch(app: &tauri::AppHandle, label: &str, root: PathBuf) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fixture(files: &[(&str, &str)]) -> (tempfile::TempDir, PathBuf, Repository) {
+        let directory = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(directory.path()).unwrap();
+        let repo = Repository::init(&root).unwrap();
+        for (path, text) in files {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+        (directory, root, repo)
+    }
+
+    fn status<'a>(snapshot: &'a TreeSnapshot, path: &str) -> Option<&'a str> {
+        snapshot
+            .git
+            .iter()
+            .find(|g| g.path == path)
+            .map(|g| g.status.as_str())
+    }
+
+    #[test]
+    fn ignored_directories_keep_trailing_slashes_and_compact_statuses() {
+        let (_directory, root, _repo) = fixture(&[
+            (".gitignore", "build/\n"),
+            ("build/deep/file.txt", "ignored"),
+            ("build-other/visible.txt", "visible"),
+        ]);
+        let snapshot = scan(&root).unwrap();
+        assert!(snapshot.paths.contains(&"build/deep/file.txt".to_owned()));
+        assert_eq!(status(&snapshot, "build/"), Some("ignored"));
+        assert_eq!(status(&snapshot, "build/deep/file.txt"), None);
+        assert_eq!(
+            status(&snapshot, "build-other/visible.txt"),
+            Some("untracked")
+        );
+    }
+
+    #[test]
+    fn nested_rules_negations_and_rule_changes_follow_git() {
+        let (_directory, root, repo) = fixture(&[
+            (".gitignore", "*.log\n!keep.log\n"),
+            ("drop.log", "ignored"),
+            ("keep.log", "visible"),
+            ("src/.gitignore", "!keep.log\ncache/\n"),
+            ("src/drop.log", "ignored"),
+            ("src/keep.log", "visible"),
+            ("src/cache/file.txt", "ignored"),
+        ]);
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("drop.log")).unwrap();
+        index.write().unwrap();
+        let snapshot = scan(&root).unwrap();
+        assert_ne!(status(&snapshot, "drop.log"), Some("ignored"));
+        assert_eq!(status(&snapshot, "keep.log"), Some("untracked"));
+        assert_eq!(status(&snapshot, "src/drop.log"), Some("ignored"));
+        assert_eq!(status(&snapshot, "src/keep.log"), Some("untracked"));
+        assert_eq!(status(&snapshot, "src/cache/"), Some("ignored"));
+        let subtree = scan(&root.join("src")).unwrap();
+        assert_eq!(status(&subtree, "drop.log"), Some("ignored"));
+        assert_eq!(status(&subtree, "cache/"), Some("ignored"));
+        std::fs::remove_file(root.join("src/.gitignore")).unwrap();
+        std::fs::write(root.join(".gitignore"), "").unwrap();
+        let updated = scan(&root).unwrap();
+        assert_eq!(status(&updated, "src/drop.log"), Some("untracked"));
+        assert_eq!(status(&updated, "src/cache/file.txt"), Some("untracked"));
+    }
+
+    #[test]
+    fn plain_folders_do_not_apply_gitignore() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join(".gitignore"), "file.txt\n").unwrap();
+        std::fs::write(directory.path().join("file.txt"), "visible").unwrap();
+        let snapshot = scan(directory.path()).unwrap();
+        assert!(snapshot.paths.contains(&"file.txt".to_owned()));
+        assert!(snapshot.git.is_empty());
+    }
+
+    #[test]
+    #[ignore = "filesystem performance sample; run explicitly with --ignored --nocapture"]
+    fn ignored_scan_performance() {
+        let (_directory, root, _repo) = fixture(&[(".gitignore", "generated/\n")]);
+        for directory in 0..100 {
+            let path = root.join(format!("generated/package-{directory}"));
+            std::fs::create_dir_all(&path).unwrap();
+            for file in 0..100 {
+                std::fs::write(path.join(format!("file-{file}.txt")), "fixture").unwrap();
+            }
+        }
+        for iteration in 0..6 {
+            let start = std::time::Instant::now();
+            let snapshot = scan(&root).unwrap();
+            println!(
+                "scan {iteration}: {:.2} ms, {} paths, {} git entries",
+                start.elapsed().as_secs_f64() * 1000.0,
+                snapshot.paths.len(),
+                snapshot.git.len()
+            );
+        }
+    }
+
     #[test]
     fn canonical_windows_roots_keep_git_status_and_ignored_files() {
         let directory = tempfile::tempdir().unwrap();

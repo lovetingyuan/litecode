@@ -19,7 +19,7 @@ Evidence: [desktop run](desktop-results.json), [service smoke tests](language-se
 | F07 | Recycle-only deletion, rename/move rollback, path grants | partial | Window authorization tests and live outside-root rejection; recycle and failed move UI tests outstanding |
 | F08 | Independent multiwindow buffers, shared settings writer | partial | Three actual native windows and serialized disk writes; shared config event reload; cross-window conflict suite outstanding |
 | T01 | Trees prepared input; no flatten; keyboard/multiselect/range/DnD | partial | Official skill/API, worker preparation, real mount; all interaction cases outstanding |
-| T02 | New/rename/copy/cut/paste/reveal/path/context actions | partial | Implemented Explorer callbacks; native interaction fixtures outstanding |
+| T02 | New/rename/copy/cut/paste/reveal/path/context actions | partial | Native Windows clipboard copy/paste and internal copy/cut verified with confirmation, cancellation, root targets and stale requests; remaining new/delete/reveal/path UI fixtures outstanding |
 | T03 | Shadow DOM theme, icons, active reveal and focus restoration | partial | Official theme API and complete icon set; screenshots; paired focus/theme comparison outstanding |
 | T04 | Git staged/unstaged/untracked/ignored/rename/conflict/nested/worktree | partial | Canonical Windows root test covers modified/untracked/ignored; advanced fixtures and repository cache outstanding |
 | T05 | Watch coalescing/overflow/rescan/manual refresh | partial | Coalesced rescan and refresh implemented; stress/overflow validation outstanding |
@@ -34,7 +34,7 @@ Evidence: [desktop run](desktop-results.json), [service smoke tests](language-se
 | S09 | Quick Access line/offset/symbols/commands/help/editors/views | partial | Prefix implementation and commands exercised; per-prefix reference tests outstanding |
 | S10 | Quick Search %, previews, cancel restore and handoff | partial | Independent cancellable query/handoff; live preview behavior outstanding |
 | S11 | Search Editor independent query/context/edit/jump/save/restore | partial | Independent query, context materialization, rerun/cancel and persisted header implemented; full interaction suite outstanding |
-| L01 | JS/TS native LSP + old project TS fallback/version detection | partial | Real TypeScript Native diagnostic; fallback path implemented but old-project suite outstanding |
+| L01 | JS/TS native LSP + old project TS fallback/version detection | partial | Real TypeScript Native diagnostic; bundled compatibility server tested outside the checkout with system Node: workspace TS and bundled TS 6.0.3 selection, completion, definition and type diagnostics pass (`npm run test:languages`); full old-project suite outstanding |
 | L02 | HTML/CSS/JSON official services/config/schema/project access | partial | Three service smoke tests and real JSON diagnostic; project/schema fixtures outstanding |
 | L03 | rust-analyzer/toolchain detection and accurate missing-tool advice | partial | Tool selection and errors implemented; real Rust project capability suite outstanding |
 | L04 | Per-language semantic capability matrix and navigation | partial | See LANGUAGE_CAPABILITIES.md; advertised capabilities distinguished from exercised behavior |

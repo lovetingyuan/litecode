@@ -17,6 +17,8 @@
 .editor-tab-menu [data-highlighted]:not([data-disabled]) kbd{color:inherit}
 .editor-tab-menu [data-disabled] kbd{color:#707070}
 .editor-tab-menu-separator{height:1px;background:#454545;margin:5px 0}
+:root{--git-ignored-foreground:#8c8c8c}
+.editor-tab-label.ignored{color:var(--git-ignored-foreground)}
 .editor-tab.pinned .tab-close{visibility:visible}
 .editor-tab.pinned .tab-close.dirty:hover .codicon:before{content:'\ueba0'}
 .editor-tab.pinned .tab-close.dirty:not(:hover) .codicon:before{content:'\uebb2'}
