@@ -32,6 +32,25 @@ const source = ['# Markdown 预览', '', '**Bold** and *emphasis* and ~~deleted~
   '<script>window.markdownExecuted = true</script>', '', '<img src=x onerror="window.markdownExecuted = true">', '',
   ...Array.from({ length: 80 }, (_, n) => `Paragraph ${n}: 文档预览内容。\n`), '## 章节', '', 'Heading destination.', '## 章节', '', 'Duplicate heading.'].join('\n');
 await writeFile(path.join(root, 'README.MD'), source);
+const syntaxCases = [
+  { language: 'js', code: 'var a = function cc() {\n  // comment\n  return 243\n}' },
+  { language: 'javascript', code: 'const message = "hello";' },
+  { language: 'TS', code: 'const count: number = 42;' },
+  { language: 'json', code: '{"name": "LiteCode", "count": 42, "enabled": true}' },
+  { language: 'jsonc', code: '// comment\n{"count": 42}' },
+  { language: 'py', code: 'def hello():\n    return "hello", 42' },
+  { language: 'tsx', code: 'const view = <div title="hello">{42}</div>;' },
+  { language: 'jsx', code: 'const view = <div title="hello">{42}</div>;' },
+  { language: 'js', fence: '````', close: '`````', code: 'const before = 1;\n```\nconst afterShort = 42;\n~~~\nconst afterOther = 43;' },
+  { language: 'python', fence: '~~~~', close: '~~~~~', code: 'value = 1\n~~~\nafter_short = 42\n```\nafter_other = 43' },
+  { language: 'html', code: '<script>window.markdownExecuted = true</script>\n<img src=x onerror="window.markdownExecuted = true">' },
+  { language: '', code: 'const plain = 42;' },
+  { language: 'unknown-language', code: '<img src=x onerror=alert(1)>\nunknown & untouched' },
+  { language: 'js', code: '' },
+  { language: 'js', code: '\tconst text = "中文 <tag> & value";\n\n  // trailing blank\n' },
+];
+const syntaxSource = ['# Syntax', '', 'Inline `const inline = 42;`.', '', ...syntaxCases.flatMap(({ language, fence = '```', close = fence, code }) => [fence + language, code, close, '', '## After block', ''])].join('\n');
+await writeFile(path.join(root, 'syntax.md'), syntaxSource);
 await writeFile(path.join(root, 'guide.markdown'), '# Guide\n\nGuide content.');
 await writeFile(path.join(root, 'empty.md'), '');
 await writeFile(path.join(root, 'ordinary.txt'), 'ordinary text');
@@ -59,7 +78,7 @@ try {
   await page.locator('file-tree-container').waitFor({ timeout: 180000 });
   console.log('Desktop ready');
   const urls = await page.evaluate(() => Object.fromEntries(performance.getEntriesByType('resource').flatMap(entry => {
-    const match = new URL(entry.name).pathname.match(/^\/src\/(documents|store|bridge)\.ts$/);
+    const match = new URL(entry.name).pathname.match(/^\/src\/(documents|store|bridge|monaco)\.ts$/);
     return match ? [[match[1], entry.name]] : [];
   })));
   const action = (module, method, ...args) => page.evaluate(async ({ url, method, args }) => (await import(url))[method](...args), { url: urls[module], method, args });
@@ -72,6 +91,70 @@ try {
     await group(id).getByRole('button', { name: 'Select Markdown editor', exact: true }).click();
     await page.getByRole('menuitem', { name: label, exact: true }).click();
   }
+  const syntaxId = await open('syntax.md'); const syntaxGroup = (await state()).activeGroup;
+  const tokenChecks = [['return 243', 'javascript'], ['const message', 'javascript'], ['const count:', 'typescript'], ['{"name":', 'json'], ['{"count":', 'jsonc'], ['    return "hello"', 'python'], ['const afterShort', 'javascript'], ['const afterOther', 'javascript'], ['after_short', 'python'], ['after_other', 'python']];
+  await page.waitForFunction(async ({ url, text, checks }) => {
+    const { monaco } = await import(url); const lines = text.split('\n'); const tokens = monaco.editor.tokenize(text, 'markdown');
+    return checks.every(([prefix, language]) => tokens[lines.findIndex(line => line.startsWith(prefix))]?.some(token => token.language === language && /number|keyword|string/.test(token.type))) &&
+      lines.every((line, index) => line !== '## After block' || tokens[index].some(token => token.type === 'keyword.md'));
+  }, { url: urls.monaco, text: syntaxSource, checks: tokenChecks });
+  await page.waitForFunction(() => [...document.querySelectorAll('.monaco-host .view-lines .view-line')].some(line => /\/\/\scomment/.test(line.textContent) && [...line.querySelectorAll('span')].some(span => getComputedStyle(span).color === 'rgb(106, 153, 85)')));
+  await page.screenshot({ path: path.join(run, '00-source-highlighting.png') });
+  await mode(syntaxGroup, 'Markdown Preview');
+  await page.waitForFunction(count => document.querySelectorAll('.markdown-body pre code .mtk1, .markdown-body pre code [class^="mtk"]').length > count, syntaxCases.length);
+  const blocks = group(syntaxGroup).locator('.markdown-body pre code');
+  assert.equal(await blocks.count(), syntaxCases.length);
+  for (let index = 0; index < syntaxCases.length; index++) {
+    const { language, code } = syntaxCases[index]; const block = blocks.nth(index);
+    if (!language || language === 'unknown-language' || !code) {assert.equal(await block.locator('span').count(), 0); assert.equal(await block.textContent(), code ? code + '\n' : '');}
+    else {
+      await block.locator('[class^="mtk"]').first().waitFor();
+      const colors = await block.evaluate(el => new Set([...el.querySelectorAll('span[class^="mtk"]')].map(span => getComputedStyle(span).color)).size);
+      assert.ok(colors >= 2, `${language} preview uses theme colors`);
+      assert.equal((await block.innerText()).replace(/\u00a0/g, ' '), code.replace(/\t/g, '    ') + '\n', `${language} retains indentation and blank lines`);
+    }
+  }
+  assert.equal(await group(syntaxGroup).locator('.markdown-body p code span').count(), 0);
+  assert.equal(await group(syntaxGroup).locator('.markdown-body script, .markdown-body img').count(), 0);
+  assert.equal(await page.evaluate(() => window.markdownExecuted), undefined);
+  await page.screenshot({ path: path.join(run, '00-preview-highlighting.png') });
+  checks.push('Cold Markdown source and preview syntax colors, JS/TS/JSON/JSONC/Python/React aliases, matching long backtick/tilde fences, safe fallback and inline code');
+  console.log(checks.at(-1));
+
+  // Hold an old result until the replacement is visible, then also exercise rejection.
+  await page.evaluate(async ({ url, monacoUrl, id }) => {
+    const { monaco } = await import(monacoUrl); const original = monaco.editor.colorize;
+    window.markdownRelease = []; window.markdownRestore = () => { monaco.editor.colorize = original; };
+    let started; const pending = new Promise(resolve => { started = resolve; });
+    monaco.editor.colorize = async (text, language, options) => {
+      if (text.includes('highlight_failure')) { window.markdownFailure = true; throw new Error('Injected colorizer failure'); }
+      const html = await original(text, language, options);
+      if (text.includes('stale')) {return new Promise(resolve => { window.markdownRelease.push(() => resolve(html)); started(); });}
+      return html;
+    };
+    const m = (await import(url)).models.get(id);
+    m.pushEditOperations([], [{ range: m.getFullModelRange(), text: '```js\nconst stale = 1;\n```' }], () => null);
+    await pending;
+  }, { url: urls.documents, monacoUrl: urls.monaco, id: syntaxId });
+  assert.equal(await blocks.first().textContent(), 'const stale = 1;\n');
+  await page.evaluate(async ({ url, id }) => {
+    const m = (await import(url)).models.get(id);
+    m.pushEditOperations([], [{ range: m.getFullModelRange(), text: '~~~python\nlatest_value = 42\n~~~' }], () => null);
+  }, { url: urls.documents, id: syntaxId });
+  await page.waitForFunction(() => document.querySelector('.markdown-body pre code')?.innerText.includes('latest_value') && document.querySelector('.markdown-body pre code [class^="mtk"]'));
+  await page.evaluate(async () => { window.markdownRelease.forEach(release => release()); await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
+  assert.doesNotMatch(await group(syntaxGroup).locator('.markdown-body').innerText(), /stale/);
+  await page.evaluate(async ({ url, id }) => {
+    const m = (await import(url)).models.get(id);
+    m.pushEditOperations([], [{ range: m.getFullModelRange(), text: '```js\nconst highlight_failure = 42;\n```' }], () => null);
+  }, { url: urls.documents, id: syntaxId });
+  await page.waitForFunction(() => window.markdownFailure);
+  assert.equal(await blocks.first().textContent(), 'const highlight_failure = 42;\n');
+  assert.equal(await blocks.first().locator('span').count(), 0);
+  await page.evaluate(() => { window.markdownRestore(); delete window.markdownRestore; delete window.markdownRelease; delete window.markdownFailure; });
+  checks.push('Pending highlighter shows original text, late results are discarded, rejected highlighting preserves readable code');
+  console.log(checks.at(-1));
+
   const id = await open('README.MD'); const first = (await state()).activeGroup;
   await group(first).getByRole('button', { name: 'Select Markdown editor' }).waitFor();
   assert.equal(await group(first).getByRole('button', { name: 'Select Markdown editor' }).innerText(), 'Text Editor');
@@ -92,6 +175,8 @@ try {
   assert.doesNotMatch(await page.locator('.status-right').innerText(), /Ln \d/);
   assert.equal(await group(first).locator('table tbody td').count(), 2);
   assert.equal(await group(first).locator('input[type="checkbox"][disabled]').count(), 2);
+  await group(first).locator('.markdown-body pre code [class^="mtk"]').first().waitFor();
+  assert.ok(await group(first).locator('.markdown-body pre').evaluate(el => el.scrollWidth > el.clientWidth));
   await group(first).getByAltText('Local', { exact: true }).waitFor();
   await page.waitForFunction(() => [...document.querySelectorAll('.markdown-body img')].length === 3 && [...document.querySelectorAll('.markdown-body img')].every(img => img.naturalWidth === 1));
   await group(first).getByRole('img', { name: 'Missing image', exact: true }).waitFor();

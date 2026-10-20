@@ -1,11 +1,28 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('monaco-editor', () => ({ languages: { register: vi.fn(), setTokensProvider: vi.fn(), setMonarchTokensProvider: vi.fn(), setLanguageConfiguration: vi.fn(), IndentAction: { None: 0, IndentOutdent: 2 } } }));
+const registry = vi.hoisted(() => ({
+  languages: new Map<string, { id: string; aliases?: string[] }>(),
+  factories: new Map<string, { create(): Promise<unknown> }>(),
+  providers: new Map<string, Promise<unknown>>(),
+}));
+vi.mock('monaco-editor', () => ({
+  languages: {
+    register: vi.fn(language => registry.languages.set(language.id, language)),
+    getLanguages: () => [...registry.languages.values()],
+    registerTokensProviderFactory: vi.fn((id, factory) => registry.factories.set(id, factory)),
+    onLanguageEncountered: vi.fn(), setLanguageConfiguration: vi.fn(),
+    IndentAction: { None: 0, IndentOutdent: 2 },
+  },
+  editor: { colorize: vi.fn(async (_text, id) => {
+    if (!registry.providers.has(id)) {registry.providers.set(id, registry.factories.get(id)!.create());}
+    await registry.providers.get(id); return '';
+  }) },
+}));
 vi.mock('@codingame/monaco-vscode-api/workers/editor.worker?worker', () => ({ default: vi.fn() }));
 vi.mock('monaco-languageclient/vscodeApiWrapper', () => ({ MonacoVscodeApiWrapper: vi.fn() }));
 vi.mock('./editor-features', () => ({}));
 
-import { languageFor, loadSyntax, monaco } from './monaco';
+import { codeLanguage, languageFor, loadSyntax, monaco } from './monaco';
 
 describe('React language modes', () => {
   it.each([['App.tsx', 'typescriptreact'], ['App.JSX', 'javascriptreact'], ['main.ts', 'typescript'], ['main.js', 'javascript']])('identifies %s as %s', (path, language) => {
@@ -14,7 +31,7 @@ describe('React language modes', () => {
 
   it.each(['typescriptreact', 'javascriptreact'])('loads syntax and editing rules for %s', async language => {
     await loadSyntax(language);
-    expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith(language, expect.objectContaining({ tokenizer: expect.any(Object) }));
+    expect(await registry.providers.get(language)).toMatchObject({ tokenizer: expect.any(Object) });
     expect(monaco.languages.setLanguageConfiguration).toHaveBeenCalledWith(language, expect.objectContaining({ brackets: expect.any(Array) }));
   });
 });
@@ -30,7 +47,7 @@ describe('JSON syntax loading', () => {
     for (const path of ['package.json', 'settings.json', 'keybindings.json', 'config.jsonc']) {
       const language = languageFor(path);
       await loadSyntax(language);
-      const provider = vi.mocked(monaco.languages.setTokensProvider).mock.calls.find(([id]) => id === language)![1] as monaco.languages.TokensProvider;
+      const provider = await registry.providers.get(language) as monaco.languages.TokensProvider;
       const result = provider.tokenize('{"name":"LiteCode","count":42,"enabled":true,"empty":null}', provider.getInitialState());
       expect(result.tokens.map(token => token.scopes)).toEqual(expect.arrayContaining([
         'string.key.json', 'string.value.json', 'number.json', 'keyword.json',
@@ -43,6 +60,26 @@ describe('JSON syntax loading', () => {
         ]));
       }
     }
-    expect(monaco.languages.setTokensProvider).toHaveBeenCalledTimes(2);
+    for (const id of ['json', 'jsonc']) {
+      expect(vi.mocked(monaco.editor.colorize).mock.calls.filter(([, language]) => language === id)).toHaveLength(1);
+    }
+  });
+});
+
+describe('Embedded syntax loading', () => {
+  it('registers aliases before any file in that language is opened', async () => {
+    await loadSyntax('markdown');
+    for (const [alias, id] of [['js', 'javascript'], ['JAVASCRIPT', 'javascript'], ['ts', 'typescript'], ['TSX', 'typescriptreact'], ['jsx', 'javascriptreact'], ['JSONC', 'jsonc'], ['py', 'python']]) {
+      expect(codeLanguage(alias)).toBe(id);
+    }
+    expect(codeLanguage('unknown-language')).toBeUndefined();
+    expect(codeLanguage('')).toBeUndefined();
+  });
+
+  it('shares pending syntax loads', async () => {
+    const before = vi.mocked(monaco.editor.colorize).mock.calls.length;
+    await Promise.all([loadSyntax('python'), loadSyntax('python'), loadSyntax('python')]);
+    expect(vi.mocked(monaco.editor.colorize).mock.calls.slice(before)).toEqual([['', 'python', {}]]);
+    expect(await registry.providers.get('python')).toMatchObject({ tokenizer: expect.any(Object) });
   });
 });

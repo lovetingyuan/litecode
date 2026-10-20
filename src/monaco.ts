@@ -2,6 +2,7 @@ import * as monaco from 'monaco-editor';
 import EditorWorker from '@codingame/monaco-vscode-api/workers/editor.worker?worker';
 import { MonacoVscodeApiWrapper } from 'monaco-languageclient/vscodeApiWrapper';
 import './editor-features';
+import { markdownSyntax } from './markdownSyntax';
 
 let startup: Promise<void> | undefined;
 export function initializeEditor(): Promise<void> {
@@ -12,6 +13,7 @@ export function initializeEditor(): Promise<void> {
       userConfiguration: { json: JSON.stringify({ 'editor.fontFamily': 'Consolas, "Courier New", monospace', 'editor.fontSize': 14, 'editor.tabSize': 4 }) },
     });
     await wrapper.start();
+    await registerSyntaxes();
     monaco.editor.defineTheme('dark-modern', {
       base: 'vs-dark', inherit: true,
       rules: [
@@ -39,25 +41,45 @@ export function languageFor(path: string): string {
   return ({ ts: 'typescript', tsx: 'typescriptreact', js: 'javascript', jsx: 'javascriptreact', mjs: 'javascript', cjs: 'javascript', json: 'json', jsonc: 'json', rs: 'rust', html: 'html', htm: 'html', css: 'css', scss: 'scss', md: 'markdown', py: 'python', yaml: 'yaml', yml: 'yaml', toml: 'ini', sh: 'shell', ps1: 'powershell', sql: 'sql', xml: 'xml', svg: 'xml', c: 'c', cpp: 'cpp', h: 'cpp', go: 'go', java: 'java', txt: 'plaintext', 'code-search': 'search-result' } as Record<string, string>)[extension ?? ''] ?? 'plaintext';
 }
 
-const loaded = new Set<string>();
-const syntaxes = import.meta.glob<{ language: monaco.languages.IMonarchLanguage; conf: monaco.languages.LanguageConfiguration }>(['/node_modules/monaco-languages/esm/vs/languages/definitions/*/*.js', '!**/register.js']);
+let registration: Promise<void> | undefined;
+const registrations = import.meta.glob('/node_modules/monaco-languages/esm/vs/languages/definitions/register.all.js');
+const syntaxes = import.meta.glob<{ language: monaco.languages.IMonarchLanguage; conf: monaco.languages.LanguageConfiguration }>('/node_modules/monaco-languages/esm/vs/languages/definitions/{markdown,typescript}/*.js');
+const jsonSyntax = import.meta.glob<{ createTokenizationSupport(comments: boolean): monaco.languages.TokensProvider }>('/node_modules/monaco-languages/esm/vs/languages/features/json/tokenization.js');
+function registerSyntaxes() {
+  return registration ??= (async () => {
+    // Register names and lazy tokenizers, including languages encountered inside Markdown.
+    await registrations['/node_modules/monaco-languages/esm/vs/languages/definitions/register.all.js']();
+    for (const [id, aliases] of [['typescriptreact', ['TSX']], ['javascriptreact', ['JSX']], ['json', ['JSON']], ['jsonc', ['JSONC']], ['markdown', ['Markdown', 'md']]] as const) {
+      monaco.languages.register({ id, aliases: [...aliases] });
+      monaco.languages.registerTokensProviderFactory(id, { create: async () => {
+        if (id === 'json' || id === 'jsonc') {
+          const { createTokenizationSupport } = await jsonSyntax['/node_modules/monaco-languages/esm/vs/languages/features/json/tokenization.js']();
+          return createTokenizationSupport(id === 'jsonc');
+        }
+        const syntax = id === 'markdown' ? 'markdown' : 'typescript';
+        const module = await syntaxes[`/node_modules/monaco-languages/esm/vs/languages/definitions/${syntax}/${syntax}.js`]();
+        monaco.languages.setLanguageConfiguration(id, module.conf);
+        return id === 'markdown' ? markdownSyntax(module.language) : module.language;
+      } });
+    }
+  })();
+}
+
+const loading = new Map<string, Promise<void>>();
 export async function loadSyntax(language: string) {
-  if (loaded.has(language) || language === 'plaintext') {return;}
-  loaded.add(language);
-  if (language === 'json' || language === 'jsonc') {
-    // JSON's tokenizer lives outside Monaco's Monarch language definitions.
-    const loaders = import.meta.glob<{ createTokenizationSupport(comments: boolean): monaco.languages.TokensProvider }>('/node_modules/monaco-languages/esm/vs/languages/features/json/tokenization.js');
-    const { createTokenizationSupport } = await loaders['/node_modules/monaco-languages/esm/vs/languages/features/json/tokenization.js']();
-    monaco.languages.register({ id: language });
-    monaco.languages.setTokensProvider(language, createTokenizationSupport(language === 'jsonc'));
-    return;
+  await registerSyntaxes();
+  if (language === 'plaintext' || !monaco.languages.getLanguages().some(item => item.id === language)) {return;}
+  let pending = loading.get(language);
+  if (!pending) {
+    // Colorize waits for the registered tokenizer without creating a document model.
+    pending = monaco.editor.colorize('', language, {}).then(() => {}).catch(error => { loading.delete(language); throw error; });
+    loading.set(language, pending);
   }
-  const id = ['typescriptreact', 'javascript', 'javascriptreact'].includes(language) ? 'typescript' : language;
-  const loader = syntaxes[`/node_modules/monaco-languages/esm/vs/languages/definitions/${id}/${id}.js`];
-  if (!loader) {return;}
-  const module = await loader();
-  monaco.languages.register({ id: language });
-  monaco.languages.setMonarchTokensProvider(language, module.language);
-  monaco.languages.setLanguageConfiguration(language, module.conf);
+  await pending;
+}
+
+export function codeLanguage(name: string): string | undefined {
+  const value = name.toLowerCase();
+  return monaco.languages.getLanguages().find(item => item.id.toLowerCase() === value || item.aliases?.some(alias => alias.toLowerCase() === value))?.id;
 }
 export { monaco };

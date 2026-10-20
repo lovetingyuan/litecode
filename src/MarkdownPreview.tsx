@@ -1,10 +1,11 @@
-import { memo, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { errorMessage, mediaSource } from './bridge';
 import { models, openPath, patchMediaView } from './documents';
 import { markdownHeadingIds, resolveMarkdownUrl } from './markdown';
+import { codeLanguage, loadSyntax, monaco } from './monaco';
 import { notify, useApp } from './store';
 import type { Doc, Group } from './types';
 import './MarkdownPreview.css';
@@ -64,6 +65,7 @@ const MarkdownContent = memo(function MarkdownContent({ text, path, groupId }: {
     }}>{children}</a> : <span>{children}</span>,
     img: ({ src, alt, title }) => <PreviewImage key={typeof src === 'string' ? src : ''} src={typeof src === 'string' ? src : undefined} alt={alt} title={title} />,
     table: ({ children }) => <div className="markdown-table"><table>{children}</table></div>,
+    pre: PreviewCodeBlock,
   };
   return <article className="markdown-body"><Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[markdownHeadingIds]} skipHtml components={components} urlTransform={(url, key) => {
     const target = resolveMarkdownUrl(url, path);
@@ -74,6 +76,28 @@ const MarkdownContent = memo(function MarkdownContent({ text, path, groupId }: {
     }
     return target.kind === 'external' ? target.url : url;
   }}>{text}</Markdown></article>;
+});
+
+const PreviewCodeBlock: Components['pre'] = ({ node }) => {
+  const code = node?.children[0];
+  const text = code?.type === 'element' ? code.children.map(child => child.type === 'text' ? child.value : '').join('') : '';
+  const classes = code?.type === 'element' ? code.properties.className : undefined;
+  const language = Array.isArray(classes) ? String(classes.find(value => String(value).startsWith('language-')) ?? '').slice(9) : '';
+  return <PreviewCode key={`${language}:${text}`} text={text} language={language} />;
+};
+
+const PreviewCode = memo(function PreviewCode({ text, language }: { text: string; language: string }) {
+  const [html, setHtml] = useState<string>();
+  useEffect(() => {
+    const id = codeLanguage(language);
+    if (!id || id === 'plaintext' || !text) {return;}
+    let cancelled = false;
+    void loadSyntax(id).then(() => monaco.editor.colorize(text.replace(/\n$/, ''), id, { tabSize: 4 })).then(result => {
+      if (!cancelled) {setHtml(result);}
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [text, language]);
+  return <pre>{html === undefined ? <code>{text}</code> : <code dangerouslySetInnerHTML={{ __html: html }} />}</pre>;
 });
 
 function jumpToHeading(container: HTMLElement, hash: string) {
