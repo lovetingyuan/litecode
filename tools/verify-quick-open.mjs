@@ -12,6 +12,7 @@ page.on('request', request => { const match = new URL(request.url()).pathname.ma
 await page.addInitScript(() => {
   window.__renders = {}; window.__profile = []; window.__workerMessages = [];
   window.__workerDelay = 0; window.__inputFrames = []; window.__settled = [];
+  window.__quickScans = 0; window.__scanDelay = 0; window.__scanError = false;
   window.__treeRequested = 0; window.__treeFinished = 0; window.__longTasks = [];
   new PerformanceObserver(list => { window.__longTasks.push(...list.getEntries().map(entry => entry.duration)); }).observe({ type: 'longtask', buffered: false });
   const NativeWorker = window.Worker;
@@ -74,6 +75,16 @@ export const errorMessage = e => e?.message ?? String(e);
 export const channel = fn => ({ onmessage: fn });
 export async function bootstrap() { return {root:null,documents:[],session:{},recent:['C:/quick-fixture'],settings:{},keybindings:[],warnings:[],dataDir:''}; }
 export async function call(command, args) {
+ if (command === 'quick_file_paths') {
+   window.__quickScans++;
+   const s = window.__quickStore.useApp.getState();
+   const { quickFileSettingsKey } = await import('/src/quickFileFilters.ts');
+   const excludes = JSON.parse(quickFileSettingsKey(window.__diskSettings ?? s.settings)).excludes;
+   const snapshot = {root:s.root,paths:s.tree.paths.filter(path => !path.endsWith('/')),excludes};
+   if (window.__scanDelay) await new Promise(resolve => setTimeout(resolve, window.__scanDelay));
+   if (window.__scanError) throw new Error('Fixture file scan failed');
+   return snapshot;
+ }
  if (command === 'inspect_file') return {kind:'text',size:20,stamp:'fixture'};
  if (command === 'read_document') { window.__opened = args.path; return {text:'one\\ntwo\\nthree',encoding:'utf8',eol:'LF',revision:'fixture'}; }
  if (command === 'explicit_open') return args.path;
@@ -84,7 +95,7 @@ export async function call(command, args) {
 ` }));
 const input = page.getByRole('combobox', { name: 'Quick Access' });
 const ready = () => page.waitForFunction(() => document.querySelector('[aria-label="Quick Access"]')?.getAttribute('aria-busy') === 'false');
-async function state(patch) { await page.evaluate(async ({ url, patch }) => { (await import(url)).setApp(patch); }, { url: urls.store, patch }); }
+async function state(patch) { await page.evaluate(async ({ url, patch }) => { window.__quickStore = await import(url); window.__quickStore.setApp(patch); }, { url: urls.store, patch }); }
 async function open(query = '') { await state({ quick: query }); await input.waitFor(); await ready(); }
 async function fill(query) { await input.fill(query); await ready(); }
 async function close() { await page.keyboard.press('Escape'); await input.waitFor({ state: 'hidden' }); }
@@ -94,7 +105,8 @@ async function workspace(count, opened) {
     const paths = Array.from({ length: count }, (_, i) => `packages/module-${i % 97}/src/Component${i}.tsx`);
     paths.push('src/Alpha.ts', 'src/Beta.ts', 'src/中文.ts');
     const docs = Object.fromEntries(paths.slice(0, opened).map((path, i) => [String(i), { id: String(i), path: `C:/quick-fixture/${path}`, name: path.split('/').at(-1), language: 'typescript', version: 1, dirty: false }]));
-    (await import(url)).setApp({ root: 'C:/quick-fixture', treeRoot: 'C:/quick-fixture', tree: { paths, git: [], branch: null, warnings: [], truncated: false }, docs });
+    window.__quickStore = await import(url);
+    window.__quickStore.setApp({ root: 'C:/quick-fixture', treeRoot: 'C:/quick-fixture', tree: { paths, git: [], branch: null, warnings: [], truncated: false }, docs });
   }, { url: urls.store, count, opened });
 }
 try {
@@ -103,6 +115,7 @@ try {
   assert.equal(await page.locator('.quick-label').first().textContent(), 'Alpha.ts');
   assert.deepEqual(await page.locator('.quick-label mark').allTextContents(), ['A', 'l', 'p', 'h', 'a']);
   assert.equal(await page.evaluate(async url => (await import(url)).useApp.getState().quick, urls.store), '', 'Typing stays local');
+  const scansBeforeTyping = await page.evaluate(() => window.__quickScans);
   await page.evaluate(() => { window.__workerMessages = []; });
   await fill('Alpha:2:1');
   assert.equal(await page.evaluate(() => window.__workerMessages.filter(m => m.kind === 'search').length), 0, 'Line suffix does not repeat matching');
@@ -110,6 +123,7 @@ try {
   assert.equal(await page.evaluate(() => window.__opened), 'C:/quick-fixture/src/Alpha.ts');
   const position = await page.evaluate(async url => (await import(url)).editor()?.getPosition(), urls.documents);
   assert.equal(position.lineNumber, 2);
+  assert.equal(await page.evaluate(() => window.__quickScans), scansBeforeTyping, 'Typing and line suffixes do not enumerate the workspace again');
 
   await open(); await fill('Alpha');
   await page.evaluate(() => { window.__workerDelay = 150; });
@@ -174,6 +188,47 @@ try {
   await page.keyboard.press('Alt+Enter'); await input.waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => window.__opened), 'C:/next-fixture/UniqueRefresh999.txt');
   assert.equal(await page.evaluate(async url => { const s = (await import(url)).useApp.getState(); return s.groups.find(g => g.id === s.activeGroup)?.active; }, urls.store), active, 'Alt+Enter preserves the active editor');
+
+  await state({ docs: {}, settings: {}, tree: { paths: ['src/Visible.ts', 'node_modules/a/Dependency.ts', 'packages/app/node_modules/b/NestedDependency.ts', '.env', 'src/main.js', 'src/main.ts', 'src/keep.js'], git: [], branch: null, warnings: [], truncated: false } });
+  await open('Dependency');
+  assert.equal(await page.locator('.quick-label').count(), 0, 'Dependencies are excluded at all levels');
+  await fill('.env'); assert.equal(await page.locator('.quick-label').first().textContent(), '.env', 'Ordinary hidden files remain searchable');
+  await fill('Dependency');
+  await state({ settings: { 'search.exclude': { '**/node_modules': false } } });
+  await ready(); assert.equal(await page.locator('.quick-label').count(), 2, 'false disables the default exclusion without reopening Ctrl+P');
+  await state({ settings: { 'files.exclude': { '**/*.js': { when: '$(basename).ts' } } } });
+  await fill('main.js'); assert.equal(await page.locator('.quick-label').count(), 0, 'Sibling clauses exclude generated JavaScript');
+  await fill('keep.js'); assert.equal(await page.locator('.quick-label').first().textContent(), 'keep.js');
+  await state({ settings: {}, docs: { dependency: { id: 'dependency', path: 'C:/next-fixture/node_modules/a/Dependency.ts', name: 'Dependency.ts', language: 'typescript', version: 1, dirty: false } } });
+  await fill('Dependency'); assert.equal(await page.locator('.quick-label').count(), 1, 'An opened dependency remains available independently of the workspace scan');
+  await state({ settings: { 'search.exclude': { '**/node_modules/**': true } } });
+  await ready(); assert.equal(await page.locator('.quick-label').count(), 0, 'Absolute matching also excludes an opened dependency');
+  await close();
+
+  await page.evaluate(() => { window.__diskSettings = { 'search.exclude': { '**/node_modules': false } }; });
+  await state({ docs: {}, settings: {}, tree: { paths: ['node_modules/a/DiskSetting.ts'], git: [], branch: null, warnings: [], truncated: false } });
+  await open('DiskSetting');
+  assert.equal(await page.locator('.quick-label').first().textContent(), 'DiskSetting.ts', 'The Worker uses the same disk settings as the backend enumeration');
+  await close(); await page.evaluate(() => { delete window.__diskSettings; });
+
+  await state({ docs: {}, settings: {} });
+  await open('Visible');
+  await page.evaluate(() => { window.__scanDelay = 200; });
+  await state({ settings: { 'files.exclude': { '**/Visible.ts': true } } });
+  await input.press('Enter');
+  await page.evaluate(() => { window.__scanDelay = 0; });
+  await state({ settings: { 'files.exclude': { '**/main.ts': true } }, tree: { paths: ['src/Visible.ts', 'src/NewVisible.ts'], git: [], branch: null, warnings: [], truncated: false } });
+  await ready(); assert.equal(await input.isVisible(), true, 'A settings refresh cancels Enter queued against the previous index');
+  await fill('NewVisible');
+  await page.waitForTimeout(250);
+  assert.equal(await page.locator('.quick-label').first().textContent(), 'NewVisible.ts', 'A late old scan cannot overwrite the newest index');
+  await page.evaluate(() => { window.__scanDelay = 0; window.__scanError = true; });
+  await fill('Visible');
+  await state({ docs: {}, tree: { paths: ['Visible.ts'], git: [], branch: null, warnings: [], truncated: false } });
+  await ready(); assert.equal(await page.locator('.quick-label').count(), 0, 'A failed scan does not use the unfiltered Explorer list');
+  assert.match(await page.evaluate(async url => (await import(url)).useApp.getState().notice, urls.store), /Fixture file scan failed/);
+  await page.evaluate(() => { window.__scanError = false; });
+  await close(); await state({ settings: {} });
 
   for (const count of [10_000, 50_000, 200_000]) {
     for (const opened of [0, 100]) {

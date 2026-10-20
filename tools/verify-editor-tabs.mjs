@@ -74,11 +74,36 @@ async function documentAction(action, ...args) {
   await settle();
   return result;
 }
+async function newFileByDoubleClick(group = 0) {
+  const before = await documentAction('session');
+  const toolbar = page.locator('.tabs-toolbar').nth(group);
+  const position = await toolbar.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    const tabs = element.querySelector('.editor-tabs').getBoundingClientRect();
+    const actions = element.querySelector('.actions').getBoundingClientRect();
+    return { x: (tabs.right + actions.left) / 2 - bounds.left, y: bounds.height / 2 };
+  });
+  await toolbar.dblclick({ position });
+  const after = await documentAction('session');
+  const target = after.groups[group];
+  assert.equal(after.activeGroup, target.id, 'The clicked group becomes active');
+  assert.ok(target.active.startsWith('untitled:'), 'An untitled document is selected');
+  assert.deepEqual(after.groups.map(g => g.tabs.length), before.groups.map((g, i) => g.tabs.length + (i === group ? 1 : 0)), 'Exactly one tab is created in the clicked group');
+  await page.waitForFunction(id => document.querySelector(`[data-group-id="${id}"] .monaco-editor`)?.contains(document.activeElement), target.id);
+  await documentAction('closeDocument', target.active, target.id);
+}
 try {
   await mkdir(output, { recursive: true });
   await page.goto('http://localhost:1420');
   await row(files[0]).waitFor();
+  await newFileByDoubleClick();
   await open(files[0], true);
+  assert.equal(await page.locator('.editor-tab').count(), 1, 'Double-clicking a file does not create an untitled tab');
+  await newFileByDoubleClick();
+  await page.locator('.editor-tab-label').first().dblclick();
+  await page.locator('.tabs-toolbar > .actions').first().dispatchEvent('dblclick');
+  assert.equal(await page.locator('.editor-tab').count(), 1, 'Double-clicking a tab label or toolbar actions does not create a file');
+  console.log('PASS: double-clicking empty or populated toolbar space creates and focuses one untitled file; tabs and actions are excluded');
   const overlay = page.locator('.editor-tabs-scrollbar').first();
   const slider = overlay.locator('.editor-tabs-scrollbar-thumb');
   assert.equal(await overlay.isVisible(), false, 'No scrollbar is shown when tabs fit');
@@ -166,6 +191,8 @@ try {
   await visible('The replacement preview is revealed');
   await treeFocus('preview-b.txt');
   await open('preview-b.txt', true);
+  assert.equal(await page.locator('.editor-tab').count(), previewCount, 'Double-clicking a preview pins it without creating a file');
+  assert.equal(await page.locator('.editor-tab.active.preview').count(), 0);
   await bar().evaluate(element => { element.scrollLeft = 0; });
   await page.keyboard.press('Control+w');
   await page.waitForFunction(() => !document.querySelector('.editor-tab.active.preview'));
@@ -210,6 +237,10 @@ try {
   const secondGroup = await documentAction('splitGroup');
   await visible('The source group is revealed after splitting');
   await visible('The new group reveals its active tab', 1);
+  const source = (await documentAction('session')).groups[0];
+  await documentAction('showDocument', source.active, { group: source.id });
+  await newFileByDoubleClick(1);
+  console.log('PASS: double-clicking an inactive split group creates the file in that group');
   for (const name of files) {await documentAction('openPath', `C:/tab-fixture/${name}`, { group: secondGroup, pinned: true });}
   await visible('New tabs in a split group are revealed', 1);
   await bar().evaluate(element => { element.scrollLeft = 0; });

@@ -37,7 +37,15 @@ pub fn load_settings(user: &Path, workspace: Option<&Path>, warnings: &mut Vec<S
         .chain(workspace.map(|root| root.join(".litecode/settings.json")))
     {
         if let Some(values) = read_json(&path, warnings).as_object() {
-            settings.as_object_mut().unwrap().extend(values.clone());
+            for (key, value) in values {
+                if matches!(key.as_str(), "files.exclude" | "search.exclude")
+                    && let Some(rules) = value.as_object()
+                {
+                    settings[key].as_object_mut().unwrap().extend(rules.clone());
+                } else if !matches!(key.as_str(), "files.exclude" | "search.exclude") {
+                    settings[key] = value.clone();
+                }
+            }
         }
     }
     settings
@@ -63,6 +71,35 @@ pub fn defaults() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exclusion_patterns_merge_individually_across_configuration_layers() {
+        let temp = tempfile::tempdir().unwrap();
+        let user = temp.path().join("settings.json");
+        let root = temp.path().join("project");
+        fs::create_dir_all(root.join(".litecode")).unwrap();
+        fs::write(&user, r#"{"search.exclude":{"**/node_modules":false,"**/cache":true},"files.exclude":{"**/*.js":{"when":"$(basename).ts"}}}"#).unwrap();
+        fs::write(
+            root.join(".litecode/settings.json"),
+            r#"{"search.exclude":{"**/cache":false,"generated":true}}"#,
+        )
+        .unwrap();
+        let settings = load_settings(&user, Some(&root), &mut vec![]);
+        assert_eq!(settings["search.exclude"]["**/node_modules"], false);
+        assert_eq!(settings["search.exclude"]["**/cache"], false);
+        assert_eq!(settings["search.exclude"]["generated"], true);
+        assert_eq!(settings["search.exclude"]["**/bower_components"], true);
+        assert_eq!(settings["files.exclude"]["**/.git"], true);
+        assert_eq!(
+            settings["files.exclude"]["**/*.js"]["when"],
+            "$(basename).ts"
+        );
+        fs::write(root.join(".litecode/settings.json"), "{}").unwrap();
+        assert_eq!(
+            load_settings(&user, Some(&root), &mut vec![])["search.exclude"]["**/cache"],
+            true
+        );
+    }
 
     #[test]
     fn jsonc_keeps_string_contents_and_accepts_comments_and_trailing_commas() {

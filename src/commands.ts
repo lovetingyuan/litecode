@@ -4,7 +4,7 @@ import { checkpoint, closeDocument, closeTabs, editor, models, navigate, newDocu
 import type { SplitDirection } from './editorLayout';
 import { refreshTree, revealInTree } from './Explorer';
 import { createSearchEditor, undoReplacement, nextSearchResult } from './search';
-import { input } from './dialog';
+import { changeLanguage } from './editorStatus';
 import { restartLanguages, languageReport } from './languages';
 import { normalizeKey, resolveBinding } from './keybindings';
 import { completeSettings, parseConfiguration, updateSetting } from './settings';
@@ -155,11 +155,7 @@ export const commands: Command[] = [
     const ignored = Object.keys(settings).filter(key => !keys.has(key));
     newDocument(`# VS Code settings import review\n\nCopy the supported settings below into Preferences: Open User Settings (JSON), or .litecode/settings.json.\n\nThe original .vscode/settings.json remains unchanged.\n\nSupported:\n\n\x60\x60\x60json\n${JSON.stringify(supported, null, 2)}\n\x60\x60\x60\n\nIgnored settings:\n${ignored.map(key => `- ${key}`).join('\n') || '(none)'}\n`, 'Settings Import.md');
   } },
-  { id: 'litecode.setLanguage', label: 'Change Language Mode', run: async () => {
-    const doc = activeDoc(); if (!doc) {return;} const value = await input('Language identifier', doc.language); if (!value) {return;}
-    const { monaco, loadSyntax } = await import('./monaco'); await loadSyntax(value); const m = models.get(doc.id); if (m) {monaco.editor.setModelLanguage(m, value);}
-    setApp(s => ({ docs: { ...s.docs, [doc.id]: { ...doc, language: value } } }));
-  } },
+  { id: 'litecode.setLanguage', label: 'Change Language Mode', run: changeLanguage },
   { id: 'litecode.about', label: 'About LiteCode', menu: 'Help', run: () => notify('LiteCode 0.1.0 · Tauri 2 / React / Monaco\nWindows x64 · Dark Modern\nSee docs/verification/MATRIX.md for implementation and verification status.') },
 ];
 export async function execute(id: string, context?: EditorContext) {

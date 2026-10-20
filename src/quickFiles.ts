@@ -1,10 +1,11 @@
 import { rankPreparedPath } from './fuzzy';
+import type { IExpression } from '@codingame/monaco-vscode-api/vscode/vs/base/common/glob';
 
 type Candidate = { path: string; relative: string; haystack: string; filename: number };
 export type QuickFile = { path: string; label: string; description: string; positions: number[] };
 export type FileSearchMessage =
-  | { kind: 'workspace'; root: string | null; paths: string[] }
-  | { kind: 'open'; root: string | null; paths: string[] }
+  | { kind: 'workspace'; root: string | null; paths: string[]; excludes?: IExpression }
+  | { kind: 'open'; root: string | null; paths: string[]; excludes?: IExpression }
   | { kind: 'search'; id: number; version: number; query: string };
 export type FileSearchReply = { id: number; version: number; files: QuickFile[] };
 

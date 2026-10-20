@@ -4,15 +4,15 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { bootstrap, call, desktop, errorMessage } from './bridge';
 import { initializeEditor, monaco } from './monaco';
-import { useApp, setApp, notify, activeDoc } from './store';
-import { checkpoint, restoreDocument, refreshDocuments, basename, editor, models, patchDoc, autoSave, normalizeGroup } from './documents';
+import { useApp, setApp, notify } from './store';
+import { checkpoint, restoreDocument, refreshDocuments, basename, editor, autoSave, normalizeGroup } from './documents';
 import { commands, execute, installKeys, openFolder } from './commands';
 import { Explorer, refreshTree } from './Explorer';
 import { SearchView } from './SearchView';
 import { EditorLayoutView, WorkbenchLayout } from './EditorGrid';
 import { WelcomePage } from './WelcomePage';
 import { QuickOpen } from './QuickOpen';
-import { DialogHost, input } from './dialog';
+import { DialogHost } from './dialog';
 import { DiffViewer } from './DiffViewer';
 import { Icon, IconButton } from './ui';
 import './App.css';
@@ -20,6 +20,7 @@ import { initializeLanguages } from './languages';
 import { isTextView } from './media';
 import { MediaStatus } from './MediaStatus';
 import { useExternalDrop } from './useExternalDrop';
+import { changeIndent, changeEncoding, changeEol } from './editorStatus';
 
 let startup: Promise<void> | undefined;
 function start() {
@@ -95,10 +96,8 @@ export default function App() {
       </main></WorkbenchLayout>}
       {!s.ready && <div className="startup" role="status">{fatal ? <><Icon name="error" /><p>{fatal}</p><button onClick={() => location.reload()}>Reload</button></> : <><span className="spinner" /><p>Starting editor services…</p></>}</div>}
     </div>
-    <footer className="statusbar"><div className="status-left"><span className="remote-indicator" title="Local window"><Icon name="remote" /></span>{s.tree.branch && <span className="status-item" title="Current Git branch"><Icon name="source-control" />{s.tree.branch}</span>}<button title="Show Problems" onClick={() => void editor()?.getAction('editor.action.marker.next')?.run()}><Icon name="error" />{diagnostics.errors}<Icon name="warning" />{diagnostics.warnings}</button></div><div className="status-right">{doc && isTextView(doc, group) && <><button onClick={() => setApp({ quick: ':' })}>Ln {s.cursor.line}, Col {s.cursor.column}{s.cursor.selected ? ` (${s.cursor.selected} selected)` : ''}</button><button onClick={() => void changeIndent()}>Spaces: {String(s.settings['editor.tabSize'] ?? 4)}</button><button onClick={() => void changeEncoding()}>{doc.encoding.toUpperCase().replace('UTF8', 'UTF-8')}</button><button onClick={() => { const m = models.get(doc.id); if (m) {m.pushEOL(doc.eol === 'LF' ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF);} }}>{doc.eol}</button><button onClick={() => void execute('litecode.setLanguage')}>{doc.language === 'plaintext' ? 'Plain Text' : doc.language}</button></>}{doc && group && !isTextView(doc, group) && <MediaStatus doc={doc} group={group} />}{s.searching && <span>Searching…</span>}<span className="status-item" title={s.languageStatus}><Icon name="check" /></span><button title="Notifications" onClick={() => notify(s.notice ?? 'No new notifications.')} aria-label="Notifications"><Icon name="bell" /></button></div></footer>
+    <footer className="statusbar"><div className="status-left"><span className="remote-indicator" title="Local window"><Icon name="remote" /></span>{s.tree.branch && <span className="status-item" title="Current Git branch"><Icon name="source-control" />{s.tree.branch}</span>}<button title="Show Problems" onClick={() => void editor()?.getAction('editor.action.marker.next')?.run()}><Icon name="error" />{diagnostics.errors}<Icon name="warning" />{diagnostics.warnings}</button></div><div className="status-right">{doc && isTextView(doc, group) && <><button onClick={() => setApp({ quick: ':' })}>Ln {s.cursor.line}, Col {s.cursor.column}{s.cursor.selected ? ` (${s.cursor.selected} selected)` : ''}</button><button onClick={changeIndent}>Spaces: {String(s.settings['editor.tabSize'] ?? 4)}</button><button onClick={changeEncoding}>{doc.encoding.toUpperCase().replace('UTF8', 'UTF-8')}</button><button onClick={changeEol}>{doc.eol}</button><button onClick={() => void execute('litecode.setLanguage')}>{doc.language === 'plaintext' ? 'Plain Text' : doc.language}</button></>}{doc && group && !isTextView(doc, group) && <MediaStatus doc={doc} group={group} />}{s.searching && <span>Searching…</span>}<span className="status-item" title={s.languageStatus}><Icon name="check" /></span><button title="Notifications" onClick={() => notify(s.notice ?? 'No new notifications.')} aria-label="Notifications"><Icon name="bell" /></button></div></footer>
     {s.notice && <div className="notification" role="status"><Icon name="info" /><p>{s.notice}</p><IconButton icon="close" label="Dismiss Notification" onClick={() => setApp({ notice: null })} /></div>}
     {s.ready && <><QuickOpen /><DiffViewer /></>}<DialogHost />
   </div>;
 }
-async function changeEncoding() { const doc = activeDoc(); if (!doc) {return;} const encoding = await input('Save with Encoding: utf8, utf8bom, utf16le, utf16be, gbk', doc.encoding); if (encoding && ['utf8', 'utf8bom', 'utf16le', 'utf16be', 'gbk'].includes(encoding)) {patchDoc(doc.id, { encoding, dirty: true });} }
-async function changeIndent() { const value = await input('Tab Size', String(useApp.getState().settings['editor.tabSize'] ?? 4)); if (value && Number(value) >= 1 && Number(value) <= 16) {setApp(s => ({ settings: { ...s.settings, 'editor.tabSize': Number(value) } }));} }

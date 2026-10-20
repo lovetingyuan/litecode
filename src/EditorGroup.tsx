@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { useApp, setApp, notify } from './store';
 import { monaco } from './monaco';
-import { models, editors, closeDocument, closeGroup, showDocument, keepOpen, relative, addHistory, moveTab, splitGroup, resolveConflict, patchDoc, openPath, checkpoint, autoSave, pathTitle, setSticky, focusDocument, join } from './documents';
+import { models, editors, closeDocument, closeGroup, showDocument, keepOpen, relative, addHistory, moveTab, splitGroup, resolveConflict, patchDoc, openPath, checkpoint, autoSave, pathTitle, setSticky, focusDocument, join, newDocument } from './documents';
 import { Menu } from '@base-ui/react/menu';
 import { splitDirections } from './commands';
 import { errorMessage, call, channel } from './bridge';
@@ -131,7 +131,10 @@ export function EditorGroup({ group }: { group: Group }) {
     e.preventDefault(); const raw = e.dataTransfer.getData('application/litecode-tab'); if (!raw) {return;}
     const { id, from } = JSON.parse(raw); moveTab(id, from, group.id);
   }}>
-    <div className="tabs-toolbar"><div className="editor-tabs" ref={tabs} role="tablist" aria-label="Open editors">{group.tabs.map(id => {
+    <div className="tabs-toolbar" onDoubleClick={event => {
+      if (event.target !== event.currentTarget && event.target !== tabs.current) {return;}
+      setApp({ activeGroup: group.id }); newDocument();
+    }}><div className="editor-tabs" ref={tabs} role="tablist" aria-label="Open editors">{group.tabs.map(id => {
       const tab = docs[id]; if (!tab) {return null;}
       const sticky = !!group.sticky?.includes(id);
       return <EditorTabMenu key={id} group={group} documentId={id}><div role="tab" title={tab.path ? pathTitle(tab.path) : tab.name} tabIndex={group.active === id ? 0 : -1} aria-selected={group.active === id} aria-label={`${tab.name}${tab.dirty ? ', unsaved' : ''}`} className={`editor-tab ${group.active === id ? 'active' : ''} ${group.preview === id ? 'preview' : ''} ${sticky ? 'pinned' : ''}`} draggable onDragStart={e => e.dataTransfer.setData('application/litecode-tab', JSON.stringify({ id, from: group.id }))} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); e.stopPropagation(); const raw = e.dataTransfer.getData('application/litecode-tab'); if (raw) { const t = JSON.parse(raw); moveTab(t.id, t.from, group.id, id); } }} onClick={() => showDocument(id, { group: group.id })} onDoubleClick={() => keepOpen(id, group.id)} onAuxClick={e => { if (e.button === 1 && !sticky) {void closeDocument(id, group.id).catch(e => notify(errorMessage(e)));} }} onKeyDown={e => {

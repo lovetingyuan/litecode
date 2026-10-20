@@ -7,6 +7,7 @@ mod file_moves;
 mod files;
 mod lsp;
 mod media;
+mod quick_files;
 mod replacement;
 mod search;
 mod state;
@@ -66,6 +67,7 @@ pub fn run() {
             commands::pick_path,
             commands::open_workspace,
             commands::scan_workspace,
+            quick_files::quick_file_paths,
             commands::read_document,
             commands::inspect_file,
             commands::save_document,

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Doc, Group, Location, Query, SearchMatch, TreeSnapshot, Keybinding } from './types';
+import type { Doc, Group, Location, Query, SearchMatch, TreeSnapshot, Keybinding, QuickPick } from './types';
 import { defaultQuery } from './types';
 import { layoutGroups, removeLayoutGroup, restoreLayout, type EditorLayout } from './editorLayout';
 
@@ -12,7 +12,7 @@ type State = {
   sidebar: 'explorer' | 'search' | null; sidebarWidth: number; tree: TreeSnapshot; treeRoot: string | null; settings: Record<string, unknown>;
   recent: string[]; history: Location[]; historyIndex: number; cursor: { line: number; column: number; selected: number };
   keybindings: Keybinding[]; dataDir: string;
-  quick: string | null; notice: string | null; query: Query; results: SearchMatch[]; searching: boolean; searchErrors: string[];
+  quick: string | QuickPick | null; notice: string | null; query: Query; results: SearchMatch[]; searching: boolean; searchErrors: string[];
   limited: boolean; requestId: string | null; searchHistory: string[]; languageStatus: string;
   set: (patch: Partial<State> | ((state: State) => Partial<State>)) => void;
 };
