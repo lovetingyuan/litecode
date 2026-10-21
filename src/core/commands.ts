@@ -118,10 +118,14 @@ export async function openFolder(newWindow = false, recentPath?: string) {
   await checkpoint();
   const same = await call<boolean>("open_workspace", { path, newWindow });
   if (same) {
+    const config = await call<{
+      settings: Record<string, unknown>;
+      keybindings: import("../types/types").Keybinding[] | null;
+    }>("configuration");
     if (switching) {
       await resetEditors();
     }
-    setApp({ root: path });
+    setApp({ root: path, settings: config.settings, keybindings: config.keybindings ?? [] });
     if (switching) {
       await checkpoint();
     }
@@ -198,6 +202,13 @@ export const commands: Command[] = [
     key: "Ctrl+N",
     menu: "File",
     run: () => newDocument(),
+  },
+  {
+    id: "workbench.action.newWindow",
+    label: "New Window",
+    key: "Ctrl+Shift+N",
+    menu: "File",
+    run: () => call<string>("new_window"),
   },
   {
     id: "workbench.action.files.openFile",

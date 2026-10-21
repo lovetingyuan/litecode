@@ -2,13 +2,15 @@ use crate::{
     configuration::read_json,
     error::{AppError, Result},
     files::{self, DiskDocument},
-    state::{AppState, Mirror, canonical},
+    state::{AppState, Mirror, WindowState, canonical},
     workspace,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
@@ -152,6 +154,55 @@ pub async fn pick_path(
 }
 
 #[tauri::command]
+pub async fn new_window(window: WebviewWindow, state: State<'_, AppState>) -> Result<String> {
+    static NEXT_WINDOW: AtomicU64 = AtomicU64::new(0);
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| AppError::new("window", e.to_string()))?
+        .as_nanos();
+    let label = format!(
+        "editor-empty-{timestamp}-{}",
+        NEXT_WINDOW.fetch_add(1, Ordering::Relaxed)
+    );
+    state.windows.lock().unwrap().insert(
+        label.clone(),
+        WindowState {
+            // New windows must not restore a previous window's recovery session.
+            session: serde_json::json!({}),
+            ..Default::default()
+        },
+    );
+    create_editor_window(window.app_handle(), &state, &label)?;
+    Ok(label)
+}
+
+fn create_editor_window(app: &tauri::AppHandle, state: &AppState, label: &str) -> Result<()> {
+    let result = (|| {
+        let created = tauri::WebviewWindowBuilder::new(
+            app,
+            label,
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .title("LiteCode")
+        .inner_size(1280.0, 820.0)
+        .min_inner_size(700.0, 420.0)
+        .decorations(false)
+        .disable_drag_drop_handler()
+        .build()
+        .map_err(|e| AppError::new("window", e.to_string()))?;
+        if let Err(error) = crate::external_drop::install(&created).and_then(|()| created.set_focus()) {
+            let _ = created.destroy();
+            return Err(AppError::new("window", error.to_string()));
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        state.windows.lock().unwrap().remove(label);
+    }
+    result
+}
+
+#[tauri::command]
 pub async fn open_workspace(
     window: WebviewWindow,
     state: State<'_, AppState>,
@@ -195,20 +246,7 @@ pub async fn open_workspace(
             .entry(label.clone())
             .or_default()
             .root = Some(root);
-        let created = tauri::WebviewWindowBuilder::new(
-            window.app_handle(),
-            &label,
-            tauri::WebviewUrl::App("index.html".into()),
-        )
-        .title("LiteCode")
-        .inner_size(1280.0, 820.0)
-        .min_inner_size(700.0, 420.0)
-        .decorations(false)
-        .disable_drag_drop_handler()
-        .build()
-        .map_err(|e| AppError::new("window", e.to_string()))?;
-        crate::external_drop::install(&created)
-            .map_err(|e| AppError::new("window", e.to_string()))?;
+        create_editor_window(window.app_handle(), &state, &label)?;
         Ok(false)
     } else {
         state.checkpoint(window.label())?;

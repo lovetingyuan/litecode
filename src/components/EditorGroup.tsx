@@ -237,7 +237,7 @@ export function EditorGroup({ group }: { group: Group }) {
       folding: !doc?.large,
       readOnly: false,
     });
-  }, [settings, doc?.large]);
+  }, [group.id, settings, doc?.large]);
   async function openTreeDrop(raw: string) {
     const { root, treeRoot } = useApp.getState();
     if (!root || treeRoot !== root) {

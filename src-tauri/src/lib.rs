@@ -65,6 +65,7 @@ pub fn run() {
             commands::bootstrap,
             commands::configuration,
             commands::pick_path,
+            commands::new_window,
             commands::open_workspace,
             commands::workspace_git_status,
             commands::read_workspace_directory,

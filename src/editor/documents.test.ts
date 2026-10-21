@@ -34,7 +34,7 @@ vi.mock("./languages", () => ({
 import { call } from "../core/bridge";
 import { monaco, languageFor } from "./monaco";
 import { canFormat, formatModel, releaseLanguageDocument } from "./languages";
-import { openFolder } from "../core/commands";
+import { commands, commandShortcut, execute, openFolder } from "../core/commands";
 import { refreshTree } from "../components/Explorer";
 import {
   attachDocument,
@@ -437,11 +437,15 @@ afterEach(() => {
 });
 
 describe("Workspace switches", () => {
+  const configuration = { settings: {}, keybindings: [] };
   beforeEach(() => {
     setApp({ root: "C:/workspace", history: [], historyIndex: -1 });
     vi.mocked(call).mockImplementation(async (command) => {
       if (command === "open_workspace") {
         return true as never;
+      }
+      if (command === "configuration") {
+        return configuration as never;
       }
       return (command === "save_document" ? "new-revision" : undefined) as never;
     });
@@ -519,7 +523,7 @@ describe("Workspace switches", () => {
     const pending = deferred<boolean>();
     vi.mocked(ask).mockResolvedValueOnce("Don't Save");
     vi.mocked(call).mockImplementation(async (command) =>
-      command === "open_workspace" ? pending.promise as never : undefined as never,
+      (command === "open_workspace" ? pending.promise : command === "configuration" ? configuration : undefined) as never,
     );
     const before = useApp.getState();
     const opening = openFolder(false, "C:/next");
@@ -603,6 +607,38 @@ describe("Workspace switches", () => {
     },
   );
 
+  it("opens a blank window from File without changing dirty editors", async () => {
+    const { id, buffer } = setup(true);
+    const before = useApp.getState();
+    const command = commands.find((c) => c.id === "workbench.action.newWindow")!;
+    expect(command).toMatchObject({ label: "New Window", menu: "File" });
+    expect(commands[commands.indexOf(command) - 1].id).toBe("workbench.action.files.newUntitledFile");
+    expect(commandShortcut(command.id, {}, [])).toBe("Ctrl+Shift+N");
+    vi.mocked(call).mockResolvedValueOnce("editor-empty-test");
+
+    await execute(command.id);
+
+    expect(call).toHaveBeenCalledExactlyOnceWith("new_window");
+    expect(ask).not.toHaveBeenCalled();
+    expect(refreshTree).not.toHaveBeenCalled();
+    expect(useApp.getState()).toMatchObject({ root: before.root, groups: before.groups, docs: before.docs });
+    expect(useApp.getState().docs[id].dirty).toBe(true);
+    expect(models.get(id)).toBe(buffer);
+  });
+
+  it("reports a new-window failure without changing the current session", async () => {
+    setup(true);
+    const before = useApp.getState();
+    vi.mocked(call).mockRejectedValueOnce({ message: "Could not create window" });
+
+    await execute("workbench.action.newWindow");
+
+    expect(useApp.getState()).toMatchObject({
+      root: before.root, groups: before.groups, docs: before.docs, notice: "Could not create window",
+    });
+    expect(ask).not.toHaveBeenCalled();
+  });
+
   it("preserves editors when the directory picker is cancelled", async () => {
     setup(true);
     vi.mocked(call).mockResolvedValueOnce(null);
@@ -636,6 +672,23 @@ describe("Workspace switches", () => {
     expect(commandCalls("open_workspace")[0][1]).toEqual({ path: "C:/next", newWindow: false });
   });
 
+  it.each([null, "C:/workspace"])("loads target settings before showing a folder opened from %s", async (root) => {
+    setup();
+    setApp({ root, settings: { "editor.fontSize": 14, "editor.lineHeight": 20 } });
+    const settings = { "editor.fontSize": 18, "editor.lineHeight": 30 };
+    vi.mocked(call).mockImplementation(async (command) =>
+      (command === "open_workspace" ? true : command === "configuration" ? { settings, keybindings: null } : undefined) as never,
+    );
+    vi.mocked(refreshTree).mockImplementationOnce(async () => {
+      expect(useApp.getState()).toMatchObject({ root: "C:/next", settings, keybindings: [] });
+    });
+
+    await openFolder(false, "C:/next");
+
+    expect(commandCalls("configuration")).toHaveLength(1);
+    expect(useApp.getState().settings).toEqual(settings);
+  });
+
   it("cancels pending auto saves and backups after closing the old documents", async () => {
     const { buffer } = setup();
     setApp({ settings: { "files.autoSave": "afterDelay", "files.autoSaveDelay": 500 } });
@@ -657,6 +710,9 @@ describe("Workspace switches", () => {
     vi.mocked(call).mockImplementation(async (command) => {
       if (command === "save_document") {
         return pending.promise as never;
+      }
+      if (command === "configuration") {
+        return configuration as never;
       }
       return (command === "open_workspace" ? true : undefined) as never;
     });
