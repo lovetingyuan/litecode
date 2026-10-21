@@ -15,13 +15,16 @@ The Monaco Language Client uses a layered configuration approach:
 Independent of the type of configuration (`classic` or `extended`), you have to configure and start the `MonacoVscodeApiWrapper` first. The most minimal configuration you can apply is this:
 
 ```typescript
-import { MonacoVscodeApiWrapper, type MonacoVscodeApiConfig } from 'monaco-languageclient/vscodeApiWrapper';
+import {
+  MonacoVscodeApiWrapper,
+  type MonacoVscodeApiConfig,
+} from "monaco-languageclient/vscodeApiWrapper";
 
 const vscodeApiConfig: MonacoVscodeApiConfig = {
-  $type: 'extended',
+  $type: "extended",
   viewsConfig: {
-    $type: 'EditorService'
-  }
+    $type: "EditorService",
+  },
 };
 
 const apiWrapper = new MonacoVscodeApiWrapper(vscodeApiConfig);
@@ -35,26 +38,29 @@ Extended Mode provides a rich feature set by leveraging VSCode services. This is
 ### Basic Extended Configuration
 
 ```typescript
-import { MonacoVscodeApiWrapper, type MonacoVscodeApiConfig } from 'monaco-languageclient/vscodeApiWrapper';
-import { LogLevel } from '@codingame/monaco-vscode-api';
-import { configureDefaultWorkerFactory } from 'monaco-languageclient/workerFactory';
+import {
+  MonacoVscodeApiWrapper,
+  type MonacoVscodeApiConfig,
+} from "monaco-languageclient/vscodeApiWrapper";
+import { LogLevel } from "@codingame/monaco-vscode-api";
+import { configureDefaultWorkerFactory } from "monaco-languageclient/workerFactory";
 
 const vscodeApiConfig: MonacoVscodeApiConfig = {
-  $type: 'extended',
+  $type: "extended",
   viewsConfig: {
-    $type: 'EditorService'
+    $type: "EditorService",
   },
   logLevel: LogLevel.Info,
 
   // User settings (like VSCode settings.json)
   userConfiguration: {
     json: JSON.stringify({
-      'workbench.colorTheme': 'Default Dark Modern'
-    })
+      "workbench.colorTheme": "Default Dark Modern",
+    }),
   },
 
   // specific features handled by web workers
-  monacoWorkerFactory: configureDefaultWorkerFactory
+  monacoWorkerFactory: configureDefaultWorkerFactory,
 };
 
 const apiWrapper = new MonacoVscodeApiWrapper(vscodeApiConfig);
@@ -66,22 +72,25 @@ await apiWrapper.start();
 You can also override VSCode services to customize their behavior. For example, to customize keybindings and locale configuration:
 
 ```typescript
-import getKeybindingsServiceOverride from '@codingame/monaco-vscode-keybindings-service-override';
-import getLocalizationServiceOverride from '@codingame/monaco-vscode-localization-service-override';
-import { MonacoVscodeApiWrapper, type MonacoVscodeApiConfig } from 'monaco-languageclient/vscodeApiWrapper';
-import { createDefaultLocaleConfiguration } from 'monaco-languageclient/vscodeApiLocales';
+import getKeybindingsServiceOverride from "@codingame/monaco-vscode-keybindings-service-override";
+import getLocalizationServiceOverride from "@codingame/monaco-vscode-localization-service-override";
+import {
+  MonacoVscodeApiWrapper,
+  type MonacoVscodeApiConfig,
+} from "monaco-languageclient/vscodeApiWrapper";
+import { createDefaultLocaleConfiguration } from "monaco-languageclient/vscodeApiLocales";
 
 const vscodeApiConfig: MonacoVscodeApiConfig = {
-  $type: 'extended',
+  $type: "extended",
   viewsConfig: {
-    $type: 'EditorService'
+    $type: "EditorService",
   },
 
   // Override specific services
   serviceOverrides: {
     ...getKeybindingsServiceOverride(),
-    ...getLocalizationServiceOverride(createDefaultLocaleConfiguration())
-  }
+    ...getLocalizationServiceOverride(createDefaultLocaleConfiguration()),
+  },
 };
 
 const apiWrapper = new MonacoVscodeApiWrapper(vscodeApiConfig);
@@ -93,43 +102,47 @@ await apiWrapper.start();
 You can also configure how the editor connects to language servers by setting connection & client options:
 
 ```typescript
-import * as vscode from 'vscode';
-import { BaseLanguageClient } from 'vscode-languageclient/browser';
-import { LcWebSocket, type LanguageClientConfig, LanguageClientWrapper } from 'monaco-languageclient/lcwrapper';
+import * as vscode from "vscode";
+import { BaseLanguageClient } from "vscode-languageclient/browser";
+import {
+  LcWebSocket,
+  type LanguageClientConfig,
+  LanguageClientWrapper,
+} from "monaco-languageclient/lcwrapper";
 
 const languageClientConfig: LanguageClientConfig = {
-  languageId: 'python',
+  languageId: "python",
   connection: {
     options: {
       // WebSocket connection to external server
-      $family: 'WebSocket',
+      $family: "WebSocket",
       realization: () => new LcWebSocket(),
-      webSocketUrl: 'ws://localhost:3000/languageserver',
+      webSocketUrl: "ws://localhost:3000/languageserver",
       startOptions: {
         onCall: (languageClient?: BaseLanguageClient) => {
           console.log(`Language running: ${languageClient?.isRunning()}`);
         },
-        reportStatus: true
-      }
-    }
+        reportStatus: true,
+      },
+    },
   },
 
   clientOptions: {
     // Which file extensions this language server handles
-    documentSelector: ['python'],
+    documentSelector: ["python"],
 
     // Workspace configuration
     workspaceFolder: {
       index: 0,
-      name: 'my-project',
-      uri: vscode.Uri.file('/workspace')
+      name: "my-project",
+      uri: vscode.Uri.file("/workspace"),
     },
 
     // Custom initialization options for the language server
     initializationOptions: {
-      mySpecificLSOption: 'foo'
-    }
-  }
+      mySpecificLSOption: "foo",
+    },
+  },
 };
 
 const lcWrapper = new LanguageClientWrapper(languageClientConfig);
@@ -141,14 +154,17 @@ await lcWrapper.start();
 Classic Mode uses the standard Monaco Editor with language client features added in:
 
 ```typescript
-import { EditorApp, type EditorAppConfig } from 'monaco-languageclient/editorApp';
-import { MonacoVscodeApiWrapper, type MonacoVscodeApiConfig } from 'monaco-languageclient/vscodeApiWrapper';
+import { EditorApp, type EditorAppConfig } from "monaco-languageclient/editorApp";
+import {
+  MonacoVscodeApiWrapper,
+  type MonacoVscodeApiConfig,
+} from "monaco-languageclient/vscodeApiWrapper";
 
 const vscodeApiConfig: MonacoVscodeApiConfig = {
-  $type: 'classic',
+  $type: "classic",
   viewsConfig: {
-    $type: 'EditorService'
-  }
+    $type: "EditorService",
+  },
 };
 
 const apiWrapper = new MonacoVscodeApiWrapper(vscodeApiConfig);
@@ -156,7 +172,7 @@ await apiWrapper.start();
 
 const editorAppConfig: EditorAppConfig = {};
 const editorApp = new EditorApp(editorAppConfig);
-const htmlContainer = document.getElementById('monaco-editor-root')!;
+const htmlContainer = document.getElementById("monaco-editor-root")!;
 await editorApp.start(htmlContainer);
 ```
 
@@ -197,16 +213,21 @@ userConfiguration: {
 In most cases you'll need to setup an in-memory or remote file system for the editor to work with.
 
 ```typescript
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
 import {
   RegisteredFileSystemProvider,
   RegisteredMemoryFile,
-  registerFileSystemOverlay
-} from '@codingame/monaco-vscode-files-service-override';
+  registerFileSystemOverlay,
+} from "@codingame/monaco-vscode-files-service-override";
 
 // In-memory file system
 const fileSystemProvider = new RegisteredFileSystemProvider(false);
-fileSystemProvider.registerFile(new RegisteredMemoryFile(vscode.Uri.file('/project/main.ts'), 'console.log("Hello from TypeScript");'));
+fileSystemProvider.registerFile(
+  new RegisteredMemoryFile(
+    vscode.Uri.file("/project/main.ts"),
+    'console.log("Hello from TypeScript");',
+  ),
+);
 registerFileSystemOverlay(1, fileSystemProvider);
 ```
 
@@ -266,15 +287,15 @@ await lcWrapper.start();
 ### Development vs Production
 
 ```typescript
-const isDevelopment = process.env.NODE_ENV === 'development';
+const isDevelopment = process.env.NODE_ENV === "development";
 
 const config = {
   logLevel: isDevelopment ? LogLevel.Debug : LogLevel.Error,
   userConfiguration: {
     json: JSON.stringify({
-      'editor.wordBasedSuggestions': isDevelopment ? 'on' : 'off'
-    })
-  }
+      "editor.wordBasedSuggestions": isDevelopment ? "on" : "off",
+    }),
+  },
 };
 ```
 
@@ -285,32 +306,32 @@ You can configure multiple language clients for different file types:
 ```typescript
 // Eclipse JDT language client
 const javaConfig: LanguageClientConfig = {
-  languageId: 'java',
+  languageId: "java",
   connection: {
     options: {
-      $family: 'WebSocket',
+      $family: "WebSocket",
       realization: () => new LcWebSocket(),
-      webSocketUrl: 'ws://localhost:3001/jdtls'
-    }
+      webSocketUrl: "ws://localhost:3001/jdtls",
+    },
   },
   clientOptions: {
-    documentSelector: ['java']
-  }
+    documentSelector: ["java"],
+  },
 };
 
 // JSON language client
 const jsonConfig: LanguageClientConfig = {
-  languageId: 'json',
+  languageId: "json",
   connection: {
     options: {
-      $family: 'WebSocket',
+      $family: "WebSocket",
       realization: () => new LcWebSocket(),
-      webSocketUrl: 'ws://localhost:3001/json'
-    }
+      webSocketUrl: "ws://localhost:3001/json",
+    },
   },
   clientOptions: {
-    documentSelector: ['json']
-  }
+    documentSelector: ["json"],
+  },
 };
 
 const lcWrapperJava = new LanguageClientWrapper(javaConfig);

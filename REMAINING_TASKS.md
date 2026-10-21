@@ -16,15 +16,15 @@
 
 ## 2. 优先级与安排方法
 
-| 标记 | 含义 |
-| --- | --- |
-| P0 | 优先处理数据一致性、恢复、任务生命周期及验收基线，减少后续返工 |
-| P1 | 补齐首版明确要求的功能和交互 |
-| P2 | 完成功能后的系统验收、视觉对齐和发行验证，仍属于首版必做范围 |
-| 实现 | 已确认存在功能缺口，需要开发 |
-| 验证 | 已有实现，但证据不足；先验证，发现问题再修复，不重复开发整个模块 |
-| 混合 | 同时包含明确实现缺口与待验证能力 |
-| 外部阻塞 | 需要先解决环境或依赖获取问题，不能标为已通过 |
+| 标记     | 含义                                                             |
+| -------- | ---------------------------------------------------------------- |
+| P0       | 优先处理数据一致性、恢复、任务生命周期及验收基线，减少后续返工   |
+| P1       | 补齐首版明确要求的功能和交互                                     |
+| P2       | 完成功能后的系统验收、视觉对齐和发行验证，仍属于首版必做范围     |
+| 实现     | 已确认存在功能缺口，需要开发                                     |
+| 验证     | 已有实现，但证据不足；先验证，发现问题再修复，不重复开发整个模块 |
+| 混合     | 同时包含明确实现缺口与待验证能力                                 |
+| 外部阻塞 | 需要先解决环境或依赖获取问题，不能标为已通过                     |
 
 建议安排顺序：
 
@@ -37,34 +37,34 @@
 
 ## 3. 任务总览
 
-| 编号 | 优先级 | 类型 | 可直接用于任务标题的名称 | 主要前置任务 | 验收矩阵 |
-| --- | --- | --- | --- | --- | --- |
-| TASK-01 | P0 | 外部阻塞 | 建立固定 VS Code 参照环境与测试 fixture | 无 | A01、Q02、Q05 |
-| TASK-02 | P0 | 混合 | 补齐跨文件替换的部分失败、撤销与崩溃恢复 | 无 | S05、S06、F06 |
-| TASK-03 | P0 | 实现 | 重命名与 Save As 保留文档撤销历史 | 无 | F02、F03、F05、T02 |
-| TASK-04 | P1 | 混合 | 完整恢复上次窗口集合及独立编辑状态 | 无 | F01、F04、F08 |
-| TASK-05 | P1 | 混合 | 补齐保存、自动保存与编码重开流程 | TASK-03 | F03、F04 |
-| TASK-06 | P0 | 混合 | 验证文件操作失败、配置损坏和恢复入口 | 无 | F05、F06、F07 |
-| TASK-07 | P0 | 混合 | 对齐搜索过滤、编码和缓冲区覆盖语义 | TASK-01 用于最终差分 | S02、S03、S04 |
-| TASK-08 | P1 | 实现 | 实现目录层级搜索结果及目录范围操作 | TASK-07 | S02、S05、S07 |
-| TASK-09 | P1 | 实现 | 补齐 Quick Open 与 Quick Search 实时预览 | TASK-07；TASK-01 用于排序/焦点对齐 | S08、S09、S10 |
-| TASK-10 | P1 | 验证 | 完成 Search Editor 独立查询与保存恢复验收 | TASK-07；TASK-09 的预览规则可复用 | S11 |
-| TASK-11 | P1 | 验证 | 验收编辑器 Find/Replace 与通用编辑功能 | TASK-01 用于行为对照 | S01、L04 |
-| TASK-12 | P1 | 混合 | 补齐 MRU、分栏缩放、标签与导航历史 | TASK-03；TASK-01 用于交互对照 | A03、F02、F04、S09 |
-| TASK-13 | P1 | 混合 | 补齐设置优先级、快捷键上下文和 schema | 无 | A03、C01 |
-| TASK-14 | P1 | 验证 | 完成 Trees 键盘、多选、拖放与菜单验收 | TASK-03、TASK-06 | T01、T02、T03 |
-| TASK-15 | P1 | 混合 | 实现 Git/索引缓存并验证监听恢复 | 无 | T04、T05、C02 |
-| TASK-16 | P1 | 验证 | 完成 JS/TS/JSX/TSX 和旧版 TS 项目语义验收 | TASK-19；涉及安装时依赖 TASK-21 | L01、L04 |
-| TASK-17 | P1 | 混合 | 完成 HTML/CSS/JSON 项目配置与能力验收 | TASK-19 | L02、L04、C01 |
-| TASK-18 | P1 | 验证 | 完成 Rust 工具链与真实项目语义验收 | TASK-19；格式化关联 TASK-20 | L03、L04 |
-| TASK-19 | P0 | 混合 | 验证 LSP 工作区编辑、取消与进程回收 | 无 | L05、F08 |
-| TASK-20 | P1 | 混合 | 对齐全文/选区格式化及 EditorConfig | TASK-19；工具获取关联 TASK-21 | L06 |
-| TASK-21 | P0 | 混合/外部阻塞 | 补齐工具安装、取消、离线与版本回退 | 无 | L07 |
-| TASK-22 | P1 | 实现 | 完成大文件分级保护与资源生命周期 | TASK-07、TASK-15、TASK-19 | C02、S04 |
-| TASK-23 | P2 | 验证 | 执行 Windows 原生交互与跨窗口验收 | 对应功能任务完成后分批执行 | A03、F01、F07、F08、Q03 |
-| TASK-24 | P2 | 验证/外部阻塞 | 完成 Release 与固定 VS Code 的成对 UI 对比 | TASK-01、对应功能任务；最终依赖 TASK-23 | A02、T03、Q02、Q05 |
-| TASK-25 | P2 | 验证 | 验证安装、升级、卸载和便携数据位置 | TASK-21、稳定 Release | R01（矩阵）、R03（矩阵） |
-| TASK-26 | P2 | 混合 | 补齐回归测试、资源报告与最终交付证据 | 测试随开发执行；最终报告依赖 TASK-23–TASK-25 | Q01、Q02、Q04、R02（矩阵）、R03（矩阵） |
+| 编号    | 优先级 | 类型          | 可直接用于任务标题的名称                   | 主要前置任务                                 | 验收矩阵                                |
+| ------- | ------ | ------------- | ------------------------------------------ | -------------------------------------------- | --------------------------------------- |
+| TASK-01 | P0     | 外部阻塞      | 建立固定 VS Code 参照环境与测试 fixture    | 无                                           | A01、Q02、Q05                           |
+| TASK-02 | P0     | 混合          | 补齐跨文件替换的部分失败、撤销与崩溃恢复   | 无                                           | S05、S06、F06                           |
+| TASK-03 | P0     | 实现          | 重命名与 Save As 保留文档撤销历史          | 无                                           | F02、F03、F05、T02                      |
+| TASK-04 | P1     | 混合          | 完整恢复上次窗口集合及独立编辑状态         | 无                                           | F01、F04、F08                           |
+| TASK-05 | P1     | 混合          | 补齐保存、自动保存与编码重开流程           | TASK-03                                      | F03、F04                                |
+| TASK-06 | P0     | 混合          | 验证文件操作失败、配置损坏和恢复入口       | 无                                           | F05、F06、F07                           |
+| TASK-07 | P0     | 混合          | 对齐搜索过滤、编码和缓冲区覆盖语义         | TASK-01 用于最终差分                         | S02、S03、S04                           |
+| TASK-08 | P1     | 实现          | 实现目录层级搜索结果及目录范围操作         | TASK-07                                      | S02、S05、S07                           |
+| TASK-09 | P1     | 实现          | 补齐 Quick Open 与 Quick Search 实时预览   | TASK-07；TASK-01 用于排序/焦点对齐           | S08、S09、S10                           |
+| TASK-10 | P1     | 验证          | 完成 Search Editor 独立查询与保存恢复验收  | TASK-07；TASK-09 的预览规则可复用            | S11                                     |
+| TASK-11 | P1     | 验证          | 验收编辑器 Find/Replace 与通用编辑功能     | TASK-01 用于行为对照                         | S01、L04                                |
+| TASK-12 | P1     | 混合          | 补齐 MRU、分栏缩放、标签与导航历史         | TASK-03；TASK-01 用于交互对照                | A03、F02、F04、S09                      |
+| TASK-13 | P1     | 混合          | 补齐设置优先级、快捷键上下文和 schema      | 无                                           | A03、C01                                |
+| TASK-14 | P1     | 验证          | 完成 Trees 键盘、多选、拖放与菜单验收      | TASK-03、TASK-06                             | T01、T02、T03                           |
+| TASK-15 | P1     | 混合          | 实现 Git/索引缓存并验证监听恢复            | 无                                           | T04、T05、C02                           |
+| TASK-16 | P1     | 验证          | 完成 JS/TS/JSX/TSX 和旧版 TS 项目语义验收  | TASK-19；涉及安装时依赖 TASK-21              | L01、L04                                |
+| TASK-17 | P1     | 混合          | 完成 HTML/CSS/JSON 项目配置与能力验收      | TASK-19                                      | L02、L04、C01                           |
+| TASK-18 | P1     | 验证          | 完成 Rust 工具链与真实项目语义验收         | TASK-19；格式化关联 TASK-20                  | L03、L04                                |
+| TASK-19 | P0     | 混合          | 验证 LSP 工作区编辑、取消与进程回收        | 无                                           | L05、F08                                |
+| TASK-20 | P1     | 混合          | 对齐全文/选区格式化及 EditorConfig         | TASK-19；工具获取关联 TASK-21                | L06                                     |
+| TASK-21 | P0     | 混合/外部阻塞 | 补齐工具安装、取消、离线与版本回退         | 无                                           | L07                                     |
+| TASK-22 | P1     | 实现          | 完成大文件分级保护与资源生命周期           | TASK-07、TASK-15、TASK-19                    | C02、S04                                |
+| TASK-23 | P2     | 验证          | 执行 Windows 原生交互与跨窗口验收          | 对应功能任务完成后分批执行                   | A03、F01、F07、F08、Q03                 |
+| TASK-24 | P2     | 验证/外部阻塞 | 完成 Release 与固定 VS Code 的成对 UI 对比 | TASK-01、对应功能任务；最终依赖 TASK-23      | A02、T03、Q02、Q05                      |
+| TASK-25 | P2     | 验证          | 验证安装、升级、卸载和便携数据位置         | TASK-21、稳定 Release                        | R01（矩阵）、R03（矩阵）                |
+| TASK-26 | P2     | 混合          | 补齐回归测试、资源报告与最终交付证据       | 测试随开发执行；最终报告依赖 TASK-23–TASK-25 | Q01、Q02、Q04、R02（矩阵）、R03（矩阵） |
 
 说明：任务编号 TASK-01–TASK-26 与原验收矩阵编号独立；“（矩阵）”表示原验收矩阵行。
 
@@ -82,28 +82,28 @@
 - **当前差距：** 磁盘日志和成功项撤销已实现；前端联合撤销栈不跨重启保存，部分重放的栈协调不完整，写盘成功到日志更新之间崩溃的恢复不完整。
 - **需要完成：** 明确每个文件和打开缓冲区的事务状态；部分失败后仍可继续撤销/重做，保留成功与失败记录；识别中断日志并提供恢复入口。恢复日志中的路径仍须经过当前窗口访问校验。
 - **验收：** 混合打开/关闭文件，注入只读、占用、外部修改和各写入阶段崩溃；成功项可准确恢复，失败项可重试，不能误移动撤销栈或覆盖外部修改。目录范围替换由 TASK-08 提供入口。
-- **入口：** `src/search.ts`、`src-tauri/src/transactions.rs`、`replacement.rs`、`state.rs`。
+- **入口：** `src/search/search.ts`、`src-tauri/src/transactions.rs`、`replacement.rs`、`state.rs`。
 
 ### TASK-03 · 文档身份、重命名与撤销历史
 
 - **当前差距：** Save As 和 Explorer 重命名会同步 URI、标签、语言服务及导航路径，但重建 Monaco 模型会重置本地撤销历史。外部重命名目前走删除/冲突处理。
 - **需要完成：** 设计保留内容、撤销历史和各分栏视图状态的文档迁移；处理同 URI 冲突；评估文件监控可可靠识别的外部重命名，无法确认时保留安全恢复路径。
 - **验收：** 脏文档在两个分栏显示，重命名或 Save As 后仍能撤销此前编辑；定义/引用、搜索定位和导航历史使用新路径；操作失败不丢缓冲区、不显示虚假成功。
-- **入口：** `src/documents.ts`、`EditorGroup.tsx`、`languages.ts`、`src-tauri/src/commands.rs`。
+- **入口：** `src/editor/documents.ts`、`EditorGroup.tsx`、`languages.ts`、`src-tauri/src/commands.rs`。
 
 ### TASK-04 · 窗口集合及会话恢复
 
 - **当前差距：** 三个窗口和单进程崩溃后的缓冲区恢复已有实测，尚未完整恢复上次窗口集合；独立状态及共享设置并发场景未完整验证。
 - **需要完成：** 明确窗口集合的保存/重开规则，恢复各窗口目录、标签、分栏、活动编辑器、位置和历史；补齐重复目录聚焦、独立文件窗口及跨窗口冲突行为。
 - **验收：** 多窗口含同一文件的不同未保存内容，正常退出与异常退出后分别恢复；窗口间不串缓冲区；重复打开目录聚焦既有窗口；共享配置并发更新不静默丢失。
-- **入口：** `src/App.tsx`、`documents.ts`、`types.ts`、Rust `lib.rs`、`commands.rs`、`state.rs`。
+- **入口：** `src/components/App.tsx`、`documents.ts`、`types.ts`、Rust `lib.rs`、`commands.rs`、`state.rs`。
 
 ### TASK-05 · 保存、自动保存与编码重开
 
 - **当前差距：** 延迟自动保存已有实现；`onFocusChange`、`onWindowChange` 在 schema 中列出，但当前没有对应保存事件实现。编码保存支持多种格式，读取失败后的编码重开交互仍需补齐。
 - **需要完成：** 接通自动保存模式；完整处理 Save As/All、关闭确认、编码重开/转换和 EOL；配置只能承诺实际接通的行为。
 - **验收：** 覆盖未命名文档、取消选择器、目标已打开、格式化失败、文件占用、BOM/CRLF、UTF-16/GBK 和不可表示字符；失败不清除脏状态，取消不丢内容，冲突不被自动保存覆盖。
-- **入口：** `src/documents.ts`、`App.tsx`、`languages.ts`、Rust `files.rs`、`commands.rs`。
+- **入口：** `src/editor/documents.ts`、`App.tsx`、`languages.ts`、Rust `files.rs`、`commands.rs`。
 
 ### TASK-06 · 文件操作和损坏恢复
 
@@ -124,49 +124,49 @@
 - **当前差距：** 当前结果按文件分组并可切换列表，尚无完整嵌套目录结果树和目录范围操作。
 - **需要完成：** 实现目录节点、汇总计数、展开/收起、目录替换/移除/限定/排除；完善文件/命中/目录菜单、替换预览及键盘焦点。
 - **验收：** 目录替换仅修改目标范围；移除结果不删除源文件；排序、折叠、刷新后选中和导航有效；复制内容、侧边打开、F4/Shift+F4 和结果计数与参照一致。
-- **入口：** `src/SearchView.tsx`、`search.ts`、`commands.ts`；替换依赖 TASK-02 的事务协调。
+- **入口：** `src/components/SearchView.tsx`、`search.ts`、`commands.ts`；替换依赖 TASK-02 的事务协调。
 
 ### TASK-09 · Quick Open / Quick Search 预览
 
 - **当前差距：** 模糊匹配、前缀入口、独立 Quick Search 查询和转交 Search View 已接通；实时预览与完整排序/选中行为不足。
 - **需要完成：** 键盘选中即时预览、确认固定、取消恢复原文档/位置/焦点；完善最近记录、排名高亮、路径及行列、后台/侧边打开。Quick Search 不应意外修改侧栏查询。
 - **验收：** 快速输入、方向键、鼠标和慢文件读取不会让旧预览覆盖新选择；Escape 恢复原状态；确认只固定目标；取消后释放无用干净模型；符号与命令入口仅展示可用能力。
-- **入口：** `src/QuickOpen.tsx`、`fuzzy.ts`、`documents.ts`、`search.ts`、`commands.ts`。
+- **入口：** `src/components/QuickOpen.tsx`、`fuzzy.ts`、`documents.ts`、`search.ts`、`commands.ts`。
 
 ### TASK-10 · Search Editor 完整验收
 
 - **当前差距：** 独立查询、上下文行、重新搜索、结果文本、跳转与持久化查询头已有实现，缺少端到端覆盖。
 - **需要完成：** 验证查询参数/上下文可调整、重复搜索取消和过期丢弃、编辑后脏状态、`.code-search` 保存重开及会话恢复；发现交互缺口后补齐。
 - **验收：** 两个 Search Editor 与 Search View 可独立查询；上下文区间合并正确；编辑结果不修改源文件；跳转位置正确；损坏查询头不导致结果文本丢失。
-- **入口：** `src/search.ts`、`EditorGroup.tsx`、`documents.ts`、`tools/verify-desktop.mjs`。
+- **入口：** `src/search/search.ts`、`EditorGroup.tsx`、`documents.ts`、`tools/verify-desktop.mjs`。
 
 ### TASK-11 · 编辑器查找替换与通用编辑验收
 
 - **当前差距：** 已实测 Find 控件出现，不能据此认定全部 Monaco 编辑行为已完成接入和对齐。
 - **需要完成：** 对照验证大小写、整词、正则、多行、选区搜索、下一/上一命中、多光标、替换及保留大小写；同时验证矩形选区、折叠、缩略图和括号辅助等通用功能。
 - **验收：** 相同内容和按键在两端得到相同结果、选区和撤销行为；包括中文/emoji、无效正则、零宽匹配、输入法组合及焦点切换。
-- **入口：** `src/editor-features.ts`、`monaco.ts`、`EditorGroup.tsx`、`commands.ts`。
+- **入口：** `src/editor/editor-features.ts`、`monaco.ts`、`EditorGroup.tsx`、`commands.ts`。
 
 ### TASK-12 · 标签、分栏、MRU 与导航
 
 - **当前差距：** 有标签和共享模型分栏；分栏宽度相等且不可拖动，Ctrl+Tab 不是完整 MRU 切换，详细焦点和历史行为待补齐。
 - **需要完成：** 分栏尺寸调整/恢复、最近编辑器切换、标签拖动/预览/固定及关闭焦点；补齐跨文件与同文件位置的前进/后退，与搜索和语言跳转协同。
 - **验收：** 同一模型的不同视图分别恢复选区和滚动；关闭/移动活动标签后焦点合理；关闭文件再后退可重开正确路径；MRU 顺序稳定且不被预览污染。
-- **入口：** `src/EditorGroup.tsx`、`App.tsx`、`documents.ts`、`commands.ts`、`types.ts`、`App.css`。
+- **入口：** `src/components/EditorGroup.tsx`、`App.tsx`、`documents.ts`、`commands.ts`、`types.ts`、`App.css`。
 
 ### TASK-13 · 设置与快捷键一致性
 
 - **当前差距：** 用户/工作区配置、快捷键即时生效、schema 和 VS Code 导入报告已有实现；上下文支持有限，优先级、删除配置后的恢复与完整 schema 尚待验证。
 - **需要完成：** 支持实际需要的 VS Code 上下文键与条件表达式，完善覆盖/移除/chord/焦点规则；统一运行时配置合并与重载，验证导入报告只声明真实支持项。
 - **验收：** 工作区覆盖用户，移除覆盖后回落正确；多窗口同步；文本框、树、编辑器、菜单和对话框上下文不误触发；无效配置有诊断且不破坏现有有效状态。
-- **入口：** `src/keybindings.ts`、`commands.ts`、`languages.ts`、`documents.ts`、Rust `tools.rs`、`commands.rs`。
+- **入口：** `src/utils/keybindings.ts`、`commands.ts`、`languages.ts`、`documents.ts`、Rust `tools.rs`、`commands.rs`。
 
 ### TASK-14 · Trees 完整交互验收
 
 - **当前差距：** 官方 skill、React/API、prepared input、主题、图标及操作回调已接入；完整交互尚未逐项验证，无需重新安装或重建文件树。
 - **需要完成：** 验证键盘、多选/范围选择、拖放、展开/收起、活动文件定位、内联重命名、剪贴操作和右键焦点；检查 Shadow DOM 主题边界与目录 Git 汇总显示。
 - **验收：** `flattenEmptyDirectories: false` 保持有效；操作失败回滚、选择/焦点恢复正确；搜索切换进入完整 Search View；所有状态读写使用 Trees 公共 API。
-- **入口：** `src/Explorer.tsx`、`tree.worker.ts`、`App.css`、`.agents/skills/trees/`。
+- **入口：** `src/components/Explorer.tsx`、`tree.worker.ts`、`App.css`、`.agents/skills/trees/`。
 
 ### TASK-15 · Git 缓存、索引与文件监听
 
@@ -180,14 +180,14 @@
 - **当前差距：** 实测了 TypeScript Native 的类型错误诊断；不能将此扩展为四种语言或兼容服务器全部通过。
 - **需要完成：** 分别测试 Native 与旧项目 TypeScript/tsserver 兼容路径，覆盖版本检测、配置、跨包导入、模块解析、未保存内容及原计划要求的各项语义能力。
 - **验收：** 逐项记录补全、hover、参数提示、诊断、定义/类型/实现、引用/Peek、符号、重命名、代码操作、语义高亮和 hints；多文件编辑校验版本并可撤销；不修改项目依赖来让测试通过。
-- **入口：** `src/languages.ts`、Rust `tools.rs`、`lsp.rs`、`tools/languages/`、`LANGUAGE_CAPABILITIES.md`。
+- **入口：** `src/editor/languages.ts`、Rust `tools.rs`、`lsp.rs`、`tools/languages/`、`LANGUAGE_CAPABILITIES.md`。
 
 ### TASK-17 · HTML/CSS/JSON 语义与配置
 
 - **当前差距：** 官方服务包和三项 smoke test 已通过，JSON 桌面诊断已通过；项目文件、配置、schema 与其余交互未完整验收。
 - **需要完成：** 验证相对资源/依赖访问、服务配置更新、JSON schema 及适用的 CSS/HTML 操作；核对语法高亮和语言切换后的服务状态。
 - **验收：** 按服务真实支持范围逐项记录桌面证据；无效/离线 schema 不应挂死；不为 HTML 通用诊断或 JSON rename 等服务未提供的能力显示虚假可用入口。
-- **入口：** `tools/web-language-server.mjs`、`verify-languages.mjs`、`src/languages.ts`、`monaco.ts`。
+- **入口：** `tools/web-language-server.mjs`、`verify-languages.mjs`、`src/editor/languages.ts`、`monaco.ts`。
 
 ### TASK-18 · Rust 项目语义与工具链
 
@@ -201,7 +201,7 @@
 - **当前差距：** stdio/IPC、消息 framing、诊断和重载重连已有证据；多文件工作区编辑、服务器请求、取消、崩溃和慢消费者场景不足。当前文件操作类 WorkspaceEdit 会被拒绝，需要处理服务实际要求的场景。
 - **需要完成：** 对原计划所需的请求/配置/工作区编辑路径逐项验证；补齐必要的资源编辑协调、版本冲突、取消、重启及超时退出；核对 stdout/stderr、队列和读取缓冲的边界。
 - **验收：** 大消息、异常帧、无换行日志、慢消费、服务器崩溃和窗口退出不造成无限缓存/挂起或进程泄漏；重启不能被旧实例清理逻辑误删除；陈旧编辑不能覆盖新内容。
-- **入口：** `src/languages.ts`、Rust `lsp.rs`、`lib.rs`、`commands.rs`、`state.rs`。
+- **入口：** `src/editor/languages.ts`、Rust `lsp.rs`、`lib.rs`、`commands.rs`、`state.rs`。
 
 ### TASK-20 · 格式化与 EditorConfig
 

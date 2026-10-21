@@ -229,20 +229,91 @@ pub async fn open_workspace(
 }
 
 #[tauri::command]
-pub async fn scan_workspace(
+pub async fn read_workspace_directory(
     window: WebviewWindow,
     state: State<'_, AppState>,
-) -> Result<workspace::TreeSnapshot> {
-    let root = state
-        .windows
-        .lock()
-        .unwrap()
-        .get(window.label())
-        .and_then(|w| w.root.clone())
-        .ok_or_else(|| AppError::new("workspace", "No folder is open"))?;
-    tauri::async_runtime::spawn_blocking(move || workspace::scan(&root))
-        .await
-        .map_err(|e| AppError::new("scan", e.to_string()))?
+    directory: String,
+    expected_root: String,
+    session: Option<u64>,
+) -> Result<workspace::DirectorySnapshot> {
+    let expected = canonical(Path::new(&expected_root))?;
+    let (root, repositories, current_session) = {
+        let windows = state.windows.lock().unwrap();
+        let current = windows
+            .get(window.label())
+            .ok_or_else(|| AppError::new("workspace", "No folder is open"))?;
+        let root = current
+            .root
+            .clone()
+            .filter(|root| root == &expected)
+            .ok_or_else(|| AppError::new("workspace", "Workspace changed"))?;
+        if session.is_some_and(|session| session != current.workspace_session) {
+            return Err(AppError::new("workspace", "Workspace changed"));
+        }
+        (
+            root,
+            current.repositories.clone(),
+            current.workspace_session,
+        )
+    };
+    let (snapshot, discovered) = tauri::async_runtime::spawn_blocking(move || -> Result<_> {
+        let result = workspace::read_directory(&root, &directory, current_session)?;
+        let target = root.join(&result.directory);
+        let discovered = target.join(".git").exists()
+            && repositories.repositories.lock().unwrap().insert(target);
+        Ok((result, discovered))
+    })
+    .await
+    .map_err(|e| AppError::new("directory", e.to_string()))??;
+    if discovered {
+        let _ = window.emit_to(
+            window.label(),
+            "workspace-changed",
+            workspace::WorkspaceChanges {
+                root: snapshot.root.clone(),
+                session: current_session,
+                changes: vec![],
+                rescan: false,
+                git_changed: true,
+                file_index_changed: false,
+            },
+        );
+    }
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn workspace_git_status(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    expected_root: String,
+    session: Option<u64>,
+) -> Result<workspace::GitSnapshot> {
+    let expected = canonical(Path::new(&expected_root))?;
+    let (root, repositories, current_session) = {
+        let windows = state.windows.lock().unwrap();
+        let current = windows
+            .get(window.label())
+            .ok_or_else(|| AppError::new("workspace", "No folder is open"))?;
+        let root = current
+            .root
+            .clone()
+            .filter(|root| root == &expected)
+            .ok_or_else(|| AppError::new("workspace", "Workspace changed"))?;
+        if session.is_some_and(|session| session != current.workspace_session) {
+            return Err(AppError::new("workspace", "Workspace changed"));
+        }
+        (
+            root,
+            current.repositories.clone(),
+            current.workspace_session,
+        )
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace::git_snapshot(&root, &repositories, current_session)
+    })
+    .await
+    .map_err(|e| AppError::new("git", e.to_string()))?
 }
 
 #[tauri::command]

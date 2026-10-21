@@ -1,7 +1,7 @@
 {
   "name": "litecode",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "postinstall": "node tools/patch-trees-scroll.mjs",

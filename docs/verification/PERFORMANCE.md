@@ -6,17 +6,17 @@ Microsoft Windows 11 专业版 10.0.22631; AMD Ryzen 7 8845H w/ Radeon 780M Grap
 
 A single isolated fixture run with a local TypeScript project, explicit tool paths and warmed OS/dependency caches. WebDriver automation is enabled. These are observations, not performance guarantees or complete planned workload acceptance.
 
-| Measurement | Observed |
-| --- | --- |
-| WebDriver session creation to Trees mounted | 1146 ms |
-| Search input to final 2-hit result (includes 250 ms debounce and WebDriver polling) | 498.9 ms |
-| WebDriver send-keys call for 7 ASCII characters (not frame/input latency) | 66.1 ms |
-| 1 window(s), process-group working set | 1058.9 MiB |
-| 1 window(s), process-group private bytes | 1126.2 MiB |
-| 3 window(s), process-group working set | 1361.6 MiB |
-| 3 window(s), process-group private bytes | 1550.7 MiB |
-| LiteCode-0.1.0-202314481181-win-x64-portable.zip | 12.7 MiB |
-| LiteCode_0.1.0_x64-setup.exe | 9.1 MiB |
+| Measurement                                                                         | Observed   |
+| ----------------------------------------------------------------------------------- | ---------- |
+| WebDriver session creation to Trees mounted                                         | 1146 ms    |
+| Search input to final 2-hit result (includes 250 ms debounce and WebDriver polling) | 498.9 ms   |
+| WebDriver send-keys call for 7 ASCII characters (not frame/input latency)           | 66.1 ms    |
+| 1 window(s), process-group working set                                              | 1058.9 MiB |
+| 1 window(s), process-group private bytes                                            | 1126.2 MiB |
+| 3 window(s), process-group working set                                              | 1361.6 MiB |
+| 3 window(s), process-group private bytes                                            | 1550.7 MiB |
+| LiteCode-0.1.0-202314481181-win-x64-portable.zip                                    | 12.7 MiB   |
+| LiteCode_0.1.0_x64-setup.exe                                                        | 9.1 MiB    |
 
 Process groups include the Rust host, WebView2 browser/render/GPU/utility processes, language-server processes and console-host descendants present at capture time. Working-set sums can count shared pages more than once. Per-process memory and cumulative CPU seconds are retained in desktop-release-results.json. The one-window sample already has JSON and TypeScript services running; additional windows use small text fixtures.
 

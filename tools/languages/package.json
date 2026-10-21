@@ -1,7 +1,7 @@
 {
   "name": "litecode-language-tools",
-  "private": true,
   "version": "1.0.0",
+  "private": true,
   "dependencies": {
     "@typescript/native-preview-win32-x64": "7.0.0-dev.20260707.2",
     "oxfmt": "0.73.0",

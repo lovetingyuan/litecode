@@ -360,7 +360,7 @@ pub async fn search_start(
     if query.text.is_empty() {
         return Err(AppError::new("query", "Search text is empty"));
     }
-    let (root, documents) = {
+    let (root, documents, repositories) = {
         let windows = state.windows.lock().unwrap();
         let w = windows
             .get(window.label())
@@ -368,6 +368,7 @@ pub async fn search_start(
         (
             w.root.clone(),
             w.documents.values().filter(|m| m.kind.is_text()).cloned().collect::<Vec<_>>(),
+            w.repositories.clone(),
         )
     };
     let task = Arc::new(SearchTask {
@@ -406,7 +407,13 @@ pub async fn search_start(
             .filter_map(|m| m.path.as_deref().map(normalized))
             .collect();
         let allowed = if query.changed_only {
-            match root.as_ref().map(|r| workspace_changed(r)).transpose() {
+            let result = if let Some(root) = root.clone() {
+                let repositories = repositories.clone();
+                tauri::async_runtime::spawn_blocking(move || workspace_changed(&root, &repositories))
+                    .await.unwrap_or_else(|error| Err(AppError::new("git", error.to_string())))
+                    .map(Some)
+            } else { Ok(None) };
+            match result {
                 Ok(paths) => Some(paths.unwrap_or_default()),
                 Err(e) => {
                     batch.errors.push(e.message);
@@ -484,8 +491,9 @@ pub async fn search_start(
     Ok(())
 }
 
-fn workspace_changed(root: &Path) -> Result<HashSet<String>> {
-    Ok(crate::workspace::scan(root)?
+fn workspace_changed(root: &Path, index: &crate::workspace::RepositoryIndex) -> Result<HashSet<String>> {
+    crate::workspace::discover_repositories(root, index, || false);
+    Ok(crate::workspace::git_snapshot(root, index, 0)?
         .git
         .into_iter()
         .filter(|g| g.status != "ignored")

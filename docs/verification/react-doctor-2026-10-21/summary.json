@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-21",
+  "version": "0.9.18",
+  "sourceRevision": "d5472b5e34161d1ca5ba775ea7d22d70e5c77d81",
+  "errorCount": 29,
+  "warningCount": 56,
+  "affectedFileCount": 25,
+  "totalDiagnosticCount": 85,
+  "score": null,
+  "scoreLabel": null,
+  "ruleCount": 26,
+  "analyzedFileCount": 92,
+  "priorities": {
+    "P1": 21,
+    "P2": 48,
+    "P3": 16
+  },
+  "categories": {
+    "Performance": {
+      "total": 50,
+      "error": 24,
+      "warning": 26
+    },
+    "Maintainability": {
+      "total": 14,
+      "error": 0,
+      "warning": 14
+    },
+    "Bugs": {
+      "total": 10,
+      "error": 3,
+      "warning": 7
+    },
+    "Accessibility": {
+      "total": 6,
+      "error": 0,
+      "warning": 6
+    },
+    "Security": {
+      "total": 5,
+      "error": 2,
+      "warning": 3
+    }
+  }
+}

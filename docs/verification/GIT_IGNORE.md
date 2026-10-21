@@ -52,13 +52,13 @@ The observed screenshots are debug-app evidence, not release/reference acceptanc
 Windows debug builds, warmed caches; local samples with other development
 processes running. These observations are not performance budgets.
 
-| Sample | Observed |
-| --- | --- |
-| 200,000 synthetic individual ignored-directory entries, initial tab index | 168.65 ms |
-| 100,000 repeated tab queries against that index | 62.45 ms total |
-| Existing scan of 10,102 paths, before suffix fix, five warm samples | 82.65–95.32 ms (median 85.89 ms) |
-| Same scan after suffix fix, five warm samples | 76.08–119.02 ms (median 102.74 ms) |
-| Git status payload for the 10,102-path fixture, before and after | 2 entries |
+| Sample                                                                    | Observed                           |
+| ------------------------------------------------------------------------- | ---------------------------------- |
+| 200,000 synthetic individual ignored-directory entries, initial tab index | 168.65 ms                          |
+| 100,000 repeated tab queries against that index                           | 62.45 ms total                     |
+| Existing scan of 10,102 paths, before suffix fix, five warm samples       | 82.65–95.32 ms (median 85.89 ms)   |
+| Same scan after suffix fix, five warm samples                             | 76.08–119.02 ms (median 102.74 ms) |
+| Git status payload for the 10,102-path fixture, before and after          | 2 entries                          |
 
 The 200,000-entry case deliberately stresses index creation; a single ignored
 directory containing many files only contributes one ignored status entry. The

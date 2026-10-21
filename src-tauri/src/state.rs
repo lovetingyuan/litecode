@@ -42,6 +42,8 @@ pub struct WindowState {
     pub grants: HashSet<PathBuf>,
     pub documents: HashMap<String, Mirror>,
     pub watcher: Option<RecommendedWatcher>,
+    pub workspace_session: u64,
+    pub repositories: Arc<crate::workspace::RepositoryIndex>,
     pub session: serde_json::Value,
     pub drops: HashMap<String, Vec<PathBuf>>,
 }

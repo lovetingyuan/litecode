@@ -1,11 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "typescript",
-    "unicorn",
-    "oxc",
-    "react"
-  ],
+  "plugins": ["typescript", "unicorn", "oxc", "react"],
   "categories": {
     "correctness": "error"
   },
@@ -16,8 +11,5 @@
     "react/set-state-in-effect": "off",
     "curly": "error"
   },
-  "ignorePatterns": [
-    ".agents/**",
-    "src-tauri/tools/**"
-  ]
+  "ignorePatterns": [".agents/**", "tools/**", "src-tauri/tools/**"]
 }

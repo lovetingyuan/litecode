@@ -47,9 +47,7 @@
       "windows": 1,
       "capturedAt": "2026-10-17T13:20:13.3550106Z",
       "application": "D:\\lovetingyuan\\litecode\\.verification\\desktop-1792243202140\\app\\LiteCode.exe",
-      "roots": [
-        42144
-      ],
+      "roots": [42144],
       "processes": [
         {
           "pid": 42144,
@@ -148,9 +146,7 @@
       "windows": 3,
       "capturedAt": "2026-10-17T13:20:18.0773232Z",
       "application": "D:\\lovetingyuan\\litecode\\.verification\\desktop-1792243202140\\app\\LiteCode.exe",
-      "roots": [
-        42144
-      ],
+      "roots": [42144],
       "processes": [
         {
           "pid": 42144,

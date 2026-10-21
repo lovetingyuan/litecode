@@ -27,6 +27,8 @@ node tools/package-portable.mjs
 
 发行构建自动生成 HTML/CSS/JSON 服务包，再编译前端与 Rust，输出 NSIS 安装包。便携打包脚本将 exe、工具资源和独立 `data` 目录装入 ZIP，并生成 SHA-256 manifest，输出到 `artifacts/`。同一构建的 ZIP 已存在时脚本会停止，避免覆盖。
 
+应用图标源文件为 `public/litecode.svg`，标题栏与浏览器标签共用该圆角双蓝色图标。桌面打包使用 `src-tauri/icons/` 下的 PNG、ICO 和 ICNS 文件。更新图标后，运行 `npm run tauri -- icon public/litecode.svg --output .verification/icons`，将生成目录顶层的同名图标文件复制到 `src-tauri/icons/`，再重新构建桌面应用。
+
 ## 文件、搜索与编辑
 
 - Markdown（`.md` / `.markdown`）默认文本编辑，可在面包屑右侧切换 `Text Editor` / `Markdown Preview`。预览支持常用 Markdown、表格和任务列表，展示当前未保存内容；可通过现有分栏功能一侧编辑、一侧实时预览。切换保留编辑位置和撤销历史，各分组独立保存视图与预览滚动位置，并随会话恢复。
@@ -50,6 +52,8 @@ node tools/package-portable.mjs
 - 退出会先写恢复数据；进程异常终止后的恢复取决于最近一次完成的备份，编辑备份有约 400 ms 延迟。
 
 ## 设置与语言工具
+
+`.gitignore` 和 `.env`（包含 `.env.*`）支持语法高亮：忽略规则中的注释、否定标记和通配符，以及环境变量的键名、字符串、注释和变量引用使用不同颜色。也可通过状态栏语言模式手动选择 Git Ignore 或 Dotenv。
 
 命令面板的 `Preferences: Open User Settings (JSON)` 和 `Preferences: Open Keyboard Shortcuts (JSON)` 打开配置文件。工作区覆盖文件是 `.litecode/settings.json`。`Preferences: Review VS Code Settings Import` 读取 `.vscode/settings.json`，生成支持项与忽略项报告，不改写原文件。
 
@@ -93,7 +97,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D w
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 ```
 
-JavaScript / TypeScript 使用 Oxlint 检查前端、测试和工具脚本，启用默认插件及 React 的 correctness 规则；暂不启用 React Compiler 的 `immutability`、`preserve-manual-memoization`、`refs`、`set-state-in-effect` 规则。任何警告或错误都会使检查失败。配置见 `.oxlintrc.json`，扫描遵循 `.gitignore`，并排除 `.agents/` 技能资源及 `src-tauri/tools/` 生成的语言服务包。可执行 `npm run lint:fix` 应用安全的自动修复；类型检查仍由 `npm run build` 中的 TypeScript 完成。
+JavaScript / TypeScript 使用 Oxlint 检查前端和测试，启用默认插件及 React 的 correctness 规则；暂不启用 React Compiler 的 `immutability`、`preserve-manual-memoization`、`refs`、`set-state-in-effect` 规则。任何警告或错误都会使检查失败。配置见 `.oxlintrc.json`，扫描遵循 `.gitignore`，并排除 `.agents/` 技能资源、`tools/` 工具脚本及 `src-tauri/tools/` 生成的语言服务包。可执行 `npm run lint:fix` 应用安全的自动修复；类型检查仍由 `npm run build` 中的 TypeScript 完成。
 
 真实桌面端测试需要 `tauri-driver` 和匹配 WebView2 版本的 EdgeDriver；先启动 `tauri-driver --port 4446 --native-driver <msedgedriver.exe 路径>`，然后执行 `npm run test:e2e`，或 `node tools/verify-desktop.mjs --release` 验证发行 exe。脚本创建隔离 fixture、便携数据目录并模拟崩溃，不使用个人工作区文件。
 

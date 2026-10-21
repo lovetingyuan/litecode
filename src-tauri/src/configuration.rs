@@ -57,7 +57,7 @@ pub fn parse(bytes: &[u8]) -> Result<Value, serde_json_lenient::Error> {
 
 pub fn defaults() -> Value {
     let schema: Value =
-        serde_json::from_str(include_str!("../../src/settings-schema.json")).unwrap();
+        serde_json::from_str(include_str!("../../src/config/settings-schema.json")).unwrap();
     Value::Object(
         schema["properties"]
             .as_object()

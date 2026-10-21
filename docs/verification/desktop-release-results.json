@@ -110,9 +110,7 @@
       "windows": 1,
       "capturedAt": "2026-10-17T13:32:59.9234639Z",
       "application": "D:\\lovetingyuan\\litecode\\.verification\\desktop-1792243972831\\app\\LiteCode.exe",
-      "roots": [
-        88320
-      ],
+      "roots": [88320],
       "processes": [
         {
           "pid": 88320,
@@ -219,9 +217,7 @@
       "windows": 3,
       "capturedAt": "2026-10-17T13:33:03.6356028Z",
       "application": "D:\\lovetingyuan\\litecode\\.verification\\desktop-1792243972831\\app\\LiteCode.exe",
-      "roots": [
-        88320
-      ],
+      "roots": [88320],
       "processes": [
         {
           "pid": 88320,
