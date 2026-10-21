@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip@6.42.1/schema.json",
+  "entry": [
+    "index.html",
+    "src/main.tsx",
+    "tools/verify-*.mjs",
+    "tools/benchmark-explorer-model.mjs",
+    "tools/notices.mjs",
+    "tools/package-portable.mjs",
+    "tools/report-verification.mjs",
+    "tools/web-language-server.mjs"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx,css,json}",
+    "tools/**/*.mjs",
+    "vite.config.ts"
+  ]
+}

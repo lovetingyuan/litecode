@@ -17,16 +17,25 @@ vi.mock("../core/bridge", () => ({
   errorMessage: (e: { message: string }) => e.message,
 }));
 vi.mock("../components/dialog", () => ({ ask: vi.fn() }));
+vi.mock("../components/Explorer", () => ({ refreshTree: vi.fn(), revealInTree: vi.fn() }));
+vi.mock("../search/search", () => ({
+  createSearchEditor: vi.fn(), undoReplacement: vi.fn(), nextSearchResult: vi.fn(),
+}));
+vi.mock("./editorStatus", () => ({ changeLanguage: vi.fn() }));
 vi.mock("./languages", () => ({
   ensureLanguage: vi.fn(),
   releaseLanguageDocument: vi.fn(),
   canFormat: vi.fn(),
   formatModel: vi.fn(),
+  restartLanguages: vi.fn(),
+  languageReport: vi.fn(),
 }));
 
 import { call } from "../core/bridge";
 import { monaco, languageFor } from "./monaco";
-import { canFormat, formatModel } from "./languages";
+import { canFormat, formatModel, releaseLanguageDocument } from "./languages";
+import { openFolder } from "../core/commands";
+import { refreshTree } from "../components/Explorer";
 import {
   attachDocument,
   autoSave,
@@ -425,6 +434,244 @@ afterEach(() => {
   models.clear();
   editors.clear();
   vi.unstubAllGlobals();
+});
+
+describe("Workspace switches", () => {
+  beforeEach(() => {
+    setApp({ root: "C:/workspace", history: [], historyIndex: -1 });
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "open_workspace") {
+        return true as never;
+      }
+      return (command === "save_document" ? "new-revision" : undefined) as never;
+    });
+  });
+
+  function setup(dirty = false) {
+    const first = addDocument({ dirty });
+    const second = addDocument({ dirty: false });
+    setApp({
+      groups: [
+        { id: "one", tabs: [first.id, second.id], active: first.id, preview: second.id,
+          sticky: [first.id], views: {} },
+        { id: "two", tabs: [first.id], active: first.id, preview: null, views: {} },
+      ],
+      activeGroup: "two",
+      tabRevealRequests: { one: 3, two: 1 },
+      history: [{ id: first.id, path: "C:/workspace/file.txt", line: 10, column: 2 }],
+      historyIndex: 0,
+    });
+    return first;
+  }
+
+  const commandCalls = (command: string) =>
+    vi.mocked(call).mock.calls.filter(([name]) => name === command);
+
+  it("closes fixed tabs, previews, shared split views and media, then persists an empty session", async () => {
+    const { id, buffer } = setup();
+    const dispose = vi.spyOn(buffer, "dispose");
+    const editor = { getModel: () => buffer, setModel: vi.fn(), saveViewState: () => null };
+    editors.set("two", editor as unknown as Monaco.editor.IStandaloneCodeEditor);
+    const mediaId = "media";
+    restoreDocument({ id: mediaId, path: "C:/workspace/image.png", kind: "image", text: "",
+      encoding: "utf8", version: 1, revision: null, dirty: false });
+    showDocument(mediaId, { group: "one" });
+
+    await openFolder(false, "C:/next");
+
+    const state = useApp.getState();
+    expect(state.root).toBe("C:/next");
+    expect(state.docs).toEqual({});
+    expect(state.groups).toHaveLength(1);
+    const group = state.groups[0];
+    expect(group).toEqual({ id: expect.any(String), tabs: [], active: null, preview: null, views: {} });
+    expect(state.activeGroup).toBe(group.id);
+    expect(state.groupMru).toEqual([group.id]);
+    expect(state.editorLayout).toEqual({ type: "group", id: group.id });
+    expect(state.tabRevealRequests).toEqual({});
+    expect(state.history).toEqual([]);
+    expect(state.historyIndex).toBe(-1);
+    expect(models.size).toBe(0);
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(editor.setModel).toHaveBeenCalledWith(null);
+    expect(releaseLanguageDocument).toHaveBeenCalledWith(id);
+    expect(releaseLanguageDocument).toHaveBeenCalledWith(mediaId);
+    expect(ask).not.toHaveBeenCalled();
+    const persisted = commandCalls("sync_documents").slice(-1)[0][1]!;
+    expect(persisted.documents).toEqual([]);
+    expect(persisted.session).toMatchObject({ groups: [group], history: [], historyIndex: -1 });
+    expect(refreshTree).toHaveBeenCalledOnce();
+  });
+
+  it("confirms a shared dirty document once and saves it before switching", async () => {
+    const { id } = setup(true);
+    vi.mocked(ask).mockResolvedValueOnce("Save");
+    await openFolder(false, "C:/next");
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(writes().map((args) => args.id)).toEqual([id]);
+    const calls = vi.mocked(call).mock.calls.map(([name]) => name);
+    expect(calls.indexOf("save_document")).toBeLessThan(calls.indexOf("open_workspace"));
+    expect(useApp.getState().docs).toEqual({});
+  });
+
+  it("keeps every tab until a confirmed switch succeeds, even after Don't Save", async () => {
+    const { id } = setup(true);
+    const pending = deferred<boolean>();
+    vi.mocked(ask).mockResolvedValueOnce("Don't Save");
+    vi.mocked(call).mockImplementation(async (command) =>
+      command === "open_workspace" ? pending.promise as never : undefined as never,
+    );
+    const before = useApp.getState();
+    const opening = openFolder(false, "C:/next");
+    await vi.waitFor(() => expect(commandCalls("open_workspace")).toHaveLength(1));
+    expect(useApp.getState().groups).toEqual(before.groups);
+    expect(useApp.getState().docs[id].dirty).toBe(true);
+    expect(useApp.getState().root).toBe("C:/workspace");
+    pending.resolve(true);
+    await opening;
+    expect(writes()).toHaveLength(0);
+    expect(useApp.getState().docs).toEqual({});
+  });
+
+  it.each(["Cancel", null])("retains all tabs and the workspace when confirmation is %s", async (answer) => {
+    setup(true);
+    const before = useApp.getState();
+    vi.mocked(ask).mockResolvedValueOnce(answer);
+    await openFolder(false, "C:/next");
+    expect(useApp.getState()).toMatchObject({ root: before.root, docs: before.docs, groups: before.groups });
+    expect(commandCalls("open_workspace")).toHaveLength(0);
+    expect(refreshTree).not.toHaveBeenCalled();
+  });
+
+  it("does not partially close tabs when a later document cancels", async () => {
+    setup(true);
+    const group = useApp.getState().groups[0];
+    patchDoc(group.tabs[1], { dirty: true });
+    vi.mocked(ask).mockResolvedValueOnce("Don't Save").mockResolvedValueOnce("Cancel");
+    const before = useApp.getState();
+    await openFolder(false, "C:/next");
+    expect(useApp.getState().groups).toEqual(before.groups);
+    expect(useApp.getState().docs).toEqual(before.docs);
+    expect(commandCalls("open_workspace")).toHaveLength(0);
+  });
+
+  it("aborts when Save As is cancelled", async () => {
+    const { id } = setup(true);
+    patchDoc(id, { path: null });
+    vi.mocked(ask).mockResolvedValueOnce("Save");
+    vi.mocked(call).mockResolvedValueOnce(null);
+    await openFolder(false, "C:/next");
+    expect(useApp.getState().docs[id].dirty).toBe(true);
+    expect(useApp.getState().groups).toHaveLength(2);
+    expect(commandCalls("open_workspace")).toHaveLength(0);
+  });
+
+  it("aborts when saving fails", async () => {
+    const { id } = setup(true);
+    vi.mocked(ask).mockResolvedValueOnce("Save");
+    vi.mocked(call).mockRejectedValueOnce(new Error("Write failed"));
+    await expect(openFolder(false, "C:/next")).rejects.toThrow("Write failed");
+    expect(useApp.getState().docs[id].dirty).toBe(true);
+    expect(useApp.getState().groups).toHaveLength(2);
+    expect(commandCalls("open_workspace")).toHaveLength(0);
+  });
+
+  it.each(["open_workspace", "sync_documents"])("preserves editors if %s fails", async (failedCommand) => {
+    const { id } = setup(true);
+    vi.mocked(ask).mockResolvedValueOnce("Don't Save");
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === failedCommand) {
+        throw new Error("Open failed");
+      }
+      return undefined as never;
+    });
+    await expect(openFolder(false, "C:/next")).rejects.toThrow("Open failed");
+    expect(useApp.getState().root).toBe("C:/workspace");
+    expect(useApp.getState().docs[id].dirty).toBe(true);
+    expect(useApp.getState().groups).toHaveLength(2);
+    expect(models.has(id)).toBe(true);
+  });
+
+  it.each(["C:/workspace", "c:\\WORKSPACE\\", "\\\\?\\C:\\workspace"])(
+    "preserves editors when reopening the same project as %s", async (path) => {
+      setup(true);
+      const before = useApp.getState();
+      await openFolder(false, path);
+      expect(ask).not.toHaveBeenCalled();
+      expect(useApp.getState().groups).toEqual(before.groups);
+      expect(useApp.getState().docs).toEqual(before.docs);
+    },
+  );
+
+  it("preserves editors when the directory picker is cancelled", async () => {
+    setup(true);
+    vi.mocked(call).mockResolvedValueOnce(null);
+    await openFolder();
+    expect(ask).not.toHaveBeenCalled();
+    expect(useApp.getState().groups).toHaveLength(2);
+    expect(commandCalls("open_workspace")).toHaveLength(0);
+  });
+
+  it.each([false, true])("preserves editors when another window opens or focuses (newWindow=%s)", async (newWindow) => {
+    setup(true);
+    vi.mocked(ask).mockResolvedValueOnce("Don't Save");
+    vi.mocked(call).mockResolvedValue(false);
+    const before = useApp.getState();
+    await openFolder(newWindow, "C:/next");
+    expect(useApp.getState().root).toBe(before.root);
+    expect(useApp.getState().groups).toEqual(before.groups);
+    expect(useApp.getState().docs).toEqual(before.docs);
+    if (newWindow) {
+      expect(ask).not.toHaveBeenCalled();
+    }
+  });
+
+  it("closes loose editors when opening the first project through the picker", async () => {
+    setup();
+    setApp({ root: null });
+    vi.mocked(call).mockResolvedValueOnce("C:/next");
+    await openFolder();
+    expect(useApp.getState().root).toBe("C:/next");
+    expect(useApp.getState().docs).toEqual({});
+    expect(commandCalls("open_workspace")[0][1]).toEqual({ path: "C:/next", newWindow: false });
+  });
+
+  it("cancels pending auto saves and backups after closing the old documents", async () => {
+    const { buffer } = setup();
+    setApp({ settings: { "files.autoSave": "afterDelay", "files.autoSaveDelay": 500 } });
+    buffer.edit("pending auto save");
+    vi.mocked(ask).mockResolvedValueOnce("Don't Save");
+    await openFolder(false, "C:/next");
+    const backups = commandCalls("sync_documents").length;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(writes()).toHaveLength(0);
+    expect(commandCalls("sync_documents")).toHaveLength(backups);
+    buffer.edit("detached listener");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("waits for an in-flight save before disposing its model and writing the empty session", async () => {
+    const { id, buffer } = setup(true);
+    const pending = deferred<string>();
+    const dispose = vi.spyOn(buffer, "dispose");
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "save_document") {
+        return pending.promise as never;
+      }
+      return (command === "open_workspace" ? true : undefined) as never;
+    });
+    const saving = save(id);
+    await vi.waitFor(() => expect(writes()).toHaveLength(1));
+    vi.mocked(ask).mockResolvedValueOnce("Don't Save");
+    const opening = openFolder(false, "C:/next");
+    await vi.waitFor(() => expect(commandCalls("open_workspace")).toHaveLength(1));
+    expect(dispose).not.toHaveBeenCalled();
+    pending.resolve("saved-revision");
+    await Promise.all([saving, opening]);
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(useApp.getState().docs).toEqual({});
+    expect(commandCalls("sync_documents").slice(-1)[0][1]!.documents).toEqual([]);
+  });
 });
 
 describe("Opening documents", () => {

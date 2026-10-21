@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-21",
+  "timezone": "Asia/Shanghai",
+  "recordedAt": "2026-10-21T13:19:15.880Z",
+  "head": "61de77c96a28a92258953d352aa2a51fb97656cd",
+  "node": "24.12.0",
+  "npm": "11.6.2",
+  "knip": "6.42.1",
+  "scope": "Frontend sources, tests, HTML and Vite; tools diagnostics and tool-only dependencies excluded",
+  "counts": {
+    "files": 0,
+    "dependencies": 2,
+    "devDependencies": 0,
+    "unlisted": 4,
+    "unresolved": 0,
+    "exports": 8,
+    "types": 2,
+    "binaries": 0,
+    "duplicates": 0,
+    "enumMembers": 0,
+    "namespaceMembers": 0,
+    "catalog": 0,
+    "catalogReferences": 0,
+    "optionalPeerDependencies": 0
+  },
+  "total": 16,
+  "exitCode": 1,
+  "stderrBytes": 0,
+  "workspaceModifiedFiles": [
+    {
+      "file": "src/core/commands.ts",
+      "sha256": "ea6b4db2369fd93c80f5bd57b59da8698ff64d1bd0236bc06edd6b34589a055e"
+    },
+    {
+      "file": "src/editor/documents.ts",
+      "sha256": "8f44c18f1c16c2226c907c40752b9bf9eb8f575ecca5074400dafaa70fe8da11"
+    }
+  ],
+  "assessment": {
+    "unlistedUniquePackages": 4,
+    "valueExportsToMakeLocal": 7,
+    "typeExportsToMakeLocal": 1,
+    "unusedTypeCandidates": [
+      "AppError"
+    ],
+    "unusedNpmDependencyCandidates": [
+      "@tauri-apps/plugin-dialog"
+    ],
+    "preserve": [
+      "monaco-languages",
+      "src/editor/documents.ts#model"
+    ]
+  }
+}

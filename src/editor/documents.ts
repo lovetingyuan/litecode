@@ -655,17 +655,9 @@ export async function saveAll() {
   }
 }
 
-export async function closeDocument(
-  id: string,
-  groupId = useApp.getState().activeGroup,
-): Promise<boolean> {
-  const s = useApp.getState();
-  if (!s.groups.find((g) => g.id === groupId)?.tabs.includes(id)) {
-    return true;
-  }
-  const doc = s.docs[id];
-  const otherView = s.groups.some((g) => g.id !== groupId && g.tabs.includes(id));
-  if (doc?.dirty && !otherView) {
+export async function confirmDocumentClose(id: string): Promise<boolean> {
+  const doc = useApp.getState().docs[id];
+  if (doc?.dirty) {
     const answer = await ask(
       `Save changes to ${doc.name}?`,
       "Your changes will be lost if you do not save them.",
@@ -680,6 +672,52 @@ export async function closeDocument(
         return false;
       }
     }
+  }
+  return true;
+}
+
+export async function resetEditors() {
+  for (const timer of autoTimers.values()) {
+    clearTimeout(timer);
+  }
+  autoTimers.clear();
+  // In-flight saves still use the models and may schedule another backup.
+  await Promise.allSettled(saveQueues.values());
+  clearTimeout(backupTimer);
+  for (const id of Object.keys(useApp.getState().docs)) {
+    detachModel(id);
+  }
+  const group: Group = {
+    id: crypto.randomUUID(),
+    tabs: [],
+    active: null,
+    preview: null,
+    views: {},
+  };
+  setApp({
+    docs: {},
+    groups: [group],
+    activeGroup: group.id,
+    editorLayout: { type: "group", id: group.id },
+    groupMru: [group.id],
+    tabRevealRequests: {},
+    history: [],
+    historyIndex: -1,
+    cursor: { line: 1, column: 1, selected: 0 },
+  });
+}
+
+export async function closeDocument(
+  id: string,
+  groupId = useApp.getState().activeGroup,
+): Promise<boolean> {
+  const s = useApp.getState();
+  if (!s.groups.find((g) => g.id === groupId)?.tabs.includes(id)) {
+    return true;
+  }
+  const otherView = s.groups.some((g) => g.id !== groupId && g.tabs.includes(id));
+  if (!otherView && !(await confirmDocumentClose(id))) {
+    return false;
   }
   saveEditorViews();
   setApp((s) => {

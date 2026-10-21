@@ -1,0 +1,24 @@
+{
+  "$schema": "https://unpkg.com/knip@6.42.1/schema.json",
+  "entry": [
+    "index.html",
+    "src/main.tsx",
+    "!tools/**",
+    "!src-tauri/**"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx,css,json}",
+    "vite.config.ts"
+  ],
+  "ignore": ["tools/**", "src-tauri/**"],
+  "ignoreDependencies": [
+    "@playwright/test",
+    "esbuild",
+    "typescript-language-server",
+    "vscode-css-languageservice",
+    "vscode-html-languageservice",
+    "vscode-json-languageservice",
+    "vscode-languageserver",
+    "vscode-languageserver-textdocument"
+  ]
+}

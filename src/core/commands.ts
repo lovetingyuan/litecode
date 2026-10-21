@@ -4,6 +4,7 @@ import {
   checkpoint,
   closeDocument,
   closeTabs,
+  confirmDocumentClose,
   editor,
   models,
   navigate,
@@ -19,6 +20,7 @@ import {
   relative,
   pathTitle,
   setSticky,
+  resetEditors,
 } from "../editor/documents";
 import type { SplitDirection } from "../editor/editorLayout";
 import { refreshTree, revealInTree } from "../components/Explorer";
@@ -102,10 +104,27 @@ export async function openFolder(newWindow = false, recentPath?: string) {
   if (!path) {
     return;
   }
+  const root = useApp.getState().root;
+  const switching =
+    !newWindow &&
+    (!root || normalize(root).replace(/\/$/, "") !== normalize(path).replace(/\/$/, ""));
+  if (switching) {
+    for (const id of Object.keys(useApp.getState().docs)) {
+      if (!(await confirmDocumentClose(id))) {
+        return;
+      }
+    }
+  }
   await checkpoint();
   const same = await call<boolean>("open_workspace", { path, newWindow });
   if (same) {
+    if (switching) {
+      await resetEditors();
+    }
     setApp({ root: path });
+    if (switching) {
+      await checkpoint();
+    }
     await refreshTree();
   }
 }
