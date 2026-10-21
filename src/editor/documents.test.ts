@@ -37,6 +37,7 @@ import {
   patchDoc,
   restoreDocument,
   save,
+  saveEditorView,
   session,
   showDocument,
   visiblePath,
@@ -143,6 +144,94 @@ beforeEach(() => {
     tabRevealRequests: {},
     settings: { "files.autoSave": "onFocusChange" },
     notice: null,
+  });
+});
+
+describe("Editor view snapshots", () => {
+  function view(line: number): Monaco.editor.ICodeEditorViewState {
+    return {
+      cursorState: [],
+      viewState: {
+        scrollLeft: 0,
+        firstPosition: { lineNumber: line, column: 1 },
+        firstPositionDeltaTop: 0,
+      },
+      contributionsState: {},
+    };
+  }
+
+  function setup() {
+    const { id } = addDocument({ dirty: false });
+    setApp({
+      activeGroup: "one",
+      groups: [
+        { id: "one", tabs: [id], active: id, preview: null, views: { [id]: view(1) } },
+        { id: "two", tabs: [id], active: id, preview: null, views: { [id]: view(2) } },
+      ],
+    });
+    return id;
+  }
+
+  it("saves a view without mutating previous snapshots or another group", () => {
+    const id = setup();
+    const before = useApp.getState();
+    Object.freeze(before.groups[0].views);
+    Object.freeze(before.groups[0]);
+    const next = view(12);
+    saveEditorView("one", id, next);
+    const after = useApp.getState();
+    expect(before.groups[0].views[id]).toEqual(view(1));
+    expect(after.groups[0].views[id]).toBe(next);
+    expect(after.groups[1]).toBe(before.groups[1]);
+    expect(after.activeGroup).toBe(before.activeGroup);
+    expect(after.editorLayout).toBe(before.editorLayout);
+    saveEditorView("one", id, null);
+    expect(after.groups[0].views[id]).toBe(next);
+    expect(useApp.getState().groups[0].views[id]).toBeNull();
+  });
+
+  it("does not recreate a group removed before its view was saved", () => {
+    const id = setup();
+    setApp((s) => ({ groups: s.groups.filter((g) => g.id !== "one") }));
+    const before = useApp.getState();
+    saveEditorView("one", id, view(12));
+    expect(useApp.getState()).toBe(before);
+  });
+
+  it("captures independent live views in one session update without mutating old sessions", () => {
+    const id = setup();
+    const before = session();
+    for (const [index, group] of before.groups.entries()) {
+      Object.freeze(group.views);
+      Object.freeze(group);
+      editors.set(group.id, {
+        saveViewState: () => view(10 + index),
+      } as Monaco.editor.IStandaloneCodeEditor);
+    }
+    const changed = vi.fn();
+    const unsubscribe = useApp.subscribe(changed);
+    const saved = session();
+    unsubscribe();
+    expect(changed).toHaveBeenCalledOnce();
+    expect(before.groups.map((g) => g.views[id])).toEqual([view(1), view(2)]);
+    expect(saved.groups.map((g) => g.views[id])).toEqual([view(10), view(11)]);
+    expect(saved.activeGroup).toBe(before.activeGroup);
+    expect(saved.editorLayout).toBe(before.editorLayout);
+  });
+
+  it("copies the live view into a split and keeps subsequent group views independent", () => {
+    const id = setup();
+    editors.set("one", {
+      saveViewState: () => view(20),
+    } as Monaco.editor.IStandaloneCodeEditor);
+    const split = splitGroup("one", id);
+    const before = useApp.getState();
+    expect(before.groups.find((g) => g.id === split)?.views[id]).toEqual(view(20));
+    saveEditorView(split, id, view(30));
+    const saved = session();
+    expect(saved.groups.find((g) => g.id === "one")?.views[id]).toEqual(view(20));
+    expect(saved.groups.find((g) => g.id === split)?.views[id]).toEqual(view(30));
+    expect(before.groups.find((g) => g.id === split)?.views[id]).toEqual(view(20));
   });
 });
 

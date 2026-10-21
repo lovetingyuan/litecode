@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { mediaSource } from "../core/bridge";
 import { models, patchDoc, patchMediaView } from "../editor/documents";
 import { clampScale, stepScale } from "../utils/media";
@@ -167,7 +167,9 @@ function ImagePreview({
     : 1;
   const actual = scale === "fit" ? fitted : clampScale(scale);
   const zoomRef = useRef({ actual, groupId: group.id, id: doc.id });
-  zoomRef.current = { actual, groupId: group.id, id: doc.id };
+  useLayoutEffect(() => {
+    zoomRef.current = { actual, groupId: group.id, id: doc.id };
+  }, [actual, group.id, doc.id]);
   const savedScroll = useRef({ left: view?.scrollLeft ?? 0, top: view?.scrollTop ?? 0 });
   const restoring = useRef(true);
   useEffect(() => {

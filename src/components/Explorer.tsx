@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentProps,
@@ -145,9 +146,14 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     },
   });
   const rootRef = useRef(root);
-  rootRef.current = root;
+  useLayoutEffect(() => {
+    rootRef.current = root;
+  }, [root]);
   const clipboardRef = useRef<ReturnType<typeof createExplorerClipboard> | null>(null);
-  if (!clipboardRef.current) {
+  useLayoutEffect(() => {
+    if (clipboardRef.current) {
+      return;
+    }
     clipboardRef.current = createExplorerClipboard({
       read: () =>
         desktop
@@ -178,7 +184,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         }
       },
     });
-  }
+  }, []);
   async function paste(path: string) {
     const base = rootRef.current;
     if (!base || moveBusy.current) {

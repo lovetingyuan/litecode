@@ -109,13 +109,32 @@ export function focusDocument(groupId = useApp.getState().activeGroup) {
   }
 }
 
+export function saveEditorView(
+  groupId: string,
+  id: string,
+  view: monaco.editor.ICodeEditorViewState | null,
+) {
+  if (!useApp.getState().groups.some((g) => g.id === groupId)) {
+    return;
+  }
+  setApp((s) => ({
+    groups: s.groups.map((g) =>
+      g.id === groupId ? { ...g, views: { ...g.views, [id]: view } } : g,
+    ),
+  }));
+}
+
 function saveEditorViews() {
   const s = useApp.getState();
-  for (const g of s.groups) {
+  const groups = s.groups.map((g) => {
     const e = editors.get(g.id);
     if (g.active && e && s.docs[g.active] && isTextView(s.docs[g.active], g)) {
-      g.views[g.active] = e.saveViewState();
+      return { ...g, views: { ...g.views, [g.active]: e.saveViewState() } };
     }
+    return g;
+  });
+  if (groups.some((g, i) => g !== s.groups[i])) {
+    setApp({ groups });
   }
 }
 

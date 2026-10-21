@@ -14,6 +14,7 @@ import {
   splitGroup,
   resolveConflict,
   patchDoc,
+  saveEditorView,
   openPath,
   checkpoint,
   autoSave,
@@ -203,7 +204,7 @@ export function EditorGroup({ group }: { group: Group }) {
       (previous.current !== group.active || !textView) &&
       previousTextView.current
     ) {
-      group.views[previous.current] = e.saveViewState();
+      saveEditorView(group.id, previous.current, e.saveViewState());
       if (previous.current !== group.active) {
         void autoSave("onFocusChange", previous.current);
       }
@@ -395,7 +396,7 @@ export function EditorGroup({ group }: { group: Group }) {
             );
           })}
         </div>
-        <EditorTabsScrollbar viewport={tabs} tabIds={group.tabs} />
+        <EditorTabsScrollbar viewportRef={tabs} tabIds={group.tabs} />
         <div className="actions">
           <IconButton
             icon={splitDown ? "split-vertical" : "split-horizontal"}
@@ -524,17 +525,17 @@ export function EditorGroup({ group }: { group: Group }) {
 }
 
 function EditorTabsScrollbar({
-  viewport,
+  viewportRef,
   tabIds,
 }: {
-  viewport: RefObject<HTMLDivElement | null>;
+  viewportRef: RefObject<HTMLDivElement | null>;
   tabIds: string[];
 }) {
   const track = useRef<HTMLDivElement>(null);
   const thumb = useRef<HTMLDivElement>(null);
   const dragOffset = useRef<number | null>(null);
   useLayoutEffect(() => {
-    const element = viewport.current;
+    const element = viewportRef.current;
     const rail = track.current;
     const slider = thumb.current;
     if (!element || !rail || !slider) {
@@ -563,9 +564,9 @@ function EditorTabsScrollbar({
       element.removeEventListener("scroll", update);
       observer.disconnect();
     };
-  }, [viewport, tabIds]);
+  }, [viewportRef, tabIds]);
   function scrollToPointer(clientX: number, offset: number) {
-    const element = viewport.current;
+    const element = viewportRef.current;
     const rail = track.current;
     const slider = thumb.current;
     if (!element || !rail || !slider) {
