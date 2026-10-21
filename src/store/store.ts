@@ -44,6 +44,7 @@ type State = {
   dataDir: string;
   quick: string | QuickPick | null;
   notice: string | null;
+  noticeLink: string | null;
   query: Query;
   results: SearchMatch[];
   searching: boolean;
@@ -76,6 +77,7 @@ export const useApp = create<State>((set) => ({
   cursor: { line: 1, column: 1, selected: 0 },
   quick: null,
   notice: null,
+  noticeLink: null,
   keybindings: [],
   dataDir: "",
   query: { ...defaultQuery },
@@ -128,4 +130,4 @@ export const activeDoc = () => {
   const id = s.groups.find((g) => g.id === s.activeGroup)?.active;
   return id ? s.docs[id] : undefined;
 };
-export const notify = (message: string) => setApp({ notice: message });
+export const notify = (message: string) => setApp({ notice: message, noticeLink: null });

@@ -880,6 +880,10 @@ kbd {
   margin: 0;
   line-height: 20px;
 }
+.notification a {
+  color: var(--welcome-link, #4daafc);
+  text-decoration: underline;
+}
 .notification .icon-button {
   margin-top: -3px;
 }

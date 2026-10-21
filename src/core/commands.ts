@@ -618,9 +618,10 @@ export const commands: Command[] = [
     label: "About LiteCode",
     menu: "Help",
     run: () =>
-      notify(
-        "LiteCode 0.1.0 · Tauri 2 / React / Monaco\nWindows x64 · Dark Modern\nSee docs/verification/MATRIX.md for implementation and verification status.",
-      ),
+      setApp({
+        notice: `LiteCode 0.1.0 · ${__GIT_HASH__}`,
+        noticeLink: "https://github.com/lovetingyuan/litecode",
+      }),
   },
 ];
 export async function execute(id: string, context?: EditorContext) {

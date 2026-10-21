@@ -5,8 +5,19 @@ import tailwindcss from "@tailwindcss/vite";
 import process from "node:process";
 import { readdirSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import "./tools/patch-trees-scroll.mjs";
 const host = process.env.TAURI_DEV_HOST;
+let gitHash = "unknown";
+try {
+  gitHash = execFileSync("git", ["rev-parse", "--short=7", "HEAD"], {
+    cwd: new URL(".", import.meta.url),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+} catch {
+  // Source archives may not include Git metadata.
+}
 // Dependency patches must be applied before Vite optimizes and caches the tree.
 const treesPatchHash = createHash("sha256")
   .update(readFileSync(new URL("./tools/patch-trees-scroll.mjs", import.meta.url)))
@@ -15,6 +26,7 @@ const treesPatchHash = createHash("sha256")
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
+  define: { __GIT_HASH__: JSON.stringify(gitHash) },
   cacheDir: `node_modules/.vite/trees-${treesPatchHash}`,
   plugins: [
     {

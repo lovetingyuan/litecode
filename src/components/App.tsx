@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { bootstrap, call, desktop, errorMessage } from "../core/bridge";
 import { initializeEditor, monaco } from "../editor/monaco";
 import { useApp, setApp, notify } from "../store/store";
@@ -429,7 +430,23 @@ export default function App() {
       {s.notice && (
         <div className="notification" role="status">
           <Icon name="info" />
-          <p>{s.notice}</p>
+          <p>
+            {s.notice}
+            {s.noticeLink && (
+              <>
+                {"\nGitHub: "}
+                <a
+                  href={s.noticeLink}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void openUrl(event.currentTarget.href).catch((error) => notify(errorMessage(error)));
+                  }}
+                >
+                  {s.noticeLink}
+                </a>
+              </>
+            )}
+          </p>
           <IconButton
             icon="close"
             label="Dismiss Notification"
