@@ -159,6 +159,20 @@ export default function App() {
         cleanups.push(onConfig);
       }
       const win = getCurrentWindow();
+      const syncMaximized = () => {
+        void win.isMaximized().then((value) => {
+          if (!disposed) {
+            setMaximized(value);
+          }
+        }).catch((e) => notify(errorMessage(e)));
+      };
+      const onResize = await win.onResized(syncMaximized);
+      if (disposed) {
+        onResize();
+      } else {
+        cleanups.push(onResize);
+        syncMaximized();
+      }
       const onFocus = await win.onFocusChanged(({ payload: focused }) => {
         if (!disposed && !focused) {
           void autoSave("onWindowChange");
@@ -208,10 +222,7 @@ export default function App() {
       void win.minimize();
     }
     if (action === "maximize") {
-      void win
-        .toggleMaximize()
-        .then(() => win.isMaximized())
-        .then(setMaximized);
+      void win.toggleMaximize().catch((e) => notify(errorMessage(e)));
     }
     if (action === "close") {
       void win.close();
@@ -219,15 +230,7 @@ export default function App() {
   }
   return (
     <div className="workbench">
-      <header
-        className="titlebar"
-        data-tauri-drag-region
-        onDoubleClick={(e) => {
-          if (e.target === e.currentTarget) {
-            windowAction("maximize");
-          }
-        }}
-      >
+      <header className="titlebar" data-tauri-drag-region>
         <div className="app-mark">
           <img src="/litecode.svg" alt="LiteCode" width={32} height={32} draggable={false} />
         </div>
