@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
+import { Popover } from "@base-ui/react/popover";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -11,6 +12,7 @@ import {
   restoreDocument,
   refreshDocuments,
   basename,
+  pathTitle,
   editor,
   autoSave,
   normalizeGroup,
@@ -205,6 +207,7 @@ export default function App() {
   }, []);
   const group = s.groups.find((g) => g.id === s.activeGroup);
   const doc = s.docs[group?.active ?? ""];
+  const rootName = s.root ? basename(pathTitle(s.root).replace(/[\\/]+$/, "")) : "";
   const showWelcome = s.ready && !s.root && s.groups.every((group) => group.tabs.length === 0);
   useEffect(() => {
     if (desktop) {
@@ -381,6 +384,25 @@ export default function App() {
           <span className="remote-indicator" title="Local window">
             <Icon name="remote" />
           </span>
+          {s.root && (
+            <Popover.Root key={s.root}>
+              <Popover.Trigger className="workspace-status" title={rootName} aria-label={`Project Folder: ${rootName}`}>
+                <Icon name="folder" />
+                <span>{rootName}</span>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Positioner className="z-90" side="top" align="start" sideOffset={4} collisionPadding={8}>
+                  <Popover.Popup className="workspace-popup" aria-label="Project folder" initialFocus={false}>
+                    <span className="workspace-path">{pathTitle(s.root)}</span>
+                    <Popover.Close
+                      render={<IconButton icon="folder-opened" label="Open Project Folder in File Explorer" />}
+                      onClick={() => void call("open_directory", { path: s.root }).catch((error) => notify(errorMessage(error)))}
+                    />
+                  </Popover.Popup>
+                </Popover.Positioner>
+              </Popover.Portal>
+            </Popover.Root>
+          )}
           {s.gitState.branch && (
             <span className="status-item" title="Current Git branch">
               <Icon name="source-control" />

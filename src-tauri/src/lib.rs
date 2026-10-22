@@ -107,6 +107,7 @@ pub fn run() {
             external_drop::copy_external_item,
             external_drop::release_external_drop,
             commands::reveal_path,
+            commands::open_directory,
             commands::settings_path,
             commands::explicit_open,
             search::search_start,

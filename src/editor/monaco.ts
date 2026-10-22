@@ -55,6 +55,8 @@ export function initializeEditor(): Promise<void> {
       },
     });
     monaco.editor.setTheme("dark-modern");
+    // Menus portaled into shadow roots under body must inherit the editor theme variables.
+    document.body.classList.add("monaco-component");
   })());
 }
 

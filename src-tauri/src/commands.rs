@@ -556,6 +556,23 @@ pub async fn file_operation(
 }
 
 #[tauri::command]
+pub async fn open_directory(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<()> {
+    let directory = state.authorize(window.label(), &path)?;
+    if !directory.is_dir() {
+        return Err(AppError::new(
+            "path",
+            "The folder no longer exists or is not a directory.",
+        ));
+    }
+    std::process::Command::new("explorer.exe").arg(path).spawn()?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn reveal_path(
     window: WebviewWindow,
     state: State<'_, AppState>,

@@ -842,6 +842,43 @@ kbd {
 .statusbar .codicon {
   font-size: 14px;
 }
+.statusbar .workspace-status {
+  min-width: 0;
+  max-width: min(200px, 25vw);
+}
+.workspace-status > span:not(.codicon) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace-status[data-popup-open] {
+  background: #ffffff14;
+}
+.workspace-popup {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 16px), var(--available-width));
+  max-height: var(--available-height);
+  overflow-y: auto;
+  padding: 8px;
+  background: #202020;
+  color: #ccc;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  box-shadow: 0 4px 14px #0007;
+}
+.workspace-path {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.workspace-popup .icon-button {
+  flex-shrink: 0;
+}
 .remote-indicator {
   display: flex;
   align-items: center;
