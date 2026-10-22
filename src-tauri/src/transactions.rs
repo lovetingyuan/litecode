@@ -163,6 +163,38 @@ pub async fn replay_replacement(
 mod tests {
     use super::*;
     #[test]
+    fn mixed_line_endings_roundtrip_through_undo_and_redo() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mixed.txt");
+        let original = "a\r\nb\nc\n";
+        fs::write(&path, original).unwrap();
+        let journal = dir.path().join("transaction.json");
+        let report = apply(
+            &journal,
+            vec![DiskEdit {
+                path: path.to_string_lossy().into_owned(),
+                before: original.into(),
+                after: "x\nb\nc\n".into(),
+                encoding: "utf8".into(),
+                revision: files::hash(original.as_bytes()),
+            }],
+        )
+        .unwrap();
+        assert_eq!(report.succeeded.len(), 1);
+        for redo in [false, true, false] {
+            assert_eq!(replay(&journal, redo).unwrap().succeeded.len(), 1);
+            assert_eq!(
+                fs::read(&path).unwrap(),
+                if redo {
+                    b"x\nb\nc\n".as_slice()
+                } else {
+                    original.as_bytes()
+                }
+            );
+        }
+    }
+
+    #[test]
     fn partial_failure_can_undo_and_redo_successful_writes() {
         let dir = tempfile::tempdir().unwrap();
         let a = dir.path().join("a.txt");

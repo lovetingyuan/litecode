@@ -267,6 +267,7 @@ export function restoreDocument(mirror: Mirror) {
   const doc: Doc = {
     ...mirror,
     kind,
+    large: (mirror.fileInfo?.size ?? new TextEncoder().encode(mirror.text).length) > 20 * 1024 * 1024,
     name: mirror.name ?? (mirror.path ? basename(mirror.path) : "Untitled"),
     language,
     eol: mirror.text.includes("\r\n") ? "CRLF" : "LF",
@@ -327,7 +328,7 @@ export async function openPath(
     if (duplicate) {
       id = duplicate.id;
     } else {
-      id = monaco.Uri.file(visiblePath(path)).toString();
+      id = `document:${crypto.randomUUID()}`;
       const language = languageFor(path);
       const doc: Doc = {
         id,
@@ -603,7 +604,9 @@ async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMod
           path,
           name: basename(path),
           revision: newRevision,
-          dirty: alternativeVersion !== m.getAlternativeVersionId(),
+          dirty:
+            alternativeVersion !== m.getAlternativeVersionId() ||
+            useApp.getState().docs[id]?.encoding !== doc.encoding,
           conflict: false,
           deleted: false,
         });

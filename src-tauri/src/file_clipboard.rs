@@ -507,7 +507,7 @@ mod tests {
         );
         assert!(report.copied.is_empty());
         assert_eq!(report.failed.len(), 2);
-        let report = copy_sources(&paths(&[source.clone()]), &target);
+        let report = copy_sources(&paths(std::slice::from_ref(&source)), &target);
         assert!(report.copied.is_empty());
         assert!(!target.join("external").exists());
         assert!(outside.path().join("secret").exists());

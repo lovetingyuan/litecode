@@ -26,7 +26,8 @@ import type { SplitDirection } from "../editor/editorLayout";
 import { refreshTree, revealInTree } from "../components/Explorer";
 import { createSearchEditor, undoReplacement, nextSearchResult } from "../search/search";
 import { changeLanguage } from "../editor/editorStatus";
-import { restartLanguages, languageReport } from "../editor/languages";
+import { restartLanguages, stopLanguages, languageReport } from "../editor/languages";
+import { manageWorkspaceTrust } from "./workspaceTrust";
 import { normalizeKey, resolveBinding } from "../utils/keybindings";
 import { completeSettings, parseConfiguration, updateSetting } from "../utils/settings";
 
@@ -118,6 +119,9 @@ export async function openFolder(newWindow = false, recentPath?: string) {
   await checkpoint();
   const same = await call<boolean>("open_workspace", { path, newWindow });
   if (same) {
+    if (switching) {
+      await stopLanguages();
+    }
     const config = await call<{
       settings: Record<string, unknown>;
       keybindings: import("../types/types").Keybinding[] | null;
@@ -161,6 +165,15 @@ async function openSettings() {
   return id;
 }
 export const commands: Command[] = [
+  {
+    id: "workbench.trust.manage",
+    label: "Workspaces: Manage Workspace Trust",
+    run: async () => {
+      if ((await manageWorkspaceTrust()) !== undefined) {
+        await restartLanguages();
+      }
+    },
+  },
   {
     id: "litecode.installNode",
     label: "Language Tools: Install Verified Node.js Runtime",

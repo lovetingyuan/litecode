@@ -14,7 +14,7 @@ use std::{
 };
 use tauri::{Manager, State, WebviewWindow, ipc::Channel};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::Command,
 };
 
@@ -158,28 +158,67 @@ pub fn byte_position(text: &str, offset: usize, start_line: usize) -> (usize, us
     (line, column)
 }
 
-fn parse_matches(
-    value: &serde_json::Value,
-    path: &str,
-    mirror: Option<&Mirror>,
-) -> Vec<SearchMatch> {
-    if value["type"] != "match" {
-        return vec![];
-    }
+const MAX_RESULTS: usize = 20_000;
+const MAX_EVENT_BYTES: usize = 8 * 1024 * 1024;
+
+fn parse_matches<'a>(
+    value: &'a serde_json::Value,
+    path: &'a str,
+    mirror: Option<&'a Mirror>,
+    limit: usize,
+) -> impl Iterator<Item = SearchMatch> + 'a {
     let data = &value["data"];
-    let Some(text) = data["lines"]["text"].as_str() else {
-        return vec![];
-    };
+    let text = data["lines"]["text"].as_str().unwrap_or("");
     let start_line = data["line_number"].as_u64().unwrap_or(1) as usize;
+    let (mut offset, mut line, mut column) = (0, start_line, 1);
+    let mut position = move |target: usize| {
+        let mut target = target.min(text.len());
+        while !text.is_char_boundary(target) {
+            target -= 1;
+        }
+        if target < offset {
+            (offset, line, column) = (0, start_line, 1);
+        }
+        for c in text[offset..target].chars() {
+            if c == '\n' {
+                line += 1;
+                column = 1;
+            } else {
+                column += c.len_utf16();
+            }
+        }
+        offset = target;
+        (line, column)
+    };
+    let mut preview_line = None;
+    let mut preview = String::new();
     data["submatches"]
         .as_array()
+        .filter(|_| value["type"] == "match" && data["lines"]["text"].is_string())
         .into_iter()
         .flatten()
-        .map(|m| {
-            let (line, column) =
-                byte_position(text, m["start"].as_u64().unwrap_or(0) as usize, start_line);
-            let (end_line, end_column) =
-                byte_position(text, m["end"].as_u64().unwrap_or(0) as usize, start_line);
+        .take(limit)
+        .map(move |m| {
+            let start = (m["start"].as_u64().unwrap_or(0) as usize).min(text.len());
+            let (line, column) = position(start);
+            let (end_line, end_column) = position(m["end"].as_u64().unwrap_or(0) as usize);
+            if preview_line != Some(line) {
+                let mut boundary = start;
+                while !text.is_char_boundary(boundary) {
+                    boundary -= 1;
+                }
+                let line_start = text[..boundary].rfind('\n').map_or(0, |i| i + 1);
+                preview = text[line_start..]
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .chars()
+                    .take(2000)
+                    .collect::<String>()
+                    .trim_end()
+                    .into();
+                preview_line = Some(line);
+            }
             SearchMatch {
                 path: path.into(),
                 document_id: mirror.map(|d| d.id.clone()),
@@ -188,19 +227,36 @@ fn parse_matches(
                 column,
                 end_line,
                 end_column,
-                preview: text
-                    .lines()
-                    .nth(line.saturating_sub(start_line))
-                    .unwrap_or("")
-                    .chars()
-                    .take(2000)
-                    .collect::<String>()
-                    .trim_end()
-                    .into(),
+                preview: preview.clone(),
                 matched: m["match"]["text"].as_str().unwrap_or("").into(),
             }
         })
-        .collect()
+}
+
+async fn read_event(
+    reader: &mut (impl AsyncBufRead + Unpin),
+    task: &SearchTask,
+) -> Result<Option<Vec<u8>>> {
+    let mut bytes = vec![];
+    loop {
+        if task.cancelled.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+        let mut bounded = (&mut *reader).take((MAX_EVENT_BYTES + 1 - bytes.len()) as u64);
+        let read = tokio::select! {
+            read = bounded.read_until(b'\n', &mut bytes) => read?,
+            _ = tokio::time::sleep(Duration::from_millis(40)) => continue,
+        };
+        if bytes.len() > MAX_EVENT_BYTES {
+            return Err(AppError::new(
+                "searchLimit",
+                "A search result exceeded 8 MiB. Narrow the query or exclude files with very long lines.",
+            ));
+        }
+        if read == 0 || bytes.last() == Some(&b'\n') {
+            return Ok((!bytes.is_empty()).then_some(bytes));
+        }
+    }
 }
 
 async fn send_batch(
@@ -271,21 +327,24 @@ async fn run_rg(
         let _ = stderr.take(16384).read_to_end(&mut bytes).await;
         String::from_utf8_lossy(&bytes).to_string()
     });
-    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut reader = BufReader::new(child.stdout.take().unwrap());
     loop {
-        let next = tokio::select! {
-            next = lines.next_line() => next?,
-            _ = tokio::time::sleep(Duration::from_millis(40)) => {
-                if task.cancelled.load(Ordering::Acquire) { let _ = child.kill().await; break; }
-                continue;
+        let next = match read_event(&mut reader, task).await {
+            Ok(next) => next,
+            Err(error) if error.code == "searchLimit" => {
+                batch.limited = true;
+                batch.errors.push(error.message);
+                let _ = child.kill().await;
+                break;
             }
+            Err(error) => return Err(error),
         };
-        let Some(line) = next else { break };
         if task.cancelled.load(Ordering::Acquire) {
             let _ = child.kill().await;
             break;
         }
-        let value: serde_json::Value = serde_json::from_str(&line)?;
+        let Some(line) = next else { break };
+        let value: serde_json::Value = serde_json::from_slice(&line)?;
         let relative = value["data"]["path"]["text"]
             .as_str()
             .unwrap_or("")
@@ -302,11 +361,15 @@ async fn run_rg(
         {
             continue;
         }
-        let matches = parse_matches(&value, &path, mirror);
+        let matches = parse_matches(&value, &path, mirror, MAX_RESULTS.saturating_sub(*count));
         for m in matches {
+            if task.cancelled.load(Ordering::Acquire) {
+                let _ = child.kill().await;
+                break;
+            }
             *count += 1;
             batch.matches.push(m);
-            if *count >= 20_000 {
+            if *count >= MAX_RESULTS {
                 batch.limited = true;
                 let _ = child.kill().await;
                 break;
@@ -367,7 +430,11 @@ pub async fn search_start(
             .ok_or_else(|| AppError::new("window", "Window not initialized"))?;
         (
             w.root.clone(),
-            w.documents.values().filter(|m| m.kind.is_text()).cloned().collect::<Vec<_>>(),
+            w.documents
+                .values()
+                .filter(|m| m.kind.is_text())
+                .cloned()
+                .collect::<Vec<_>>(),
             w.repositories.clone(),
         )
     };
@@ -409,10 +476,15 @@ pub async fn search_start(
         let allowed = if query.changed_only {
             let result = if let Some(root) = root.clone() {
                 let repositories = repositories.clone();
-                tauri::async_runtime::spawn_blocking(move || workspace_changed(&root, &repositories))
-                    .await.unwrap_or_else(|error| Err(AppError::new("git", error.to_string())))
-                    .map(Some)
-            } else { Ok(None) };
+                tauri::async_runtime::spawn_blocking(move || {
+                    workspace_changed(&root, &repositories)
+                })
+                .await
+                .unwrap_or_else(|error| Err(AppError::new("git", error.to_string())))
+                .map(Some)
+            } else {
+                Ok(None)
+            };
             match result {
                 Ok(paths) => Some(paths.unwrap_or_default()),
                 Err(e) => {
@@ -491,7 +563,10 @@ pub async fn search_start(
     Ok(())
 }
 
-fn workspace_changed(root: &Path, index: &crate::workspace::RepositoryIndex) -> Result<HashSet<String>> {
+fn workspace_changed(
+    root: &Path,
+    index: &crate::workspace::RepositoryIndex,
+) -> Result<HashSet<String>> {
     crate::workspace::discover_repositories(root, index, || false);
     Ok(crate::workspace::git_snapshot(root, index, 0)?
         .git
@@ -533,6 +608,67 @@ pub fn search_cancel(window: WebviewWindow, state: State<'_, AppState>, request_
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dense_results_are_lazy_bounded_and_keep_utf16_multiline_positions() {
+        let text = "🙂a ".repeat(25_000);
+        let submatches: Vec<_> = (0..25_000)
+            .map(|i| serde_json::json!({"start": i*6+4, "end": i*6+5, "match": {"text": "a"}}))
+            .collect();
+        let value = serde_json::json!({"type": "match", "data": {"lines": {"text": text}, "line_number": 3, "submatches": submatches}});
+        assert_eq!(parse_matches(&value, "dense.txt", None, 0).count(), 0);
+        let mut results = parse_matches(&value, "dense.txt", None, MAX_RESULTS);
+        assert_eq!(results.next().unwrap().column, 3);
+        let last = results.last().unwrap();
+        assert_eq!((last.line, last.column), (3, (MAX_RESULTS - 1) * 4 + 3));
+        assert_eq!(parse_matches(&value, "dense.txt", None, 17).count(), 17);
+        let value = serde_json::json!({"type":"match","data":{"lines":{"text":"中文🙂x\r\nsecond"},"line_number":4,"submatches":[{"start":6,"end":15,"match":{"text":"🙂x\r\nse"}},{"start":15,"end":18,"match":{"text":"con"}}]}});
+        for result in parse_matches(&value, "multi.txt", None, 20) {
+            let start = value["data"]["submatches"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| m["match"]["text"] == result.matched)
+                .unwrap();
+            let text = value["data"]["lines"]["text"].as_str().unwrap();
+            assert_eq!(
+                (result.line, result.column),
+                byte_position(text, start["start"].as_u64().unwrap() as usize, 4)
+            );
+            assert_eq!(
+                (result.end_line, result.end_column),
+                byte_position(text, start["end"].as_u64().unwrap() as usize, 4)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn oversized_events_are_bounded_and_cancelled_reads_stop() {
+        let task = SearchTask {
+            cancelled: AtomicBool::new(false),
+            acknowledged: AtomicU64::new(0),
+        };
+        let bytes = vec![b'a'; MAX_EVENT_BYTES + 100];
+        let mut reader = BufReader::new(bytes.as_slice());
+        assert_eq!(
+            read_event(&mut reader, &task).await.unwrap_err().code,
+            "searchLimit"
+        );
+        task.cancelled.store(true, Ordering::Release);
+        assert!(read_event(&mut reader, &task).await.unwrap().is_none());
+        task.cancelled.store(false, Ordering::Release);
+        let mut reader = BufReader::new(&b"one\ntwo"[..]);
+        assert_eq!(
+            read_event(&mut reader, &task).await.unwrap().unwrap(),
+            b"one\n"
+        );
+        assert_eq!(
+            read_event(&mut reader, &task).await.unwrap().unwrap(),
+            b"two"
+        );
+        assert!(read_event(&mut reader, &task).await.unwrap().is_none());
+    }
+
     #[test]
     fn utf16_and_multiline_positions() {
         let s = "中文🙂x\r\nsecond";

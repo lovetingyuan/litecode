@@ -218,7 +218,7 @@ export async function replaceMatches(
       } else if (disk) {
         diskEdits.push({
           path: first.path,
-          before,
+          before: disk.text,
           after,
           encoding: disk.encoding,
           revision: disk.revision,

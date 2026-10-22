@@ -83,13 +83,12 @@ fn packaged(window: &WebviewWindow, path: &str) -> PathBuf {
 }
 
 pub fn server_spec(window: &WebviewWindow, state: &AppState, language: &str) -> Result<ServerSpec> {
-    let settings = settings(window, state);
-    let root = state
-        .windows
-        .lock()
-        .unwrap()
-        .get(window.label())
-        .and_then(|w| w.root.clone());
+    let root = state.require_workspace_trust(window.label())?;
+    let settings = crate::configuration::load_settings(
+        &state.data_dir.join("settings.json"),
+        root.as_deref(),
+        &mut vec![],
+    );
     let tools = process_path(&state.data_dir.join("tools/languages/node_modules"));
     match language {
         "rust" => {
@@ -222,6 +221,7 @@ pub async fn format_document(
     text: String,
     language: String,
 ) -> Result<String> {
+    let workspace_root = state.require_workspace_trust(window.label())?;
     let path = if let Some(path) = path {
         process_path(&state.authorize(window.label(), &path)?)
     } else {
@@ -253,13 +253,13 @@ pub async fn format_document(
             .unwrap_or_else(|| state.data_dir.clone());
         process_path(&root.join(format!("Untitled.{extension}")))
     };
-    let config = settings(&window, &state);
-    let root = state
-        .windows
-        .lock()
-        .unwrap()
-        .get(window.label())
-        .and_then(|w| w.root.clone())
+    let config = crate::configuration::load_settings(
+        &state.data_dir.join("settings.json"),
+        workspace_root.as_deref(),
+        &mut vec![],
+    );
+    let root = workspace_root
+        .clone()
         .unwrap_or_else(|| path.parent().unwrap().into());
     let explicit = config["editor.defaultFormatter"].as_str();
     if explicit.is_some_and(|id| {
@@ -366,7 +366,16 @@ pub async fn format_document(
         .stderr(std::process::Stdio::piped());
     #[cfg(windows)]
     command.creation_flags(0x08000000);
-    let mut child = command.spawn()?;
+    let mut child = {
+        let _disk = state.disk_lock.lock().unwrap();
+        if state.require_workspace_trust(window.label())? != workspace_root {
+            return Err(AppError::new(
+                "workspace",
+                "The workspace changed before formatting started.",
+            ));
+        }
+        command.spawn()?
+    };
     let mut stdin = child.stdin.take().unwrap();
     tokio::spawn(async move {
         let _ = stdin.write_all(text.as_bytes()).await;

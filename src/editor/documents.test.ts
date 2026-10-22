@@ -28,12 +28,13 @@ vi.mock("./languages", () => ({
   canFormat: vi.fn(),
   formatModel: vi.fn(),
   restartLanguages: vi.fn(),
+  stopLanguages: vi.fn(),
   languageReport: vi.fn(),
 }));
 
 import { call } from "../core/bridge";
 import { monaco, languageFor } from "./monaco";
-import { canFormat, formatModel, releaseLanguageDocument } from "./languages";
+import { canFormat, formatModel, releaseLanguageDocument, ensureLanguage, stopLanguages } from "./languages";
 import { commands, commandShortcut, execute, openFolder } from "../core/commands";
 import { refreshTree } from "../components/Explorer";
 import {
@@ -557,6 +558,7 @@ describe("Workspace switches", () => {
     await openFolder(false, "C:/next");
     expect(useApp.getState().groups).toEqual(before.groups);
     expect(useApp.getState().docs).toEqual(before.docs);
+    expect(stopLanguages).not.toHaveBeenCalled();
     expect(commandCalls("open_workspace")).toHaveLength(0);
   });
 
@@ -682,6 +684,7 @@ describe("Workspace switches", () => {
     );
     vi.mocked(refreshTree).mockImplementationOnce(async () => {
       expect(useApp.getState()).toMatchObject({ root: "C:/next", settings, keybindings: [] });
+      expect(stopLanguages).toHaveBeenCalledOnce();
     });
 
     await openFolder(false, "C:/next");
@@ -1255,4 +1258,73 @@ describe("Automatic saves", () => {
       expect(writes()).toHaveLength(0);
     },
   );
+});
+
+describe("Document identity and save snapshots", () => {
+  function fake(text: string, path: string) {
+    return Object.assign(new Buffer(text), { uri: { toString: () => path } });
+  }
+  function setupFile(path: string) {
+    const b = fake("unsaved-important", path);
+    const id = path;
+    vi.mocked(monaco.editor.createModel).mockReturnValueOnce(b as never);
+    attachDocument({ id, path, name: "a.txt", language: "plaintext", encoding: "utf8", eol: "LF", dirty: true, version: 1, revision: "old" }, b.getValue(), true);
+    setApp({ root: "C:/workspace", activeGroup: "one", groups: [{ id: "one", tabs: [id], active: id, preview: null, views: {} }] });
+    return id;
+  }
+  it("preserves a renamed dirty document when the original path is opened again", async () => {
+    const id = setupFile("C:/workspace/a.txt");
+    vi.mocked(monaco.editor.createModel).mockImplementation((text, _lang, uri) => fake(text ?? "", String(uri)) as never);
+    await renameDocuments([{ from: "C:/workspace/a.txt", to: "C:/workspace/b.txt" }]);
+    expect(useApp.getState().docs[id]).toMatchObject({ path: "C:/workspace/b.txt", dirty: true });
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "inspect_file") { return { kind: "text", size: 8, stamp: "1" } as never; }
+      if (command === "read_document") { return { text: "new-file", revision: "new", encoding: "utf8", eol: "LF" } as never; }
+      return undefined as never;
+    });
+    await openPath("C:/workspace/a.txt");
+    expect(Object.values(useApp.getState().docs).some(d => d.path === "C:/workspace/b.txt")).toBe(true);
+    expect(models.get(id)?.getValue()).toBe("unsaved-important");
+  });
+  it("keeps Save As and the original path as separate documents", async () => {
+    const id = setupFile("C:/workspace/a.txt");
+    vi.mocked(monaco.editor.createModel).mockImplementation((text, _lang, uri) => fake(text ?? "", String(uri)) as never);
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "pick_path") { return "C:/workspace/b.txt" as never; }
+      if (command === "read_document") { throw { code: "io", message: "not found" }; }
+      return "saved" as never;
+    });
+    await save(id, true);
+    expect(useApp.getState().docs[id].path).toBe("C:/workspace/b.txt");
+    expect(useApp.getState().docs[id].id).toBe("C:/workspace/a.txt");
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "inspect_file") { return { kind: "text", size: 8, stamp: "1" } as never; }
+      if (command === "read_document") { return { text: "original-file", revision: "new", encoding: "utf8", eol: "LF" } as never; }
+      return undefined as never;
+    });
+    await openPath("C:/workspace/a.txt");
+    expect(Object.keys(useApp.getState().docs)).toHaveLength(2);
+    expect(Object.values(useApp.getState().docs).some(d => d.path === "C:/workspace/b.txt")).toBe(true);
+  });
+  it("keeps an encoding change dirty when it happens during a save", async () => {
+    const { id } = addDocument();
+    const pending = deferred<string>();
+    vi.mocked(call).mockImplementation((command) => command === "save_document" ? pending.promise as never : Promise.resolve(undefined) as never);
+    const saving = save(id);
+    await vi.waitFor(() => expect(writes()).toHaveLength(1));
+    patchDoc(id, { encoding: "utf16le", dirty: true });
+    pending.resolve("saved");
+    await saving;
+    expect(writes()[0].encoding).toBe("utf8");
+    expect(useApp.getState().docs[id]).toMatchObject({ encoding: "utf16le", dirty: true });
+  });
+});
+
+it("restores large-file protection without starting a language service", () => {
+  const b = new Buffer("let x=1");
+  vi.mocked(monaco.editor.createModel).mockReturnValueOnce(b as never);
+  vi.mocked(ensureLanguage).mockClear();
+  restoreDocument({ id: "large-doc", path: "C:/workspace/large.ts", text: "let x=1", version: 1, revision: "r", encoding: "utf8", dirty: false, language: "typescript", kind: "text", fileInfo: { kind: "text", size: 21 * 1024 * 1024, stamp: "1" } });
+  expect(useApp.getState().docs["large-doc"].large).toBe(true);
+  expect(ensureLanguage).not.toHaveBeenCalled();
 });

@@ -22,6 +22,7 @@ import { models, openPath, normalize, visiblePath, checkpoint } from "./document
 import type { DiskDocument } from "../types/types";
 import { settingsSchema } from "../utils/settings";
 import { applyEdits, format } from "jsonc-parser";
+import { cancelWorkspaceTrustPrompt, trustedCall } from "../core/workspaceTrust";
 
 class IpcReader extends AbstractMessageReader {
   callback?: DataCallback;
@@ -62,6 +63,8 @@ const starting = new Map<string, Promise<void>>();
 const failures = new Set<string>();
 const failureDetails = new Map<string, string>();
 const references = new Map<string, { dispose(): void }>();
+let languageEpoch = 0;
+let stopping: Promise<void> | undefined;
 const supported = new Set([
   "typescript",
   "typescriptreact",
@@ -180,7 +183,7 @@ export async function formatModelText(m: monaco.editor.ITextModel, language = m.
     );
   }
   const doc = Object.values(useApp.getState().docs).find((d) => models.get(d.id) === m);
-  return call<string>("format_document", { path: doc?.path ?? null, text: m.getValue(), language });
+  return trustedCall<string>("format_document", { path: doc?.path ?? null, text: m.getValue(), language });
 }
 
 export async function formatModel(m: monaco.editor.ITextModel) {
@@ -197,17 +200,24 @@ export async function formatModel(m: monaco.editor.ITextModel) {
 }
 
 export async function ensureLanguage(id: string, language: string) {
-  if (!desktop || !supported.has(language)) {
+  if (!desktop || stopping || !supported.has(language)) {
     return;
   }
   const m = models.get(id);
   if (!m || m.uri.scheme !== "file") {
     return;
   }
+  const epoch = languageEpoch;
+  const root = useApp.getState().root;
   if (!references.has(id)) {
     setApp({ languageStatus: `Registering ${language} document` });
     try {
-      references.set(id, await createModelReference(m.uri));
+      const reference = await createModelReference(m.uri);
+      if (epoch !== languageEpoch || m.isDisposed()) {
+        reference.dispose();
+        return;
+      }
+      references.set(id, reference);
     } catch (e) {
       notify(`Language document registration: ${errorMessage(e)}`);
       return;
@@ -236,19 +246,24 @@ export async function ensureLanguage(id: string, language: string) {
         logs.push(String(event.message));
       } else if (event.kind === "exit") {
         reader.close();
-        clients.delete(serverId);
-        setApp({ languageStatus: `${serverId} stopped` });
+        if (epoch === languageEpoch) {
+          clients.delete(serverId);
+          setApp({ languageStatus: `${serverId} stopped` });
+        }
       } else {
         notify(`${serverId}: ${String(event.message)}`);
       }
     };
     try {
-      const description = await call<string>("lsp_start", {
+      const description = await trustedCall<string>("lsp_start", {
         serverId,
         language: serverId,
         onEvent,
       });
-      const root = useApp.getState().root;
+      if (epoch !== languageEpoch) {
+        await call("lsp_stop", { serverId });
+        return;
+      }
       const selector =
         serverId === "typescript"
           ? ["typescript", "javascript", "typescriptreact", "javascriptreact"]
@@ -275,31 +290,47 @@ export async function ensureLanguage(id: string, language: string) {
                     ? (useApp.getState().settings[item.section] ?? {})
                     : useApp.getState().settings,
                 ),
-              handleApplyEdit: async (params) => applyWorkspaceEdit(params.edit),
+              handleApplyEdit: async (params) => applyWorkspaceEdit(params.edit, epoch),
             },
           },
           errorHandler: { error: () => ({ action: 1 }), closed: () => ({ action: 1 }) },
         },
       });
-      await Promise.race([
-        client.start(),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Language server initialization timed out after 30 seconds")),
-            30_000,
-          ),
-        ),
-      ]);
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          client.start(),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error("Language server initialization timed out after 30 seconds")),
+              30_000,
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(timeout);
+      }
       if (!client.isRunning()) {
         throw new Error(`${description} did not start. ${logs.slice(-8).join("\n")}`);
       }
-      clients.set(serverId, client);
-      setApp({ languageStatus: description });
+      if (epoch === languageEpoch) {
+        clients.set(serverId, client);
+        setApp({ languageStatus: description });
+      } else {
+        await client.stop(2000).catch(() => {});
+        await call("lsp_stop", { serverId });
+      }
     } catch (e) {
-      failures.add(serverId);
-      failureDetails.set(serverId, `${errorMessage(e)}\n${logs.join("\n")}`);
-      void call("lsp_stop", { serverId }).catch(() => {});
-      notify(errorMessage(e));
+      if (epoch === languageEpoch) {
+        failures.add(serverId);
+        failureDetails.set(serverId, `${errorMessage(e)}\n${logs.join("\n")}`);
+        if ((e as { code?: string })?.code === "workspaceTrust") {
+          setApp({ languageStatus: "Restricted Mode" });
+        } else {
+          notify(errorMessage(e));
+        }
+      }
+      await call("lsp_stop", { serverId }).catch(() => {});
     } finally {
       starting.delete(serverId);
     }
@@ -326,8 +357,11 @@ export function languageReport() {
   };
 }
 
-async function applyWorkspaceEdit(edit: import("vscode-languageserver-protocol").WorkspaceEdit) {
+async function applyWorkspaceEdit(edit: import("vscode-languageserver-protocol").WorkspaceEdit, epoch: number) {
   try {
+    if (epoch !== languageEpoch) {
+      throw new Error("The workspace changed before these language-service edits were applied.");
+    }
     const targets = new Map<
       string,
       { version?: number | null; edits: import("vscode-languageserver-protocol").TextEdit[] }
@@ -384,7 +418,7 @@ async function applyWorkspaceEdit(edit: import("vscode-languageserver-protocol")
         })),
       });
     }
-    if (prepared.some((p) => p.expected !== p.m.getVersionId())) {
+    if (epoch !== languageEpoch || prepared.some((p) => p.expected !== p.m.getVersionId())) {
       throw new Error("A target changed while resolving workspace edits");
     }
     for (const { m, edits } of prepared) {
@@ -403,14 +437,30 @@ export function releaseLanguageDocument(id: string) {
   references.get(id)?.dispose();
   references.delete(id);
 }
-export async function restartLanguages() {
-  for (const [id, client] of clients) {
-    await client.stop(2000).catch(() => {});
-    await call("lsp_stop", { serverId: id });
+export async function stopLanguages() {
+  if (stopping) {
+    return stopping;
   }
-  clients.clear();
-  failures.clear();
-  failureDetails.clear();
+  languageEpoch++;
+  cancelWorkspaceTrustPrompt();
+  stopping = (async () => {
+    const ids = new Set([...clients.keys(), ...starting.keys()]);
+    await Promise.allSettled([...clients.values()].map((client) => client.stop(2000)));
+    await Promise.allSettled([...ids].map((serverId) => call("lsp_stop", { serverId })));
+    await Promise.allSettled(starting.values());
+    clients.clear();
+    failures.clear();
+    failureDetails.clear();
+  })();
+  try {
+    await stopping;
+  } finally {
+    stopping = undefined;
+  }
+}
+
+export async function restartLanguages() {
+  await stopLanguages();
   for (const doc of Object.values(useApp.getState().docs)) {
     if (!doc.large) {
       await ensureLanguage(doc.id, doc.language);

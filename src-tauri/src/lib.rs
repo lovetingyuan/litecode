@@ -39,6 +39,23 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 external_drop::install(&window)?;
             }
+            let state = app.state::<state::AppState>();
+            let labels = state.recovery_windows().unwrap_or_else(|error| {
+                state.startup_warnings.lock().unwrap().push(format!(
+                    "Could not inspect recovery sessions: {}",
+                    error.message
+                ));
+                vec![]
+            });
+            for label in labels {
+                if let Err(error) = commands::create_editor_window(app.handle(), &state, &label) {
+                    state
+                        .startup_warnings
+                        .lock()
+                        .unwrap()
+                        .push(format!("Could not restore {label}: {}", error.message));
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -65,6 +82,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::bootstrap,
             commands::configuration,
+            commands::set_workspace_trust,
             commands::pick_path,
             commands::new_window,
             commands::open_workspace,

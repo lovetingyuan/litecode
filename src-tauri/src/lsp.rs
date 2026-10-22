@@ -81,6 +81,7 @@ pub async fn lsp_start(
     language: String,
     on_event: Channel<ServerEvent>,
 ) -> Result<String> {
+    let disk = state.disk_lock.lock().unwrap();
     let key = format!("{}/{}", window.label(), server_id);
     // A WebView reload loses its client transports; replace that window's old process.
     if let Some(previous) = state.servers.lock().unwrap().remove(&key) {
@@ -125,6 +126,7 @@ pub async fn lsp_start(
             pending: pending.clone(),
         },
     );
+    drop(disk);
     let app = window.app_handle().clone();
     tauri::async_runtime::spawn(async move {
         let writer = tokio::spawn(async move {

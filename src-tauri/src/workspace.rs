@@ -130,14 +130,15 @@ pub fn discover_repositories(root: &Path, index: &RepositoryIndex, cancelled: im
         if cancelled() {
             return;
         }
-        if let Ok(entry) = entry {
-            if entry.file_type().is_dir() && entry.path().join(".git").exists() {
-                index
-                    .repositories
-                    .lock()
-                    .unwrap()
-                    .insert(entry.path().into());
-            }
+        if let Ok(entry) = entry
+            && entry.file_type().is_dir()
+            && entry.path().join(".git").exists()
+        {
+            index
+                .repositories
+                .lock()
+                .unwrap()
+                .insert(entry.path().into());
         }
     }
     index.complete.store(true, Ordering::Release);
@@ -369,14 +370,13 @@ pub fn watch(app: &tauri::AppHandle, label: &str, root: PathBuf) -> Result<()> {
                 if let Some(metadata) = path
                     .ancestors()
                     .find(|path| path.file_name().is_some_and(|name| name == ".git"))
+                    && let Some(repository) = metadata.parent()
                 {
-                    if let Some(repository) = metadata.parent() {
-                        watched_repositories
-                            .repositories
-                            .lock()
-                            .unwrap()
-                            .insert(repository.to_path_buf());
-                    }
+                    watched_repositories
+                        .repositories
+                        .lock()
+                        .unwrap()
+                        .insert(repository.to_path_buf());
                 }
             }
         }

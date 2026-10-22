@@ -51,8 +51,11 @@ node tools/package-portable.mjs
 - 关闭文件的跨文件替换写入磁盘日志；打开文件进入 Monaco 编辑栈。命令 `Undo Workspace Replacement` / `Redo Workspace Replacement` 控制关联操作。
 - `Ctrl+\\` 分栏；同一文档共享模型，各视图保留光标和滚动。保存检查磁盘哈希，冲突提供 Compare / Overwrite / Reload。
 - 退出会先写恢复数据；进程异常终止后的恢复取决于最近一次完成的备份，编辑备份有约 400 ms 延迟。
+- 下次启动会重新打开含未保存内容的次级窗口，沿用原有会话恢复标签和分组。只含已保存文档的次级窗口暂不自动重开。
 
 ## 设置与语言工具
+
+工作区默认处于 Restricted Mode，仍可浏览、搜索和编辑文本；首次需要启动语言服务或外部格式化程序时，会询问是否信任文件夹作者。选择 `Trust Workspace` 后允许执行项目工具及工作区配置指定的程序，并在用户数据目录记住该文件夹的授权；选择 `Restricted Mode` 则保持限制。可通过命令 `Workspaces: Manage Workspace Trust` 重新选择或撤销信任。仅授权当前文件夹，不自动授权其父目录或子项目；JSONC 内置格式化不需要运行外部程序。
 
 `.gitignore` 和 `.env`（包含 `.env.*`）支持语法高亮：忽略规则中的注释、否定标记和通配符，以及环境变量的键名、字符串、注释和变量引用使用不同颜色。也可通过状态栏语言模式手动选择 Git Ignore 或 Dotenv。
 

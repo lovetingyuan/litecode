@@ -2,7 +2,7 @@ use crate::{
     configuration::read_json,
     error::{AppError, Result},
     files::{self, DiskDocument},
-    state::{AppState, Mirror, WindowState, canonical},
+    state::{AppState, Mirror, WindowState, canonical, recovery_path},
     workspace,
 };
 use serde::{Deserialize, Serialize};
@@ -58,7 +58,7 @@ pub async fn bootstrap(window: WebviewWindow, state: State<'_, AppState>) -> Res
                 .store(true, std::sync::atomic::Ordering::Release);
         }
     }
-    let mut warnings = vec![];
+    let mut warnings = std::mem::take(&mut *state.startup_warnings.lock().unwrap());
     let value = read_json(
         &state
             .data_dir
@@ -81,7 +81,7 @@ pub async fn bootstrap(window: WebviewWindow, state: State<'_, AppState>) -> Res
                 serde_json::from_value(value["documents"].clone()).unwrap_or_default();
             for d in docs {
                 if let Some(path) = &d.path
-                    && let Ok(path) = canonical(Path::new(path))
+                    && let Ok(path) = recovery_path(Path::new(path))
                 {
                     w.grants.insert(path);
                 }
@@ -176,7 +176,11 @@ pub async fn new_window(window: WebviewWindow, state: State<'_, AppState>) -> Re
     Ok(label)
 }
 
-fn create_editor_window(app: &tauri::AppHandle, state: &AppState, label: &str) -> Result<()> {
+pub(crate) fn create_editor_window(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    label: &str,
+) -> Result<()> {
     let result = (|| {
         let created = tauri::WebviewWindowBuilder::new(
             app,
@@ -190,7 +194,9 @@ fn create_editor_window(app: &tauri::AppHandle, state: &AppState, label: &str) -
         .disable_drag_drop_handler()
         .build()
         .map_err(|e| AppError::new("window", e.to_string()))?;
-        if let Err(error) = crate::external_drop::install(&created).and_then(|()| created.set_focus()) {
+        if let Err(error) =
+            crate::external_drop::install(&created).and_then(|()| created.set_focus())
+        {
             let _ = created.destroy();
             return Err(AppError::new("window", error.to_string()));
         }
@@ -355,10 +361,15 @@ pub async fn workspace_git_status(
 }
 
 #[tauri::command]
-pub async fn inspect_file(window: WebviewWindow, state: State<'_, AppState>, path: String) -> Result<crate::media::FileInfo> {
+pub async fn inspect_file(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<crate::media::FileInfo> {
     let path = state.authorize(window.label(), &path)?;
     tauri::async_runtime::spawn_blocking(move || crate::media::inspect(&path))
-        .await.map_err(|e| AppError::new("read", e.to_string()))?
+        .await
+        .map_err(|e| AppError::new("read", e.to_string()))?
 }
 
 #[tauri::command]
@@ -397,7 +408,10 @@ pub async fn save_document(
             .get(window.label())
             .and_then(|w| w.documents.get(&id));
         if mirror.is_some_and(|m| !m.kind.is_text()) {
-            return Err(AppError::new("binary", "Media and binary previews cannot be saved as text."));
+            return Err(AppError::new(
+                "binary",
+                "Media and binary previews cannot be saved as text.",
+            ));
         }
         if mirror.is_some_and(|m| m.version > version) {
             return Err(AppError::new(
@@ -433,40 +447,23 @@ pub fn configuration(window: WebviewWindow, state: State<'_, AppState>) -> serde
 }
 
 #[tauri::command]
+pub fn set_workspace_trust(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    expected_root: String,
+    trusted: bool,
+) -> Result<()> {
+    state.set_workspace_trust(window.label(), &expected_root, trusted)
+}
+
+#[tauri::command]
 pub async fn sync_documents(
     window: WebviewWindow,
     state: State<'_, AppState>,
     documents: Vec<Mirror>,
     session: serde_json::Value,
 ) -> Result<()> {
-    for doc in &documents {
-        if !doc.kind.is_text() && (!doc.text.is_empty() || doc.dirty) {
-            return Err(AppError::new("binary", "Binary recovery records cannot contain text edits."));
-        }
-        if let Some(path) = &doc.path {
-            state.authorize(window.label(), path)?;
-        }
-        if doc.text.len() > files::MAX_FILE as usize {
-            return Err(AppError::new("size", "Backup exceeds the document limit"));
-        }
-    }
-    let _disk = state.disk_lock.lock().unwrap();
-    {
-        let mut windows = state.windows.lock().unwrap();
-        let w = windows.entry(window.label().into()).or_default();
-        let ids: std::collections::HashSet<_> = documents.iter().map(|d| d.id.clone()).collect();
-        w.documents.retain(|id, _| ids.contains(id));
-        for doc in documents {
-            if w.documents
-                .get(&doc.id)
-                .is_none_or(|m| m.version <= doc.version)
-            {
-                w.documents.insert(doc.id.clone(), doc);
-            }
-        }
-        w.session = session;
-    }
-    state.checkpoint(window.label())
+    state.sync_documents(window.label(), documents, session)
 }
 
 #[derive(Deserialize)]
