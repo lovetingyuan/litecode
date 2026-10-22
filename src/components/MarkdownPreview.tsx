@@ -6,11 +6,13 @@ import { errorMessage, mediaSource } from "../core/bridge";
 import { models, openPath, patchMediaView } from "../editor/documents";
 import { markdownHeadingIds, resolveMarkdownUrl } from "../utils/markdown";
 import { codeLanguage, loadSyntax, monaco } from "../editor/monaco";
+import { previewFontStyle } from "../editor/font";
 import { notify, useApp } from "../store/store";
 import type { Doc, Group } from "../types/types";
 import "./MarkdownPreview.css";
 
 export function MarkdownPreview({ doc, group }: { doc: Doc; group: Group }) {
+  const settings = useApp((s) => s.settings);
   const host = useRef<HTMLDivElement>(null);
   const savedScroll = useRef(group.mediaViews?.[doc.id]);
   const restoring = useRef(true);
@@ -50,6 +52,7 @@ export function MarkdownPreview({ doc, group }: { doc: Doc; group: Group }) {
     <div
       ref={host}
       className="markdown-preview"
+      style={previewFontStyle(settings)}
       tabIndex={0}
       aria-label={`Markdown preview: ${doc.name}`}
       onScroll={(event) => {

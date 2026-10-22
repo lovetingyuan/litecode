@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { useApp, setApp, notify } from "../store/store";
 import { monaco } from "../editor/monaco";
+import { editorFontOptions } from "../editor/font";
 import {
   models,
   editors,
@@ -8,7 +9,6 @@ import {
   closeGroup,
   showDocument,
   keepOpen,
-  relative,
   addHistory,
   moveTab,
   splitGroup,
@@ -27,15 +27,15 @@ import {
 import { Menu } from "@base-ui/react/menu";
 import { splitDirections } from "../core/commands";
 import { errorMessage, call, channel } from "../core/bridge";
-import { Icon, IconButton } from "./ui";
-import { revealInTree } from "./Explorer";
+import { FileIcon, Icon, IconButton } from "./ui";
+export { FileIcon } from "./ui";
 import { createSearchEditor } from "../search/search";
 import { EditorTabMenu } from "./EditorTabMenu";
 import type { Group, DiskDocument, Query, SearchMatch } from "../types/types";
 import { isGitIgnored } from "../utils/gitStatus";
-import { isMarkdownDocument, isMarkdownView, isTextView } from "../utils/media";
+import { isMarkdownView, isTextView } from "../utils/media";
 import { MediaPreview } from "./MediaPreview";
-import { EditorViewMenu } from "./MediaStatus";
+import { EditorBreadcrumbs } from "./EditorBreadcrumbs";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { loadedWorkspacePaths } from "../explorer/workspaceTree";
 import { explorerDragFiles, explorerDragType } from "../explorer/explorerDrag";
@@ -114,7 +114,7 @@ export function EditorGroup({ group }: { group: Group }) {
       theme: "dark-modern",
       model: null,
       automaticLayout: true,
-      fontFamily: 'Consolas, "Courier New", monospace',
+      ...editorFontOptions(useApp.getState().settings),
       fontSize: 14,
       lineHeight: 20,
       padding: { top: 8 },
@@ -229,7 +229,7 @@ export function EditorGroup({ group }: { group: Group }) {
   useEffect(() => {
     instance.current?.updateOptions({
       fontSize: Number(settings["editor.fontSize"] ?? 14),
-      fontFamily: String(settings["editor.fontFamily"] ?? 'Consolas, "Courier New", monospace'),
+      ...editorFontOptions(settings),
       lineHeight: Number(settings["editor.lineHeight"] ?? 20),
       tabSize: Number(settings["editor.tabSize"] ?? 4),
       wordWrap: settings["editor.wordWrap"] === "on" ? "on" : "off",
@@ -432,35 +432,7 @@ export function EditorGroup({ group }: { group: Group }) {
           )}
         </div>
       </div>
-      {doc && (
-        <div className="breadcrumbs">
-          <div className="breadcrumbs-path">
-            {relative(doc.path ?? doc.name)
-              .split("/")
-              .map((segment, i, all) => {
-                const remaining = all.length - i - 1;
-                const path = doc.path
-                  ? pathTitle(doc.path)
-                      .split("\\")
-                      .slice(0, remaining ? -remaining : undefined)
-                      .join("\\")
-                  : segment;
-                return (
-                  <span key={i}>
-                    <button title={path} onClick={() => doc.path && revealInTree(doc.path)}>
-                      {i === all.length - 1 && <FileIcon language={doc.language} />}
-                      {segment}
-                    </button>
-                    {i < all.length - 1 && <Icon name="chevron-right" />}
-                  </span>
-                );
-              })}
-          </div>
-          {(doc.kind === "svg" || isMarkdownDocument(doc)) && (
-            <EditorViewMenu doc={doc} group={group} />
-          )}
-        </div>
-      )}
+      {doc && <EditorBreadcrumbs doc={doc} group={group} />}
       {doc?.conflict && models.has(doc.id) && (
         <div className="conflict-banner">
           <Icon name="warning" />
@@ -691,23 +663,5 @@ export async function compareDisk(id: string) {
         language: doc.language,
       },
     }),
-  );
-}
-
-export function FileIcon({ language }: { language: string }) {
-  const icons: Record<string, [string, string]> = {
-    typescript: ["symbol-color", "#519aba"],
-    javascript: ["symbol-color", "#cbcb41"],
-    rust: ["settings-gear", "#dea584"],
-    json: ["json", "#cbcb41"],
-    css: ["symbol-color", "#519aba"],
-    html: ["code", "#e37933"],
-    markdown: ["markdown", "#519aba"],
-  };
-  const [name, color] = icons[language.replace(/react$/, "")] ?? ["file", "#a6a6a6"];
-  return (
-    <span style={{ color }}>
-      <Icon name={name} />
-    </span>
   );
 }

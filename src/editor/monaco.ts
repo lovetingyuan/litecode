@@ -2,6 +2,7 @@ import * as monaco from "monaco-editor";
 import EditorWorker from "@codingame/monaco-vscode-api/workers/editor.worker?worker";
 import { MonacoVscodeApiWrapper } from "monaco-languageclient/vscodeApiWrapper";
 import "./editor-features";
+import { editorFontOptions } from "./font";
 import { markdownSyntax } from "./markdownSyntax";
 import { configLanguageConfiguration, dotenvSyntax, gitignoreSyntax } from "./configSyntax";
 
@@ -16,7 +17,8 @@ export function initializeEditor(): Promise<void> {
       },
       userConfiguration: {
         json: JSON.stringify({
-          "editor.fontFamily": 'Consolas, "Courier New", monospace',
+          "editor.fontFamily": editorFontOptions({}).fontFamily,
+          "editor.fontLigatures": editorFontOptions({}).fontLigatures,
           "editor.fontSize": 14,
           "editor.tabSize": 4,
         }),

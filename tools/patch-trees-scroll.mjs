@@ -1,4 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { creationPatches, installCreationModules } from "./patch-trees-creation.mjs";
+import { stripLegacyCreation } from "./trees/legacyCreation.mjs";
 
 // Keep the beta.6 fixes reproducible: sticky scroll, padding, ignore inheritance and an
 // application-owned drop request so confirmation never needs an optimistic move.
@@ -129,15 +131,20 @@ function computeFileTreeViewLayoutState(`,
 ];
 
 // Validate every hunk before writing either file; safe to run again after install.
-const updates = patches.map(([path, replacements]) => {
+const grouped = new Map();
+for (const [path, replacements] of [...patches, ...creationPatches]) {
+  grouped.set(path, [...(grouped.get(path) ?? []), ...replacements]);
+}
+const updates = [...grouped].map(([path, replacements]) => {
   const file = new URL(path, root);
-  let source = readFileSync(file, "utf8");
+  let source = stripLegacyCreation(path, readFileSync(file, "utf8"));
   for (const [before, after] of replacements) {
     if (source.includes(after)) {
       continue;
     }
-    if (source.split(before).length !== 2) {
-      throw new Error(`Cannot apply trees scroll/drag patch to ${path}: ${before.slice(0, 90)}`);
+    const matches = before instanceof RegExp ? source.match(before)?.length : source.split(before).length - 1;
+    if (matches !== 1) {
+      throw new Error(`Cannot apply trees scroll/drag patch to ${path}: ${String(before).slice(0, 90)}`);
     }
     source = source.replace(before, after);
   }
@@ -146,3 +153,4 @@ const updates = patches.map(([path, replacements]) => {
 for (const { file, source } of updates) {
   writeFileSync(file, source);
 }
+installCreationModules(root);

@@ -191,7 +191,7 @@ fn apply(moves: Vec<FileMove>) -> MoveReport {
 }
 
 #[cfg(windows)]
-fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     #[link(name = "kernel32")]
     unsafe extern "system" {
@@ -208,7 +208,7 @@ fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(not(windows))]
-fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
     fs::rename(from, to)
 }
 

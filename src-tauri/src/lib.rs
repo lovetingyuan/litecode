@@ -3,6 +3,7 @@ mod configuration;
 mod error;
 mod external_drop;
 mod file_clipboard;
+mod file_creation;
 mod file_moves;
 mod files;
 mod lsp;
@@ -75,6 +76,10 @@ pub fn run() {
             commands::save_document,
             commands::sync_documents,
             commands::file_operation,
+            file_creation::validate_workspace_creation,
+            file_creation::create_workspace_entry,
+            file_creation::validate_workspace_rename,
+            file_creation::rename_workspace_entry,
             file_moves::plan_file_moves,
             file_moves::move_files,
             file_clipboard::read_file_clipboard,

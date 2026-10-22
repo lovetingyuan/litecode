@@ -41,9 +41,13 @@ export async function beginDocumentMove(paths: string[]) {
   documentMove = { paths, done, drainThrough: saveSequence };
   // Finish saves already in flight; subsequent saves read the rebound path.
   await Promise.allSettled(draining);
+  // Backups authorize document paths too. Drain old snapshots before disk moves,
+  // and defer new snapshots until every descendant has its rebound path.
+  await checkpointQueue.catch(() => {});
   return () => {
     documentMove = null;
     release();
+    scheduleBackup();
   };
 }
 
@@ -156,7 +160,7 @@ export function session(): Session {
 }
 
 export async function checkpoint() {
-  if (!desktop) {
+  if (!desktop || documentMove) {
     return;
   }
   const docs: Mirror[] = Object.values(useApp.getState().docs).map((doc) => {

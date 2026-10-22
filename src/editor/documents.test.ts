@@ -63,6 +63,7 @@ import {
   patchMediaView,
   refreshDocuments,
   renameDocuments,
+  beginDocumentMove,
 } from "./documents";
 import { ask } from "../components/dialog";
 import { setApp, useApp } from "../store/store";
@@ -1000,6 +1001,31 @@ describe("Media documents", () => {
     missing = true;
     await refreshDocuments();
     expect(useApp.getState().docs[id]).toMatchObject({ deleted: true, conflict: false });
+  });
+});
+
+describe("Document move backups", () => {
+  it("drains old backups and defers snapshots until paths have been rebound", async () => {
+    const commandCalls = (name: string) => vi.mocked(call).mock.calls.filter(([command]) => command === name);
+    let complete!: () => void;
+    const pending = new Promise<void>(resolve => { complete = resolve; });
+    vi.mocked(call).mockImplementation(async command => command === "sync_documents" ? await pending as never : undefined as never);
+    const backup = checkpoint();
+    await vi.waitFor(() => expect(commandCalls("sync_documents")).toHaveLength(1));
+    let started = false;
+    const moving = beginDocumentMove(["C:/workspace/folder"]).then(release => { started = true; return release; });
+    await checkpoint();
+    expect(started).toBe(false);
+    expect(commandCalls("sync_documents")).toHaveLength(1);
+    complete();
+    await backup;
+    const release = await moving;
+    try {
+      await checkpoint();
+      expect(commandCalls("sync_documents")).toHaveLength(1);
+    } finally { release(); }
+    await checkpoint();
+    expect(commandCalls("sync_documents")).toHaveLength(2);
   });
 });
 

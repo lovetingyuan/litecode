@@ -31,6 +31,7 @@ node tools/package-portable.mjs
 
 ## 文件、搜索与编辑
 
+- 点击面包屑的目录段或文件名，可在浮层中浏览同级目录树并按需展开。单击文件在当前分组预览，Enter 打开并固定标签；方向键导航，Esc 关闭并返回面包屑。浮层与左侧文件树独立维护展开和选中状态，支持文件变更同步及读取失败重试；仅适用于当前工作区内已保存的文件。
 - Markdown（`.md` / `.markdown`）默认文本编辑，可在面包屑右侧切换 `Text Editor` / `Markdown Preview`。预览支持常用 Markdown、表格和任务列表，展示当前未保存内容；可通过现有分栏功能一侧编辑、一侧实时预览。切换保留编辑位置和撤销历史，各分组独立保存视图与预览滚动位置，并随会话恢复。
 - Markdown 支持文内标题锚点、本地图片与文件链接，以及 HTTP/HTTPS 图片；本地路径相对文档目录解析并沿用窗口的文件访问授权，未保存文档的相对资源需要先保存才能解析。网页和邮件链接通过系统默认程序打开；原始 HTML 不参与渲染，不支持 Mermaid、数学公式、代码语法着色或滚动同步。
 - 支持 JPG/JPE/JPEG、PNG、BMP、GIF、ICO、WebP、AVIF、SVG 图片预览，默认适应窗口；点击放大、Ctrl+点击缩小、Ctrl+滚轮连续缩放，聚焦预览后可用 `+` / `-` / `0` 放大、缩小、恢复原始尺寸。底部显示缩放、原始宽高和文件大小，点击缩放可选择比例或 `Whole Image`。
@@ -69,6 +70,8 @@ HTML/CSS/JSON 的 Microsoft 语言服务随应用提供，需要 Node。JS/TS �
 
 ```json
 {
+  "editor.fontFamily": "Consolas, \"Courier New\", monospace",
+  "editor.fontLigatures": false,
   "editor.fontSize": 14,
   "editor.lineHeight": 24,
   "editor.tabSize": 4,
@@ -80,7 +83,11 @@ HTML/CSS/JSON 的 Microsoft 语言服务随应用提供，需要 Node。JS/TS �
 }
 ```
 
+`editor.fontFamily` 默认是 `Consolas, "Courier New", monospace`。可改为本机已安装的字体，例如 `"'Cascadia Code', Consolas, monospace"`，按列表顺序回退。`editor.fontLigatures` 默认 `false`（关闭 `liga` 和 `calt`），可设为 `true` 开启连字，或设为 `"'liga' off, 'calt' on"` 等 CSS 字体特性字符串；显示效果取决于字体支持。在用户设置或 `.litecode/settings.json` 中保存后，所有代码编辑器、分屏和 Markdown 预览中的代码块及行内代码即时更新，重启后保留。Markdown 正文和应用界面字体保持原样。
+
 未配置工具时会明确报错；不会自动安装项目依赖。`Language: Show Service Status` 提供实际运行状态与服务能力。
+
+在 Windows WebView2 中，代码字体会在通用 `monospace` 之前回退到 `Microsoft YaHei`，避免中文显示成新宋体；英文仍优先使用 Consolas 等配置字体。用户在 `editor.fontFamily` 中显式指定的中文字体优先于此回退。
 
 `editor.lineHeight` 设置编辑器行高，默认 `20`；`0` 表示根据字号自动计算，大于 `0` 且小于 `8` 表示字号倍数（例如 `1.5`），`8` 到 `150` 表示像素。在用户设置或 `.litecode/settings.json` 中修改并保存后即时生效。
 
@@ -102,6 +109,8 @@ JavaScript / TypeScript 使用 Oxlint 检查前端和测试，启用默认插件
 真实桌面端测试需要 `tauri-driver` 和匹配 WebView2 版本的 EdgeDriver；先启动 `tauri-driver --port 4446 --native-driver <msedgedriver.exe 路径>`，然后执行 `npm run test:e2e`，或 `node tools/verify-desktop.mjs --release` 验证发行 exe。脚本创建隔离 fixture、便携数据目录并模拟崩溃，不使用个人工作区文件。
 
 标签栏浏览器回归：先启动 `npm run dev`，再执行 `node tools/verify-editor-tabs.mjs`（需要已安装的 Microsoft Edge）。脚本仅模拟 IPC 数据，使用真实文件树、标签栏和 Monaco，覆盖标签定位、文件树焦点、手动滚动、后台打开、预览、分栏、会话恢复与配色；截图保存至 `.verification/editor-tabs/`。
+
+面包屑目录树浏览器回归：启动 `npm run dev` 后执行 `node tools/verify-breadcrumbs.mjs`（需要 Microsoft Edge；可通过 `LITECODE_TEST_URL` 指定服务地址）。覆盖同级目录、按需展开、键盘和焦点、分屏打开、文件变更同步、失败重试、大目录滚动与窄窗口，以及 Markdown/SVG 菜单回归；截图和报告保存至 `.verification/breadcrumbs/`。
 
 分屏布局浏览器回归：启动 `npm run dev` 后执行 `node tools/verify-layout.mjs`（需要 Microsoft Edge），覆盖四向嵌套、尺寸分配、拖动及键盘调整、相邻区域平衡、共享未保存内容、预览状态和会话恢复；截图保存至 `.verification/layout/`。
 

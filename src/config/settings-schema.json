@@ -22,7 +22,12 @@
     "editor.fontFamily": {
       "type": "string",
       "default": "Consolas, \"Courier New\", monospace",
-      "description": "编辑器字体，按逗号分隔的顺序查找本机已安装的字体。"
+      "description": "编辑器及 Markdown 预览代码的字体，按逗号分隔的顺序查找本机已安装的字体。含空格的字体名可用引号包裹。保存后即时生效。"
+    },
+    "editor.fontLigatures": {
+      "type": ["boolean", "string"],
+      "default": false,
+      "description": "编辑器及 Markdown 预览代码的字体连字，与 VS Code 一致。false 关闭 liga 和 calt（默认）；true 开启；字符串可自定义 CSS font-feature-settings，例如 \"'liga' off, 'calt' on\"。需要字体支持。保存后即时生效。"
     },
     "editor.lineHeight": {
       "type": "number",

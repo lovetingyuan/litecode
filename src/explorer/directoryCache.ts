@@ -16,6 +16,34 @@ export class DirectoryCache {
   session: number | null = null;
   disposed = false;
   revision = 0;
+  private holds = new Map<string, number>();
+  private deferredLoads = new Set<string>();
+  private held(directory: string) {
+    const path = key(directory);
+    return [...this.holds.keys()].some((parent) => !parent || path === parent || path.startsWith(parent + "/"));
+  }
+  /** Keep a rename's own watcher events from deleting its source before commit. */
+  hold(directories: readonly string[]) {
+    const paths = [...new Set(directories.map(key))];
+    for (const path of paths) { this.holds.set(path, (this.holds.get(path) ?? 0) + 1); }
+    let released = false;
+    return async () => {
+      if (released) { return; }
+      released = true;
+      // Drain reads while the guard is still active so their old snapshots are discarded.
+      await Promise.all([...this.directories].filter(([path]) => paths.some((parent) => !parent || key(path) === parent || key(path).startsWith(parent + "/"))).map(([, entry]) => entry.promise));
+      for (const path of paths) {
+        const count = (this.holds.get(path) ?? 1) - 1;
+        if (count) { this.holds.set(path, count); } else { this.holds.delete(path); }
+      }
+      await Promise.all([...this.deferredLoads].filter((path) => !this.held(path)).map(async (path) => {
+        this.deferredLoads.delete(path);
+        const entry = this.directories.get(path);
+        await entry?.promise;
+        if (!this.disposed && this.directories.has(path) && !this.held(path)) { await this.load(path, true); }
+      }));
+    };
+  }
   private listeners = new Set<(directory?: string, paths?: string[]) => void | Promise<void>>();
   constructor(readonly root: string, private read: (directory: string, session: number | null) => Promise<DirectorySnapshot>) { }
   subscribe(listener: (directory?: string, paths?: string[]) => void | Promise<void>) {
@@ -39,6 +67,11 @@ export class DirectoryCache {
     const entry = this.entry(path);
     if (force) {
       entry.dirty = true;
+    }
+    if (this.held(path)) {
+      entry.dirty = true;
+      this.deferredLoads.add(path);
+      return Promise.resolve();
     }
     if (entry.promise) {
       return entry.promise;
@@ -64,6 +97,12 @@ export class DirectoryCache {
               throw new Error("Workspace changed while reading the directory");
             }
             this.session = result.session;
+            if (this.held(path)) {
+              entry.dirty = true;
+              entry.status = "stale";
+              this.deferredLoads.add(path);
+              break;
+            }
             // An invalidation after this request started makes its result obsolete.
             if (entry.dirty) {
               continue;
@@ -90,6 +129,12 @@ export class DirectoryCache {
           catch (error) {
             if (this.disposed || this.directories.get(path) !== entry) {
               return;
+            }
+            if (this.held(path)) {
+              entry.dirty = true;
+              entry.status = "stale";
+              this.deferredLoads.add(path);
+              break;
             }
             entry.status = "failed";
             entry.error = error instanceof Error ? error.message : String((error as {

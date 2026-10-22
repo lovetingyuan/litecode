@@ -8,6 +8,33 @@ function deferred() {
   return { promise, resolve };
 }
 describe("Lazy workspace directories", () => {
+  it("defers watcher reads until a rename releases its directory guard", async () => {
+    const read = vi.fn().mockResolvedValueOnce(snapshot(["old.txt"])).mockResolvedValue(snapshot(["new.txt"]));
+    const cache = new DirectoryCache("C:/project", read);
+    await cache.load("");
+    const release = cache.hold([""]);
+    cache.invalidate("");
+    await cache.load("");
+    expect(cache.entry("").paths).toEqual(["old.txt"]);
+    expect(read).toHaveBeenCalledTimes(1);
+    await release();
+    expect(cache.entry("").paths).toEqual(["new.txt"]);
+  });
+  it("discards in-flight snapshots while a rename is guarded, then rereads disk", async () => {
+    const pending = deferred();
+    const read = vi.fn().mockResolvedValueOnce(snapshot(["old.txt"])).mockReturnValueOnce(pending.promise).mockResolvedValue(snapshot(["new.txt"]));
+    const cache = new DirectoryCache("C:/project", read);
+    await cache.load("");
+    const loading = cache.load("", true);
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    const release = cache.hold([""]);
+    const released = release();
+    pending.resolve(snapshot(["stale.txt"]));
+    await loading;
+    await released;
+    expect(cache.entry("").paths).toEqual(["new.txt"]);
+    expect(read).toHaveBeenCalledTimes(3);
+  });
   it("remaps moved directories without retaining them in their old parent", async () => {
     const read = vi.fn().mockImplementation(async (directory) => snapshot(directory === "" ? ["src/", "dst/"] : directory === "src" ? ["src/moved/"] : ["src/moved/a.txt"]));
     const cache = new DirectoryCache("C:/project", read);

@@ -21,6 +21,11 @@ try {
 // Dependency patches must be applied before Vite optimizes and caches the tree.
 const treesPatchHash = createHash("sha256")
   .update(readFileSync(new URL("./tools/patch-trees-scroll.mjs", import.meta.url)))
+  .update(readFileSync(new URL("./tools/patch-trees-creation.mjs", import.meta.url)))
+  .update(readFileSync(new URL("./tools/trees/inlineEdit.js", import.meta.url)))
+  .update(readFileSync(new URL("./tools/trees/InlineEditInput.js", import.meta.url)))
+  .update(readFileSync(new URL("./tools/trees/controller.mjs", import.meta.url)))
+  .update(readFileSync(new URL("./tools/trees/legacyCreation.mjs", import.meta.url)))
   .digest("hex")
   .slice(0, 12);
 

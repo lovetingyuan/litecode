@@ -29,7 +29,8 @@ import {
   pathTitle,
   visiblePath,
 } from "../editor/documents";
-import { ask, input } from "./dialog";
+import { ask } from "./dialog";
+import { creationParent, validateCreationName, validateRenameName, type CreationKind, type CreatedEntry, type RenamedEntry } from "../explorer/explorerCreation";
 import { Icon, IconButton } from "./ui";
 import { refreshTree, attachWorkspaceTree, directoryDecoration, ensureWorkspacePath, loadedWorkspacePaths, workspaceDirectories } from "../explorer/workspaceTree";
 import { treeMovePlan, type FileMove, type MoveReport } from "../explorer/explorerMove";
@@ -81,6 +82,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   const manualRefresh = useRef<{ ready: boolean } | null>(null);
   const [refreshRequest, setRefreshRequest] = useState(0);
   const operationQueue = useRef(Promise.resolve());
+  const creation = useRef<{ root: string; epoch: number; parent: string } | null>(null);
   const [expanded, setExpanded] = useState(true);
   const wasExpanded = useRef(expanded);
   const revealPending = useRef(true);
@@ -108,6 +110,10 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       [data-item-section="git"] [data-icon-name="file-tree-icon-dot"]{transform:none}
       [data-file-tree-root-drag-target="true"] > [data-file-tree-virtualized-scroll]{outline:1px solid #0078d4;outline-offset:-1px;background:#04395e44}
       [data-external-drop="true"]{outline:1px solid var(--trees-focus-border,#0078d4);outline-offset:-1px;background:var(--trees-list-active-selection-background,#04395e)}
+      [data-file-tree-editing="true"] [data-item-section="git"],
+      [data-file-tree-editing="true"] [data-item-section="decoration"]{display:none}
+      [data-file-tree-editing="true"] [data-item-section="content"]{flex:1;min-width:0}
+      [data-file-tree-inline-edit-input]{min-width:0;width:100%;height:24px;box-sizing:border-box;background:#313131;border:1px solid #0078d4;border-radius:2px;padding:0 4px}
       /* Keep each level at 14px and its guide centered under the parent icon. */
       [data-item-section="spacing"]{padding-left:0;margin-right:calc(-1 * var(--trees-item-row-gap))}
       [data-item-section="spacing"] > [data-item-section="spacing-item"]{
@@ -115,17 +121,17 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         transform:translateX(calc(var(--trees-icon-width) / 2 - .5px));
       }
     `,
-    renaming: { onRename: (e) => mutate(e.sourcePath, e.destinationPath), onError: notify },
+    renaming: { onStart: (item) => renameOptions(item.path, item.isFolder) },
     dragAndDrop: {
       canDrag: (paths) => {
-        if (moveBusy.current || !rootRef.current) {
+        if (moveBusy.current || creation.current || !rootRef.current) {
           return false;
         }
         draggedPaths.current = paths;
         return true;
       },
       canDrop: (e) =>
-        !moveBusy.current && !!treeMovePlan(e.draggedPaths, e.target.directoryPath)?.length,
+        !moveBusy.current && !creation.current && !!treeMovePlan(e.draggedPaths, e.target.directoryPath)?.length,
       onDropRequest: (e) => {
         void requestMove(e);
       },
@@ -135,12 +141,14 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       contextMenu: {
         enabled: true,
         triggerMode: "right-click",
-        onOpen: (item, context) =>
+        onOpen: (item, context) => {
+          if (item.path === model.getCreatingPath()) { context.close(); return; }
           setContext({
             path: item.path,
             anchor: context.anchorElement,
             close: (options) => context.close(options),
-          }),
+          });
+        },
         onClose: () => setContext(null),
       },
     },
@@ -149,6 +157,151 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   useLayoutEffect(() => {
     rootRef.current = root;
   }, [root]);
+  function renameOptions(source: string, directory: boolean) {
+    const state = useApp.getState();
+    const base = state.root;
+    const cache = workspaceDirectories();
+    if (!base || !cache || cache.session === null || moveBusy.current) { return null; }
+    const parent = creationParent(source, false);
+    const request = { root: base, epoch: state.workspaceEpoch, parent };
+    creation.current = request;
+    revealPending.current = false;
+    explicitReveal.current = null;
+    const valid = () => creation.current === request && useApp.getState().root === base && useApp.getState().workspaceEpoch === request.epoch;
+    const args = { expectedRoot: base, session: cache.session, source };
+    return {
+      validateSync: (name: string) => validateRenameName(name, /Win/i.test(navigator.platform), directory),
+      validate: (name: string) => valid() ? call<string | null>("validate_workspace_rename", { ...args, name }) : "Workspace changed. Please start renaming again.",
+      onCancel: () => { if (creation.current === request) { creation.current = null; } },
+      onFinish: () => { if (creation.current === request) { creation.current = null; } },
+      onCommit: async (name: string) => {
+        const operation = operationQueue.current.then(async () => {
+          if (!valid()) { throw new Error("Workspace changed. Please start renaming again."); }
+          moveBusy.current = true;
+          moveExecuting.current = true;
+          const releaseTree = cache.hold([parent]);
+          let releaseDocuments: (() => void) | undefined;
+          try {
+            releaseDocuments = await beginDocumentMove([join(base, source)]);
+            if (!valid()) { throw new Error("Workspace changed. Please start renaming again."); }
+            const result = await call<RenamedEntry>("rename_workspace_entry", { ...args, name });
+            // Disk success must rebind open documents, even after a workspace switch.
+            if (result.changed) { await renameDocumentPaths(result.from, result.to); }
+            if (!valid()) { return; }
+            const target = result.relativePath + (result.isDirectory ? "/" : "");
+            if (result.changed && model.getItem(source)) {
+              const parts = result.relativePath.split("/");
+              for (let depth = 1; depth < parts.length; depth++) {
+                const path = parts.slice(0, depth).join("/") + "/";
+                if (!model.getItem(path)) { model.add(path); }
+              }
+              model.move(source + (directory ? "/" : ""), target);
+            }
+            const parts = result.relativePath.split("/");
+            for (let depth = 1; depth < parts.length; depth++) {
+              const ancestor = model.getItem(parts.slice(0, depth).join("/"));
+              if (ancestor && "expand" in ancestor) { ancestor.expand(); }
+            }
+            model.getItem(target)?.select();
+            model.focusPath(target);
+            model.scrollToPath(target, { focus: true, offset: "nearest" });
+            if (creation.current === request) { creation.current = null; }
+          } finally {
+            releaseDocuments?.();
+            moveExecuting.current = false;
+            try {
+              await releaseTree();
+              if (useApp.getState().root === base && useApp.getState().workspaceEpoch === request.epoch) {
+                await refreshTree([source, parent ? `${parent}/${name.split(/[\\/]/)[0]}` : name.split(/[\\/]/)[0]]);
+              }
+            } finally { moveBusy.current = false; }
+          }
+          requestAnimationFrame(() => {
+            if (useApp.getState().root === base && useApp.getState().workspaceEpoch === request.epoch) {
+              model.getFileTreeContainer()?.shadowRoot?.querySelector<HTMLElement>('[data-item-focused="true"]:not([data-file-tree-sticky-row]):not([data-item-parked="true"])')?.focus({ preventScroll: true });
+            }
+          });
+        });
+        operationQueue.current = operation.catch(() => {});
+        await operation;
+      },
+    };
+  }
+  async function startCreation(kind: CreationKind, path: string) {
+    const state = useApp.getState();
+    const base = state.root;
+    const cache = workspaceDirectories();
+    if (!base || !cache || moveBusy.current) { return; }
+    if (path && !model.getItem(path)) { notify("The destination is no longer available. Please select a folder again."); return; }
+    const parent = path === model.getCreatingPath() && creation.current
+      ? creation.current.parent
+      : creationParent(path, model.getItem(path)?.isDirectory() ?? false);
+    model.cancelEditing();
+    const request = { root: base, epoch: state.workspaceEpoch, parent };
+    creation.current = request;
+    const valid = () => creation.current === request && useApp.getState().root === base && useApp.getState().workspaceEpoch === request.epoch;
+    revealPending.current = false;
+    explicitReveal.current = null;
+    setExpanded(true);
+    try {
+      // Loading first makes sibling validation and the insertion position stable.
+      await cache.load(parent);
+      if (!valid()) { return; }
+      if (cache.entry(parent).status !== "loaded" || cache.session === null) {
+        throw new Error(cache.entry(parent).error ?? "Could not load the destination folder.");
+      }
+      const args = { expectedRoot: base, session: cache.session, parent, kind };
+      const draft = model.startCreating({
+        parentPath: parent,
+        kind,
+        validateSync: (name) => validateCreationName(name, /Win/i.test(navigator.platform)),
+        validate: async (name) => {
+          if (!valid()) { return "Workspace changed. Please start creation again."; }
+          return call<string | null>("validate_workspace_creation", { ...args, name });
+        },
+        onCancel: () => { if (creation.current === request) { creation.current = null; } },
+        onCommit: async (name) => {
+          const operation = operationQueue.current.then(async () => {
+            if (!valid()) { throw new Error("Workspace changed. Please start creation again."); }
+            const result = await call<CreatedEntry>("create_workspace_entry", { ...args, name });
+            if (!valid()) { return; }
+            await refreshTree([parent ? `${parent}/${name.split(/[\\/]/)[0]}` : name.split(/[\\/]/)[0], result.relativePath]);
+            if (!valid()) { return; }
+            const target = await ensureWorkspacePath(result.relativePath + (result.kind === "newFolder" ? "/" : ""));
+            if (!valid()) { return; }
+            if (target) {
+              for (const selected of model.getSelectedPaths()) { model.getItem(selected)?.deselect(); }
+              const parts = target.replace(/\/$/, "").split("/");
+              for (let depth = 1; depth < parts.length; depth++) {
+                const ancestor = model.getItem(parts.slice(0, depth).join("/"));
+                if (ancestor && "expand" in ancestor) { ancestor.expand(); }
+              }
+              model.getItem(target)?.select();
+              model.focusPath(target);
+              model.scrollToPath(target, { focus: result.kind === "newFolder", offset: "nearest" });
+              if (result.kind === "newFolder") {
+                requestAnimationFrame(() => {
+                  const current = useApp.getState();
+                  if (current.root === base && current.workspaceEpoch === request.epoch) {
+                    model.getFileTreeContainer()?.shadowRoot?.querySelector<HTMLElement>(`[data-item-path="${CSS.escape(target)}"]:not([data-file-tree-sticky-row]):not([data-item-parked="true"])`)?.focus({ preventScroll: true });
+                  }
+                });
+              }
+            }
+            if (result.kind === "newFile") {
+              await openPath(result.path, { pinned: true }).catch((error) => notify(errorMessage(error)));
+            }
+            if (creation.current === request) { creation.current = null; }
+          });
+          operationQueue.current = operation.catch(() => {});
+          await operation;
+        },
+      });
+      if (!draft) { throw new Error("The destination folder is no longer available."); }
+    } catch (error) {
+      if (valid()) { creation.current = null; notify(errorMessage(error)); }
+    }
+  }
   const clipboardRef = useRef<ReturnType<typeof createExplorerClipboard> | null>(null);
   useLayoutEffect(() => {
     if (clipboardRef.current) {
@@ -517,30 +670,13 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     ) as HTMLElement | undefined;
     const path = row?.dataset.itemPath;
     const item = path ? model.getItem(path) : null;
-    if (!path || !item || item.isDirectory() || !rootRef.current) {
+    if (!path || path === model.getCreatingPath() || !item || item.isDirectory() || !rootRef.current) {
       return false;
     }
     void openPath(join(rootRef.current, path), { pinned, preserveFocus: !pinned }).catch((e) =>
       notify(errorMessage(e)),
     );
     return true;
-  }
-  function mutate(from: string, to: string) {
-    const root = rootRef.current;
-    if (!root) {
-      return;
-    }
-    operationQueue.current = operationQueue.current.then(async () => {
-      try {
-        await call("file_operation", {
-          operation: { kind: "rename", path: join(root, from), destination: join(root, to) },
-        });
-        await renameDocumentPaths(join(root, from), join(root, to));
-      } catch (e) {
-        notify(errorMessage(e));
-      }
-      await refreshTree([from, to]);
-    });
   }
   async function refreshExplorer() {
     const before = useApp.getState();
@@ -565,6 +701,8 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     setRefreshRequest((value) => value + 1);
   }
   useEffect(() => {
+    model.cancelEditing();
+    creation.current = null;
     manualRefresh.current = null;
     moveAbort.current?.abort();
     pasteAbort.current?.abort();
@@ -638,6 +776,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     if (moveExecuting.current || pendingMoveSelection.current) {
       return;
     }
+    if (creation.current) { return; }
     const refreshed = manualRefresh.current?.ready === true;
     if (refreshed) {
       revealPending.current = true;
@@ -755,17 +894,21 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     refreshRequest,
   ]);
 
-  async function action(kind: string, path = model.getFocusedPath() ?? "") {
+  async function action(kind: string, path = model.getSelectedPaths().length ? model.getFocusedPath() ?? "" : "") {
     if (!root) {
       return;
     }
-    const handle = model.getItem(path);
     const selected = model.getSelectedPaths();
-    const paths = selected.includes(path) ? [...selected] : [path];
+    const paths = (selected.includes(path) ? [...selected] : [path]).filter((candidate) => candidate !== model.getCreatingPath());
     const full = join(root, path);
     const changedPaths: string[] = [];
-    context?.close?.({ restoreFocus: kind !== "rename" });
+    context?.close?.({ restoreFocus: !["rename", "newFile", "newFolder"].includes(kind) });
     setContext(null);
+    if (kind === "newFile" || kind === "newFolder") {
+      await startCreation(kind, path);
+      return;
+    }
+    if (path === model.getCreatingPath()) { return; }
     try {
       if (kind === "rename") {
         model.startRenaming(path);
@@ -795,21 +938,6 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       if (kind === "reveal") {
         await call("reveal_path", { path: full });
         return;
-      }
-      if (kind === "newFile" || kind === "newFolder") {
-        const name = await input(kind === "newFile" ? "New File" : "New Folder");
-        if (!name) {
-          return;
-        }
-        const parent = handle?.isDirectory()
-          ? path.replace(/\/$/, "")
-          : path.split("/").slice(0, -1).join("/");
-        const target = join(root, parent ? `${parent}/${name}` : name);
-        await call("file_operation", { operation: { kind, path: target } });
-        changedPaths.push(relative(target, root));
-        if (kind === "newFile") {
-          await openPath(target, { pinned: true });
-        }
       }
       if (kind === "delete") {
         if (
@@ -934,17 +1062,19 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
           >
             <button
               title={pathTitle(root)}
-              onClick={() => setExpanded(!expanded)}
+              onPointerDown={() => { model.cancelEditing(); creation.current = null; }}
+              onClick={() => { model.cancelEditing(); creation.current = null; setExpanded(!expanded); }}
               aria-expanded={expanded}
             >
               <Icon name={expanded ? "chevron-down" : "chevron-right"} />
               {basename(root).toUpperCase()}
             </button>
             <div className="actions">
-              <IconButton icon="new-file" label="New File" onClick={() => void action("newFile")} />
+              <IconButton icon="new-file" label="New File" onPointerDown={(event) => event.preventDefault()} onClick={() => void action("newFile")} />
               <IconButton
                 icon="new-folder"
                 label="New Folder"
+                onPointerDown={(event) => event.preventDefault()}
                 onClick={() => void action("newFolder")}
               />
               <IconButton
@@ -995,7 +1125,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
                     (target) =>
                       target instanceof HTMLElement && target.hasAttribute("data-item-path"),
                   ) as HTMLElement | undefined;
-                if (row?.dataset.itemPath) {
+                if (row?.dataset.itemPath && row.dataset.fileTreeEditing !== "true") {
                   row.title = pathTitle(join(root, row.dataset.itemPath));
                 }
               }}

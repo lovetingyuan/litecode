@@ -169,4 +169,44 @@ mod tests {
             .is_file()
         );
     }
+
+    #[test]
+    fn font_settings_persist_override_and_reset() {
+        let temp = tempfile::tempdir().unwrap();
+        let user = temp.path().join("settings.json");
+        let workspace = temp.path().join("project");
+        fs::create_dir_all(workspace.join(".litecode")).unwrap();
+        let project = workspace.join(".litecode/settings.json");
+        let mut warnings = vec![];
+        fs::write(
+            &user,
+            r#"{"editor.fontFamily":"Cascadia Code","editor.fontLigatures":true}"#,
+        )
+        .unwrap();
+        fs::write(
+            &project,
+            r#"{"editor.fontFamily":"Consolas","editor.fontLigatures":"'liga' off, 'calt' on"}"#,
+        )
+        .unwrap();
+        let settings = load_settings(&user, Some(&workspace), &mut warnings);
+        assert_eq!(settings["editor.fontFamily"], "Consolas");
+        assert_eq!(settings["editor.fontLigatures"], "'liga' off, 'calt' on");
+        fs::write(&project, "{}").unwrap();
+        let settings = load_settings(&user, Some(&workspace), &mut warnings);
+        assert_eq!(settings["editor.fontFamily"], "Cascadia Code");
+        assert_eq!(settings["editor.fontLigatures"], true);
+        // Loading again reads the saved values, as on application restart.
+        assert_eq!(
+            load_settings(&user, Some(&workspace), &mut warnings),
+            settings
+        );
+        fs::write(&user, "{}").unwrap();
+        let settings = load_settings(&user, Some(&workspace), &mut warnings);
+        assert_eq!(
+            settings["editor.fontFamily"],
+            "Consolas, \"Courier New\", monospace"
+        );
+        assert_eq!(settings["editor.fontLigatures"], false);
+        assert!(warnings.is_empty());
+    }
 }
