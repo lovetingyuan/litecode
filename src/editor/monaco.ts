@@ -1,9 +1,11 @@
 import * as monaco from "monaco-editor";
 import EditorWorker from "@codingame/monaco-vscode-api/workers/editor.worker?worker";
 import { MonacoVscodeApiWrapper } from "monaco-languageclient/vscodeApiWrapper";
+import getLanguagesServiceOverride from "@codingame/monaco-vscode-languages-service-override";
 import "./editor-features";
 import { editorFontOptions } from "./font";
 import { markdownSyntax } from "./markdownSyntax";
+import { vueSyntax } from "./vueSyntax";
 import { configLanguageConfiguration, dotenvSyntax, gitignoreSyntax } from "./configSyntax";
 
 let startup: Promise<void> | undefined;
@@ -12,6 +14,7 @@ export function initializeEditor(): Promise<void> {
     const wrapper = new MonacoVscodeApiWrapper({
       $type: "classic",
       viewsConfig: { $type: "EditorService" },
+      serviceOverrides: getLanguagesServiceOverride(),
       monacoWorkerFactory: () => {
         globalThis.MonacoEnvironment = { getWorker: () => new EditorWorker() };
       },
@@ -60,6 +63,9 @@ export function initializeEditor(): Promise<void> {
   })());
 }
 
+const filenameLanguages = new Map<string, string>();
+let extensionLanguages: [string, string][] = [];
+
 export function languageFor(path: string): string {
   const name = path.split(/[\\/]/).pop()?.toLowerCase() ?? "";
   if (name === ".gitignore") {
@@ -74,7 +80,7 @@ export function languageFor(path: string): string {
   ) {
     return "jsonc";
   }
-  const extension = path.split(".").pop()?.toLowerCase();
+  const extension = name.includes(".") ? name.split(".").pop() : undefined;
   if (extension === "markdown") {
     return "markdown";
   }
@@ -92,6 +98,7 @@ export function languageFor(path: string): string {
         rs: "rust",
         html: "html",
         htm: "html",
+        vue: "vue",
         css: "css",
         scss: "scss",
         md: "markdown",
@@ -112,7 +119,10 @@ export function languageFor(path: string): string {
         txt: "plaintext",
         "code-search": "search-result",
       } as Record<string, string>
-    )[extension ?? ""] ?? "plaintext"
+    )[extension ?? ""] ??
+    filenameLanguages.get(name) ??
+    extensionLanguages.find(([suffix]) => name.endsWith(suffix))?.[1] ??
+    "plaintext"
   );
 }
 
@@ -123,7 +133,7 @@ const registrations = import.meta.glob(
 const syntaxes = import.meta.glob<{
   language: monaco.languages.IMonarchLanguage;
   conf: monaco.languages.LanguageConfiguration;
-}>("/node_modules/monaco-languages/esm/vs/languages/definitions/{markdown,typescript}/*.js");
+}>("/node_modules/monaco-languages/esm/vs/languages/definitions/{markdown,typescript,html}/*.js");
 const jsonSyntax = import.meta.glob<{
   createTokenizationSupport(comments: boolean): monaco.languages.TokensProvider;
 }>("/node_modules/monaco-languages/esm/vs/languages/features/json/tokenization.js");
@@ -156,6 +166,7 @@ function registerSyntaxes() {
       ["json", ["JSON"]],
       ["jsonc", ["JSONC"]],
       ["markdown", ["Markdown", "md"]],
+      ["vue", ["Vue"]],
     ] as const) {
       monaco.languages.register({ id, aliases: [...aliases] });
       monaco.languages.registerTokensProviderFactory(id, {
@@ -167,16 +178,40 @@ function registerSyntaxes() {
               ]();
             return createTokenizationSupport(id === "jsonc");
           }
-          const syntax = id === "markdown" ? "markdown" : "typescript";
+          const syntax = id === "vue" ? "html" : id === "markdown" ? "markdown" : "typescript";
           const module =
             await syntaxes[
               `/node_modules/monaco-languages/esm/vs/languages/definitions/${syntax}/${syntax}.js`
             ]();
           monaco.languages.setLanguageConfiguration(id, module.conf);
-          return id === "markdown" ? markdownSyntax(module.language) : module.language;
+          return id === "vue" ? vueSyntax(module.language)
+            : id === "markdown" ? markdownSyntax(module.language) : module.language;
         },
       });
     }
+    const extensions = new Map([
+      [".pyi", "python"],
+      [".zsh", "shell"],
+      [".pp", "pascal"],
+      // The bundled F# grammar claims OCaml suffixes without an OCaml grammar.
+      [".ml", "plaintext"],
+      [".mli", "plaintext"],
+    ]);
+    for (const language of monaco.languages.getLanguages()) {
+      for (const filename of language.filenames ?? []) {
+        const name = filename.toLowerCase();
+        if (!filenameLanguages.has(name)) {
+          filenameLanguages.set(name, language.id);
+        }
+      }
+      for (const extension of language.extensions ?? []) {
+        const suffix = extension.toLowerCase();
+        if (!extensions.has(suffix)) {
+          extensions.set(suffix, language.id);
+        }
+      }
+    }
+    extensionLanguages = [...extensions].sort(([a], [b]) => b.length - a.length);
   })());
 }
 

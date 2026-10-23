@@ -1,14 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const registry = vi.hoisted(() => ({
-  languages: new Map<string, { id: string; aliases?: string[] }>(),
+  languages: new Map<string, {
+    id: string;
+    aliases?: string[];
+    extensions?: string[];
+    filenames?: string[];
+  }>(),
   factories: new Map<string, { create(): Promise<unknown> }>(),
   providers: new Map<string, Promise<unknown>>(),
 }));
 vi.mock("monaco-editor", () => ({
   languages: {
-    register: vi.fn((language) => registry.languages.set(language.id, language)),
-    getLanguages: () => [...registry.languages.values()],
+    register: vi.fn((language) => registry.languages.set(language.id, {
+      ...registry.languages.get(language.id), ...language,
+    })),
+    getLanguages: vi.fn(() => [...registry.languages.values()]),
     registerTokensProviderFactory: vi.fn((id, factory) => registry.factories.set(id, factory)),
     onLanguageEncountered: vi.fn(),
     setLanguageConfiguration: vi.fn(),
@@ -26,9 +33,99 @@ vi.mock("monaco-editor", () => ({
 }));
 vi.mock("@codingame/monaco-vscode-api/workers/editor.worker?worker", () => ({ default: vi.fn() }));
 vi.mock("monaco-languageclient/vscodeApiWrapper", () => ({ MonacoVscodeApiWrapper: vi.fn() }));
+vi.mock("@codingame/monaco-vscode-languages-service-override", () => ({ default: () => ({}) }));
 vi.mock("./editor-features", () => ({}));
 
 import { codeLanguage, languageFor, loadSyntax, monaco } from "./monaco";
+
+beforeAll(async () => {
+  monaco.languages.register({
+    id: "test-short",
+    extensions: [".syntax-test"],
+    filenames: ["exact.long.syntax-test"],
+  });
+  monaco.languages.register({ id: "test-long", extensions: [".long.syntax-test"] });
+  await loadSyntax("plaintext");
+});
+
+describe("Registered file associations", () => {
+  it.each([
+    ["Program.cs", "csharp"],
+    ["index.php", "php"],
+    ["index.phtml", "php"],
+    ["main.rb", "ruby"],
+    ["Main.kt", "kotlin"],
+    ["build.kts", "kotlin"],
+    ["Main.swift", "swift"],
+    ["main.dart", "dart"],
+    ["main.lua", "lua"],
+    ["analysis.r", "r"],
+    ["main.jl", "julia"],
+    ["Main.scala", "scala"],
+    ["main.pl", "perl"],
+    ["main.m", "objective-c"],
+    ["main.fs", "fsharp"],
+    ["Main.vb", "vb"],
+    ["main.ex", "elixir"],
+    ["main.clj", "clojure"],
+    ["main.cc", "cpp"],
+    ["main.cxx", "cpp"],
+    ["main.hpp", "cpp"],
+    ["main.hh", "cpp"],
+    ["main.hxx", "cpp"],
+    ["main.h", "cpp"],
+    ["main.pp", "pascal"],
+    ["main.mts", "typescript"],
+    ["main.cts", "typescript"],
+    ["main.pyw", "python"],
+    ["main.pyi", "python"],
+    ["main.bash", "shell"],
+    ["main.zsh", "shell"],
+    ["module.psm1", "powershell"],
+    ["module.psd1", "powershell"],
+    ["style.less", "less"],
+    ["Dockerfile", "dockerfile"],
+    ["build.dockerfile", "dockerfile"],
+    ["Gemfile", "ruby"],
+    ["Rakefile", "ruby"],
+    [".editorconfig", "ini"],
+    ["settings.toml", "ini"],
+  ])("identifies %s across path formats and casing", (name, language) => {
+    for (const path of [name, `/workspace/src/${name}`, `C:\\项目\\${name.toUpperCase()}`]) {
+      expect(languageFor(path)).toBe(language);
+    }
+  });
+
+  it("prefers exact filenames to the longest registered extension", () => {
+    expect(languageFor("EXACT.LONG.SYNTAX-TEST")).toBe("test-short");
+    expect(languageFor("file.long.syntax-test")).toBe("test-long");
+    expect(languageFor("file.syntax-test")).toBe("test-short");
+  });
+
+  it("uses the cached associations without rescanning the registry", () => {
+    const before = vi.mocked(monaco.languages.getLanguages).mock.calls.length;
+    for (let i = 0; i < 100; i++) {
+      expect(languageFor(`file${i}.cs`)).toBe("csharp");
+    }
+    expect(vi.mocked(monaco.languages.getLanguages).mock.calls).toHaveLength(before);
+  });
+
+  it.each([
+    "", "README", "java", "ts", "file.unknown", "file.cs.bak", "/folder.php/README",
+    "main.zig", "Main.hs", "main.ml", "main.mli", "main.f90", "App.svelte", "App.astro",
+  ])("keeps unrecognized file %s in plain text", (path) => {
+    expect(languageFor(path)).toBe("plaintext");
+  });
+
+  it.each([
+    "csharp", "php", "ruby", "kotlin", "swift", "dart", "lua", "r", "julia", "scala",
+    "perl", "objective-c", "fsharp", "vb", "elixir", "clojure", "cpp", "typescript",
+    "python", "shell", "powershell", "less", "dockerfile",
+  ])("loads the existing grammar for %s on demand", async (language) => {
+    await loadSyntax(language);
+    expect(await registry.providers.get(language)).toMatchObject({ tokenizer: expect.any(Object) });
+  });
+});
 
 describe("React language modes", () => {
   it.each([
@@ -53,6 +150,25 @@ describe("React language modes", () => {
       );
     },
   );
+});
+
+describe("Vue language mode", () => {
+  it.each(["App.vue", "组件.VUE", "C:\\project\\App.vue"])("identifies %s as Vue", (path) => {
+    expect(languageFor(path)).toBe("vue");
+  });
+  it("registers Vue syntax with embedded expressions, scripts and styles", async () => {
+    await loadSyntax("vue");
+    expect(codeLanguage("Vue")).toBe("vue");
+    const syntax = await registry.providers.get("vue") as monaco.languages.IMonarchLanguage;
+    expect(syntax.tokenPostfix).toBe(".vue");
+    expect(syntax.tokenizer.interpolation).toBeDefined();
+    expect(syntax.tokenizer.scriptAfterTypeEquals).toEqual(expect.arrayContaining([
+      [expect.any(RegExp), expect.objectContaining({ switchTo: "@scriptWithCustomType.text/typescript" })],
+    ]));
+    expect(syntax.tokenizer.styleAfterTypeEquals).toEqual(expect.arrayContaining([
+      [expect.any(RegExp), expect.objectContaining({ switchTo: "@styleWithCustomType.text/scss" })],
+    ]));
+  });
 });
 
 describe("Markdown language detection", () => {
@@ -204,10 +320,10 @@ describe("Embedded syntax loading", () => {
 
   it("shares pending syntax loads", async () => {
     const before = vi.mocked(monaco.editor.colorize).mock.calls.length;
-    await Promise.all([loadSyntax("python"), loadSyntax("python"), loadSyntax("python")]);
+    await Promise.all([loadSyntax("go"), loadSyntax("go"), loadSyntax("go")]);
     expect(vi.mocked(monaco.editor.colorize).mock.calls.slice(before)).toEqual([
-      ["", "python", {}],
+      ["", "go", {}],
     ]);
-    expect(await registry.providers.get("python")).toMatchObject({ tokenizer: expect.any(Object) });
+    expect(await registry.providers.get("go")).toMatchObject({ tokenizer: expect.any(Object) });
   });
 });

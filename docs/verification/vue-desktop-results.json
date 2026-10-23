@@ -1,0 +1,12 @@
+{
+  "run": "D:\\lovetingyuan\\litecode\\.verification\\vue-中文 1792761929948",
+  "checks": [
+    "TypeScript service upgrades for Vue; both services run over Tauri IPC",
+    "Vue template, interpolation, directive, TypeScript and SCSS tokens",
+    "Monaco definition providers resolve aliases, Vue components and template variables",
+    "F12 opens the target Vue component",
+    "Ctrl+click opens a TypeScript definition from Vue",
+    "Unsaved Vue edits update definitions without changing the file on disk"
+  ],
+  "errors": []
+}

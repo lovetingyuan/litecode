@@ -59,6 +59,11 @@ async function test(language, text, check, options = {}) {
         }
       } else {
         notifications.push(message);
+        if (options.onNotification) {
+          Promise.resolve(options.onNotification(message, send)).catch((error) => {
+            stderr += String(error);
+          });
+        }
       }
     }
   });
@@ -93,7 +98,7 @@ async function test(language, text, check, options = {}) {
             completion: { completionItem: { snippetSupport: true } },
           },
         },
-        initializationOptions: { schemas: options.schemas ?? [] },
+        initializationOptions: { schemas: options.schemas ?? [], ...options.initializationOptions },
       },
       true,
     );
@@ -331,6 +336,72 @@ try {
       },
     );
   }
+  const root = path.join(isolated, "vue-project");
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await writeFile(path.join(root, "tsconfig.json"), JSON.stringify({
+    compilerOptions: { strict: true, noEmit: true, module: "ESNext", moduleResolution: "Bundler", paths: { "@/*": ["./src/*"] }, types: [] },
+    include: ["src/**/*"],
+  }));
+  await writeFile(path.join(root, "src/helper.ts"), 'export const greeting = "hello";\n');
+  await writeFile(path.join(root, "src/Child.vue"), '<script setup lang="ts">\nconst title = "child";\n</script>\n<template><p>{{ title }}</p></template>\n');
+  const text = [
+    '<script setup lang="ts">',
+    'import Child from "@/Child.vue";',
+    'import { greeting } from "@/helper";',
+    'const message = greeting;',
+    '</script>',
+    '<template><Child /> <p>{{ message }}</p></template>',
+    '<style scoped>p { color: red; }</style>',
+  ].join("\n");
+  await writeFile(path.join(root, "src/App.vue"), text);
+  await test("vue", text, async (typescript) => {
+    const definition = (line, character) => typescript.send("textDocument/definition", {
+      textDocument: { uri: typescript.uri }, position: { line, character },
+    }, true);
+    const helper = await definition(3, 18);
+    assert.ok(helper.some((d) => fileURLToPath(d.uri).endsWith("helper.ts")), JSON.stringify(helper));
+    const component = await definition(5, 14);
+    assert.ok(component.some((d) => fileURLToPath(d.uri).endsWith("Child.vue")), JSON.stringify(component));
+    const variable = await definition(5, 29);
+    assert.ok(variable.some((d) => d.range.start.line === 3), JSON.stringify(variable));
+    await typescript.send("textDocument/didChange", {
+      textDocument: { uri: typescript.uri, version: 2 },
+      contentChanges: [{ text: text.replace('const message = greeting;', 'const message = "unsaved";\nconst count = 42;') }],
+    });
+    const unsaved = await definition(6, 29);
+    assert.ok(unsaved.some((d) => d.range.start.line === 3), JSON.stringify(unsaved));
+    // Vue's template service requests component metadata from the same tsserver.
+    await test("vue", text, async ({ send, uri }) => {
+      const hover = await send("textDocument/hover", { textDocument: { uri }, position: { line: 5, character: 14 } }, true);
+      assert.ok(hover, "Expected Vue component hover through the TypeScript bridge");
+    }, {
+      root,
+      filename: "src/App.vue",
+      source: "vue-template",
+      server: path.join(packaged, "node_modules/@vue/language-server/index.js"),
+      async onNotification(message, send) {
+        if (message.method !== "tsserver/request") return;
+        const [id, command, args] = message.params[0];
+        let result = null;
+        try {
+          result = await typescript.send("workspace/executeCommand", {
+            command: "typescript.tsserverRequest", arguments: [command, args],
+          }, true);
+        } finally {
+          await send("tsserver/response", [[id, result?.body ?? null]]);
+        }
+      },
+    });
+  }, {
+    root,
+    filename: "src/App.vue",
+    source: "vue-typescript",
+    server: path.join(packaged, "node_modules/typescript-language-server/lib/cli.mjs"),
+    initializationOptions: {
+      plugins: [{ name: "@vue/typescript-plugin", location: path.join(packaged, "node_modules/@vue/typescript-plugin"), languages: ["vue"] }],
+      tsserver: { useSyntaxServer: "never" },
+    },
+  });
 } finally {
   assert.equal(path.dirname(isolated), tmpdir());
   await rm(isolated, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

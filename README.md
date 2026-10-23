@@ -65,9 +65,11 @@ node tools/package-portable.mjs
 
 HTML/CSS/JSON 的 Microsoft 语言服务随应用提供，需要 Node。JS/TS 内置 `typescript-language-server` 6.0.2 和 TypeScript 6.0.3，使用系统 Node.js（22.22.2 或更高版本），不随安装包携带 Node.js；已有 Node.js 时打开文件即可启动语言服务，无需执行工具安装命令。兼容服务器优先使用项目 TypeScript，无项目版本时使用内置 TypeScript。项目使用 TypeScript 7 之前的版本时使用兼容 LSP；其他项目在有原生服务器时优先使用原生服务。Rust 使用项目工具链的 rust-analyzer / rustfmt。
 
+Vue 3 单文件组件支持模板、插值、指令表达式、JavaScript / TypeScript 和 CSS / SCSS / Less 高亮。应用内置 Vue Language Tools 3.3.13，打开 `.vue` 文件后自动为当前工作区启用 Vue TypeScript 插件及 Vue 语言服务器，提供 F12 / Ctrl+点击跳转；支持组件标签、模板变量、脚本符号、`tsconfig.json` 路径别名及未保存内容。该工作区的 JS/TS 服务会切换为兼容服务器以加载 Vue 插件；未打开 Vue 的工作区仍沿用原有服务器选择。需要可用的 Node.js 和工作区信任，不会自动安装项目依赖。Vue 2、Pug / Sass、框架扩展及完整 VS Code 插件功能尚未验收。
+
 源代码开发和发行构建都会运行 `build:tools` 准备内置语言服务。系统 Node.js 无法从 PATH 找到时，可设置 `litecode.nodePath` 指向 `node.exe`，然后执行 `Language: Restart Language Services`。已有配置路径和用户安装的服务器优先于内置服务器。
 
-需要额外的原生服务和格式化工具时，可按 `Ctrl+Shift+P` 执行 `Language Tools: Install JavaScript/TypeScript Tools`。该可选命令会下载校验并安装 Node.js 和语言工具，成功后自动重新连接已打开文件的语言服务；不会安装或修改项目依赖。命令 `Language Tools: Install Verified Node.js Runtime` 可单独安装 Node.js，成功后同样自动重新连接；安装失败保留已有工具。本环境的应用内下载成功路径尚未验证。
+需要额外的原生服务和格式化工具时，可按 `Ctrl+Shift+P` 执行 `Language Tools: Install JavaScript/TypeScript/Vue Tools`。该可选命令会下载校验并安装 Node.js 和语言工具，成功后自动重新连接已打开文件的语言服务；不会安装或修改项目依赖。命令 `Language Tools: Install Verified Node.js Runtime` 可单独安装 Node.js，成功后同样自动重新连接；安装失败保留已有工具。本环境的应用内下载成功路径尚未验证。
 
 常用配置：
 

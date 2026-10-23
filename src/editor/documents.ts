@@ -255,7 +255,7 @@ export function restoreDocument(mirror: Mirror) {
   // Upgrade language modes saved before their syntax support was added.
   const language =
     detected === "jsonc" ||
-    (["gitignore", "dotenv"].includes(detected) && mirror.language === "plaintext") ||
+    (detected !== "plaintext" && mirror.language === "plaintext") ||
     (detected === "typescriptreact" && mirror.language === "typescript") ||
     (detected === "javascriptreact" && mirror.language === "javascript")
       ? detected

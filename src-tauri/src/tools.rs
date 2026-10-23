@@ -12,6 +12,7 @@ pub struct ServerSpec {
     pub arguments: Vec<String>,
     pub root: Option<PathBuf>,
     pub description: String,
+    pub initialization_options: serde_json::Value,
 }
 
 // Node's module loader cannot resolve Windows extended-length resource paths.
@@ -90,6 +91,13 @@ pub fn server_spec(window: &WebviewWindow, state: &AppState, language: &str) -> 
         &mut vec![],
     );
     let tools = process_path(&state.data_dir.join("tools/languages/node_modules"));
+    let vue_tools = if tools.join("@vue/language-server/index.js").is_file()
+        && tools.join("@vue/typescript-plugin/index.js").is_file()
+    {
+        tools.clone()
+    } else {
+        packaged(window, "typescript/node_modules")
+    };
     match language {
         "rust" => {
             let executable = settings["rust-analyzer.server.path"].as_str().map(PathBuf::from).or_else(|| find_executable("rust-analyzer")).ok_or_else(|| AppError::new("missingTool", "rust-analyzer is missing. Install your project's Rust toolchain, then run: rustup component add rust-analyzer rust-src rustfmt. Cargo and rustc are also required."))?;
@@ -98,9 +106,17 @@ pub fn server_spec(window: &WebviewWindow, state: &AppState, language: &str) -> 
                 arguments: vec![],
                 root,
                 description: "rust-analyzer".into(),
+                initialization_options: serde_json::json!({}),
             })
         }
-        "typescript" | "javascript" => {
+        "typescript" | "javascript" | "vue-typescript" => {
+            let vue = language == "vue-typescript";
+            if vue && !vue_tools.join("@vue/typescript-plugin/index.js").is_file() {
+                return Err(AppError::new(
+                    "missingTool",
+                    "Vue language tools are missing. Reinstall LiteCode or run npm run build:tools for source builds.",
+                ));
+            }
             let project_ts = root
                 .as_ref()
                 .map(|r| r.join("node_modules/typescript/package.json"))
@@ -123,12 +139,17 @@ pub fn server_spec(window: &WebviewWindow, state: &AppState, language: &str) -> 
                     native.is_file().then_some(native)
                 })
                 .or_else(|| find_executable("tsgo"));
-            if !old && let Some(executable) = native {
+            // tsgo cannot load the JavaScript plugin that maps Vue virtual files.
+            if !vue
+                && !old
+                && let Some(executable) = native
+            {
                 return Ok(ServerSpec {
                     executable,
                     arguments: vec!["--lsp".into(), "--stdio".into()],
                     root,
                     description: "TypeScript Native LSP".into(),
+                    initialization_options: serde_json::json!({}),
                 });
             }
             let script = settings["litecode.typescriptLanguageServerPath"]
@@ -160,6 +181,43 @@ pub fn server_spec(window: &WebviewWindow, state: &AppState, language: &str) -> 
                     "TypeScript {} compatibility LSP",
                     version.unwrap_or_else(|| "bundled".into())
                 ),
+                initialization_options: if vue {
+                    serde_json::json!({
+                        "plugins": [{
+                            "name": "@vue/typescript-plugin",
+                            "location": vue_tools.join("@vue/typescript-plugin").to_string_lossy(),
+                            "languages": ["vue"]
+                        }],
+                        "tsserver": { "useSyntaxServer": "never" }
+                    })
+                } else {
+                    serde_json::json!({})
+                },
+            })
+        }
+        "vue" => {
+            let script = vue_tools.join("@vue/language-server/index.js");
+            if !script.is_file() {
+                return Err(AppError::new(
+                    "missingTool",
+                    "Vue language server is missing. Reinstall LiteCode or run npm run build:tools for source builds.",
+                ));
+            }
+            let sdk = root
+                .as_ref()
+                .map(|r| process_path(&r.join("node_modules/typescript/lib")))
+                .filter(|p| p.join("typescript.js").is_file())
+                .unwrap_or_else(|| vue_tools.join("typescript/lib"));
+            Ok(ServerSpec {
+                executable: node(window, state)?,
+                arguments: vec![
+                    script.to_string_lossy().into(),
+                    "--stdio".into(),
+                    format!("--tsdk={}", sdk.display()),
+                ],
+                root,
+                description: "Vue Language Server".into(),
+                initialization_options: serde_json::json!({}),
             })
         }
         "html" | "css" | "scss" | "less" | "json" | "jsonc" => {
@@ -179,6 +237,7 @@ pub fn server_spec(window: &WebviewWindow, state: &AppState, language: &str) -> 
                 ],
                 root,
                 description: format!("Microsoft {language} language service"),
+                initialization_options: serde_json::json!({}),
             })
         }
         _ => Err(AppError::new(
@@ -542,7 +601,7 @@ pub async fn install_tools(
         }
         return Err(e.into());
     }
-    Ok("Pinned TypeScript Native, TypeScript compatibility server and Prettier installed. npm verified package integrity against the bundled lockfile.".into())
+    Ok("Pinned TypeScript Native, TypeScript compatibility server, Vue Language Tools and Prettier installed. npm verified package integrity against the bundled lockfile.".into())
 }
 
 #[cfg(test)]

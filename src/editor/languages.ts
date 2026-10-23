@@ -65,6 +65,9 @@ const failureDetails = new Map<string, string>();
 const references = new Map<string, { dispose(): void }>();
 let languageEpoch = 0;
 let stopping: Promise<void> | undefined;
+let vueEnabled = false;
+let enablingVue: Promise<void> | undefined;
+const typescriptLanguages = ["typescript", "javascript", "typescriptreact", "javascriptreact"];
 const supported = new Set([
   "typescript",
   "typescriptreact",
@@ -78,6 +81,7 @@ const supported = new Set([
   "jsonc",
   "rust",
 ]);
+const serviceLanguages = new Set([...supported, "vue"]);
 export const canFormat = (language: string) => supported.has(language);
 function key(language: string) {
   return ["typescriptreact", "javascript", "javascriptreact"].includes(language)
@@ -200,7 +204,7 @@ export async function formatModel(m: monaco.editor.ITextModel) {
 }
 
 export async function ensureLanguage(id: string, language: string) {
-  if (!desktop || stopping || !supported.has(language)) {
+  if (!desktop || stopping || !serviceLanguages.has(language)) {
     return;
   }
   const m = models.get(id);
@@ -224,6 +228,39 @@ export async function ensureLanguage(id: string, language: string) {
     }
   }
   const serverId = key(language);
+  if (language === "vue" && !vueEnabled) {
+    vueEnabled = true;
+    enablingVue = (async () => {
+      await starting.get("typescript");
+      if (epoch !== languageEpoch) {
+        return;
+      }
+      const previous = clients.get("typescript");
+      if (previous) {
+        await previous.stop(2000).catch(() => {});
+        await call("lsp_stop", { serverId: "typescript" });
+        clients.delete("typescript");
+      }
+      failures.delete("typescript");
+      failureDetails.delete("typescript");
+    })();
+  }
+  if (serverId === "typescript" || language === "vue") {
+    await enablingVue;
+  }
+  if (epoch !== languageEpoch) {
+    return;
+  }
+  if (language === "vue") {
+    await startLanguage("typescript", "vue-typescript", root, epoch);
+    if (epoch !== languageEpoch || !clients.has("typescript")) {
+      return;
+    }
+  }
+  return startLanguage(serverId, serverId === "typescript" && vueEnabled ? "vue-typescript" : serverId, root, epoch);
+}
+
+async function startLanguage(serverId: string, language: string, root: string | null, epoch: number) {
   if (clients.has(serverId) || failures.has(serverId)) {
     return;
   }
@@ -231,6 +268,7 @@ export async function ensureLanguage(id: string, language: string) {
     return starting.get(serverId);
   }
   const pending = (async () => {
+    let client: MonacoLanguageClient | undefined;
     const reader = new IpcReader();
     const writer = new IpcWriter(serverId);
     const onEvent = new Channel<{ sequence: number; kind: string; message: Message | string }>();
@@ -246,7 +284,7 @@ export async function ensureLanguage(id: string, language: string) {
         logs.push(String(event.message));
       } else if (event.kind === "exit") {
         reader.close();
-        if (epoch === languageEpoch) {
+        if (epoch === languageEpoch && clients.get(serverId) === client) {
           clients.delete(serverId);
           setApp({ languageStatus: `${serverId} stopped` });
         }
@@ -255,9 +293,12 @@ export async function ensureLanguage(id: string, language: string) {
       }
     };
     try {
-      const description = await trustedCall<string>("lsp_start", {
+      const { description, initializationOptions } = await trustedCall<{
+        description: string;
+        initializationOptions: Record<string, unknown>;
+      }>("lsp_start", {
         serverId,
-        language: serverId,
+        language,
         onEvent,
       });
       if (epoch !== languageEpoch) {
@@ -266,9 +307,9 @@ export async function ensureLanguage(id: string, language: string) {
       }
       const selector =
         serverId === "typescript"
-          ? ["typescript", "javascript", "typescriptreact", "javascriptreact"]
+          ? [...typescriptLanguages, ...(language === "vue-typescript" ? ["vue"] : [])]
           : [language];
-      const client = new MonacoLanguageClient({
+      client = new MonacoLanguageClient({
         id: serverId,
         name: description,
         messageTransports: { reader, writer },
@@ -281,7 +322,7 @@ export async function ensureLanguage(id: string, language: string) {
                 index: 0,
               }
             : undefined,
-          initializationOptions: { schemas: settingsSchemas() },
+          initializationOptions: { schemas: settingsSchemas(), ...initializationOptions },
           middleware: {
             workspace: {
               configuration: async (params) =>
@@ -296,6 +337,28 @@ export async function ensureLanguage(id: string, language: string) {
           errorHandler: { error: () => ({ action: 1 }), closed: () => ({ action: 1 }) },
         },
       });
+      if (language === "vue") {
+        const vueClient = client;
+        client.onNotification("tsserver/request", async ([id, command, args]: [number, string, unknown]) => {
+          let response: unknown = null;
+          try {
+            const result = await clients.get("typescript")?.sendRequest<{ body?: unknown }>(
+              "workspace/executeCommand",
+              { command: "typescript.tsserverRequest", arguments: [command, args] },
+            );
+            response = result?.body ?? null;
+          } catch (e) {
+            if (epoch === languageEpoch) {
+              notify(`Vue TypeScript: ${errorMessage(e)}`);
+            }
+          } finally {
+            // Always respond, including errors, so Vue can release its pending request.
+            if (epoch === languageEpoch) {
+              await vueClient.sendNotification("tsserver/response", [id, response]).catch(() => {});
+            }
+          }
+        });
+      }
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([
@@ -448,9 +511,12 @@ export async function stopLanguages() {
     await Promise.allSettled([...clients.values()].map((client) => client.stop(2000)));
     await Promise.allSettled([...ids].map((serverId) => call("lsp_stop", { serverId })));
     await Promise.allSettled(starting.values());
+    await enablingVue;
     clients.clear();
     failures.clear();
     failureDetails.clear();
+    vueEnabled = false;
+    enablingVue = undefined;
   })();
   try {
     await stopping;

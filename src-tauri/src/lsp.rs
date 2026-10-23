@@ -80,7 +80,7 @@ pub async fn lsp_start(
     server_id: String,
     language: String,
     on_event: Channel<ServerEvent>,
-) -> Result<String> {
+) -> Result<Value> {
     let disk = state.disk_lock.lock().unwrap();
     let key = format!("{}/{}", window.label(), server_id);
     // A WebView reload loses its client transports; replace that window's old process.
@@ -202,7 +202,10 @@ pub async fn lsp_start(
             servers.remove(&key);
         }
     });
-    Ok(spec.description)
+    Ok(serde_json::json!({
+        "description": spec.description,
+        "initializationOptions": spec.initialization_options,
+    }))
 }
 
 #[tauri::command]

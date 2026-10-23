@@ -186,7 +186,7 @@ export const commands: Command[] = [
   },
   {
     id: "litecode.installLanguages",
-    label: "Language Tools: Install JavaScript/TypeScript Tools",
+    label: "Language Tools: Install JavaScript/TypeScript/Vue Tools",
     run: async () => {
       notify("Installing pinned language tools and Prettier. Package integrity will be verified…");
       const result = await call<string>("install_tools", { kind: "languages" });

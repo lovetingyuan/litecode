@@ -743,6 +743,14 @@ describe("Opening documents", () => {
     [".gitignore", "plaintext", "gitignore"],
     [".env", "plaintext", "dotenv"],
     [".env.production.local", "plaintext", "dotenv"],
+    ["App.vue", "plaintext", "vue"],
+    ["Program.cs", "plaintext", "csharp"],
+    ["index.php", "plaintext", "php"],
+    ["Main.kt", "plaintext", "kotlin"],
+    ["main.pyi", "plaintext", "python"],
+    ["main.hpp", "plaintext", "cpp"],
+    ["Dockerfile", "plaintext", "dockerfile"],
+    ["file.unknown", "plaintext", "plaintext"],
   ])(
     "repairs the saved language mode for %s without changing its buffer",
     (name, oldLanguage, language) => {
@@ -750,7 +758,7 @@ describe("Opening documents", () => {
       const text =
         language === "jsonc"
           ? '{\n  // unsaved config edits\n  "compilerOptions": { "strict": true, },\n}'
-          : "unsaved JSX edits";
+          : "unsaved source edits";
       vi.mocked(monaco.editor.createModel).mockReturnValueOnce(
         new Buffer(text) as unknown as Monaco.editor.ITextModel,
       );
@@ -768,6 +776,20 @@ describe("Opening documents", () => {
       expect(models.get("restored")!.getValue()).toBe(text);
     },
   );
+
+  it("preserves a saved non-plaintext language choice", () => {
+    vi.mocked(languageFor).mockReturnValue("php");
+    const text = "unsaved HTML edits";
+    vi.mocked(monaco.editor.createModel).mockReturnValueOnce(
+      new Buffer(text) as unknown as Monaco.editor.ITextModel,
+    );
+    restoreDocument({
+      id: "manual-language", path: "C:/workspace/index.php", language: "html",
+      text, dirty: true, version: 3, revision: "revision", encoding: "utf8",
+    });
+    expect(useApp.getState().docs["manual-language"]).toMatchObject({ language: "html", dirty: true });
+    expect(models.get("manual-language")!.getValue()).toBe(text);
+  });
 
   it.each([
     ["\\\\?\\D:\\project\\App.tsx", "D:\\project\\App.tsx"],
