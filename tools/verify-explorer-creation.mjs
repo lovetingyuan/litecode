@@ -1,4 +1,5 @@
 import { workspaceFixtureCommands } from "./explorer-fixture.mjs";
+import { offscreenCreationPaths, verifyOffscreenCreation } from "./verify-explorer-offscreen-creation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium } from "playwright";
@@ -6,6 +7,7 @@ import { chromium } from "playwright";
 // Real tree, focus, virtual scroll and Monaco; disk IPC is a mutable fixture.
 const root = "C:/creation-fixture";
 const initial = ["src/dir/existing.txt", ...Array.from({ length: 80 }, (_, i) => `src/dir/file-${String(i).padStart(3, "0")}.txt`), "src/empty/", "src/assets", "src/b.txt", "root.txt", ...Array.from({ length: 100 }, (_, i) => `z-folder-${String(i).padStart(3, "0")}/`)];
+let fixturePaths = [...offscreenCreationPaths, "src/"];
 const output = ".verification/explorer-creation";
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -25,7 +27,7 @@ export const mediaSource = path => path;
 export const errorMessage = e => e?.message ?? String(e);
 export const channel = fn => ({onmessage:fn});
 export async function bootstrap() { return {root:${JSON.stringify(root)},documents:[],session:{sidebarWidth:340},recent:[],settings:{},keybindings:[],warnings:[],dataDir:''}; }
-window.creationPaths = ${JSON.stringify(initial)};
+window.creationPaths = ${JSON.stringify(fixturePaths)};
 window.creationCalls = [];
 window.renameCalls = [];
 export async function call(command, args) {
@@ -80,10 +82,19 @@ async function toolbar(name) {
   await input.waitFor();
   await settle();
 }
+async function reveal(path) {
+  await page.evaluate(async path => (await import('/src/components/Explorer.tsx')).revealInTree(path), `${root}/${path}`);
+  await row(path).waitFor();
+  await settle();
+  await page.waitForTimeout(180); // Virtual rows suppress pointer input briefly after scrolling.
+}
 async function menu(path, name) {
   const sticky = tree.locator(`[data-file-tree-sticky-path="${path}"]`);
   if (await sticky.isVisible()) await sticky.click({ button: "right" });
-  else await row(path).click({ button: "right" });
+  else {
+    await reveal(path);
+    await row(path).click({ button: "right" });
+  }
   await page.getByRole("menuitem", { name: `${name}…`, exact: true }).click();
   await input.waitFor();
   await settle();
@@ -102,6 +113,17 @@ try {
   await mkdir(output, { recursive: true });
   await page.goto(process.env.LITECODE_TEST_URL ?? "http://127.0.0.1:1420", { timeout: 60000 });
   await row("src/").waitFor();
+  const offscreen = await verifyOffscreenCreation(page);
+  const creations = await page.evaluate(() => window.creationCalls);
+  assert.equal(creations.length, offscreen.length);
+  assert(creations.every(call => call.parent === "scripts"));
+  for (const result of offscreen) {
+    assert(!(await page.evaluate(() => window.creationPaths)).some(path => path.replace(/\/$/, "") === result.canceledPath));
+  }
+  fixturePaths = initial;
+  await page.reload();
+  await row("src/").waitFor();
+  checks.push("Offscreen folder/file selections keep one visible focused input across overscan and sticky transitions; Enter commits into scripts and Escape leaves disk untouched");
   await toolbar("New Folder");
   assert.equal(await input.inputValue(), "");
   await visibleInput();
@@ -184,12 +206,6 @@ try {
   assert.equal((await page.evaluate(() => window.creationCalls)).at(-1).parent, "");
   checks.push("Root context ignores old selection, reveals below sticky rows, and Enter respects IME composition");
 
-  async function reveal(path) {
-    await page.evaluate(async path => (await import('/src/components/Explorer.tsx')).revealInTree(path), `${root}/${path}`);
-    await row(path).waitFor();
-    await settle();
-    await page.waitForTimeout(180); // Virtual rows suppress pointer input briefly after scrolling.
-  }
   await reveal("src/b.txt");
   await row("src/b.txt").click();
   await page.keyboard.press("F2");

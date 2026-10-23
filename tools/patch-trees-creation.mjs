@@ -62,6 +62,11 @@ export const creationPatches = [
 \tconst comparison = compareSegmentSortKeys(`],
   ]],
   ["dist/render/FileTreeView.js", [
+    // JSX runtime keys must be separate from DOM props to preserve a focused input.
+    ['\n\t\t}),\n\t\tkey,\n\t\tonContextMenu:', '\n\t\t}),\n\t\tonContextMenu:'],
+    ['\t\tchildren: rowContent\n\t});\n\treturn', '\t\tchildren: rowContent\n\t}, key);\n\treturn'],
+    ['\t\tchildren: rowContent\n\t});\n}\nfunction renderRangeChildren', '\t\tchildren: rowContent\n\t}, key);\n}\nfunction renderRangeChildren'],
+    ['.map((row, slotIndex) => renderStyledRow(frame, row, range.start + slotIndex))', '.map((row) => renderStyledRow(frame, row, getFileTreeRowPath(row)))'],
     ['import { RenameInput } from "./RenameInput.js";', 'import { InlineEditInput } from "./InlineEditInput.js";'],
     [/\tconst renamingValue = isRenamingRow[^\n]*\n\tconst renameInput =[\s\S]*?\n\tconst rowContent =/, '\tconst renameInput = isSticky || !isRenamingRow ? null : jsx(InlineEditInput, { session: controller.getEditSession(), registerInput: registerRenameInput });\n\tconst rowContent ='],
     ['const commonProps = {', 'const commonProps = {\n\t\t"data-file-tree-editing": controller.getEditingPath() === targetPath ? "true" : undefined,\n\t\t"data-file-tree-creating": controller.getCreatingPath() === targetPath ? "true" : undefined,'],

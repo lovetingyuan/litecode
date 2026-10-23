@@ -12,6 +12,10 @@ and input implementation. Patch replacements for the same dependency file
 are grouped before writing. Vite's cache key includes all patch sources.
 Review these patches when upgrading `@pierre/trees`.
 
+Virtual rows use stable path keys passed as the JSX runtime's separate key
+argument. Keeping keys in DOM props lets sticky/scroll range changes remount
+the focused creation input, whose blur would cancel an empty draft.
+
 The patched model exposes `startCreating`, `cancelCreating`, `getCreatingPath`,
 `startRenaming`, `cancelEditing`, and `getEditingPath`. Creation and rename share
 `InlineEditSession` and `InlineEditInput`, with at most one active session.

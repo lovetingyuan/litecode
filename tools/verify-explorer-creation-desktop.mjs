@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { copyFile, mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { chromium } from "playwright";
+import { offscreenCreationPaths, verifyOffscreenCreation } from "./verify-explorer-offscreen-creation.mjs";
 
 // Isolated portable app and real Tauri commands, disk, watcher and WebView2.
 const run = path.resolve(".verification", `explorer-creation-desktop-${Date.now()}`);
@@ -152,6 +153,18 @@ try {
   checks.push("Real watcher events preserve folder descendants and dirty editor content while rebinding their paths");
   await page.waitForTimeout(650);
   assert(!((await page.locator("body").innerText()).includes("Backup failed:")), "Rename must not leave backups pointing to deleted source directories");
+  for (const entry of offscreenCreationPaths) {
+    const target = path.join(root, entry);
+    await mkdir(entry.endsWith("/") ? target : path.dirname(target), { recursive: true });
+    if (!entry.endsWith("/")) await writeFile(target, "fixture");
+  }
+  await page.evaluate(async () => (await import('/src/explorer/workspaceTree.ts')).refreshTree());
+  const offscreen = await verifyOffscreenCreation(page);
+  for (const result of offscreen) {
+    await access(path.join(root, result.path));
+    await assert.rejects(access(path.join(root, result.canceledPath)));
+  }
+  checks.push("Native offscreen folder/file creation retains input focus across overscan and sticky transitions; Enter writes to scripts and Escape creates nothing");
   await page.screenshot({path:path.join(run,"verified.png")});
   await writeFile(path.join(run,"report.json"), JSON.stringify({checks},null,2));
   console.log(JSON.stringify({run,checks},null,2));
