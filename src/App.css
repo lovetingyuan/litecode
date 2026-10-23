@@ -756,6 +756,11 @@ kbd {
   color: #e0e0e0;
   background: none;
 }
+/* Monaco menus render in shadow roots and inherit these tokens from body. */
+body.monaco-component {
+  --vscode-cornerRadius-large: 6px;
+  --vscode-cornerRadius-medium: 4px;
+}
 .monaco-host {
   flex: 1;
   min-height: 0;

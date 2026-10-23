@@ -149,7 +149,16 @@ try {
   await mkdir(output, { recursive: true });
   await page.goto(process.env.LITECODE_TEST_URL ?? "http://localhost:1420");
   await row(files[0]).waitFor();
-  await newFileByDoubleClick();
+  assert.equal(await page.locator(".tabs-toolbar").isVisible(), false);
+  assert.equal(await page.getByRole("tablist", { name: "Open editors" }).count(), 0);
+  await open(files[0], true);
+  assert.equal(await page.locator(".tabs-toolbar").isVisible(), true);
+  await page.getByRole("button", { name: `Close ${files[0]}`, exact: true }).click();
+  assert.equal(await page.locator(".tabs-toolbar").isVisible(), false);
+  assert.equal(await page.locator(".tabs-toolbar").evaluate((el) => el.offsetHeight), 0);
+  console.log(
+    "PASS: the toolbar is hidden without files, appears on open and hides after closing the last file",
+  );
   await open(files[0], true);
   assert.equal(
     await page.locator(".editor-tab").count(),
@@ -165,7 +174,7 @@ try {
     "Double-clicking a tab label or toolbar actions does not create a file",
   );
   console.log(
-    "PASS: double-clicking empty or populated toolbar space creates and focuses one untitled file; tabs and actions are excluded",
+    "PASS: double-clicking toolbar space creates and focuses one untitled file; tabs and actions are excluded",
   );
   const overlay = page.locator(".editor-tabs-scrollbar").first();
   const slider = overlay.locator(".editor-tabs-scrollbar-thumb");

@@ -300,6 +300,7 @@ export function EditorGroup({ group }: { group: Group }) {
     >
       <div
         className="tabs-toolbar"
+        style={{ display: group.tabs.length === 0 ? "none" : undefined }}
         onDoubleClick={(event) => {
           if (event.target !== event.currentTarget && event.target !== tabs.current) {
             return;
