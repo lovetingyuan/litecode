@@ -104,10 +104,10 @@ pub fn detect(settings: &Value, root: Option<&Path>) -> Result<Vec<Profile>> {
         programs.join("Git/bin/bash.exe"),
         home().join("AppData/Local/Programs/Git/bin/bash.exe"),
     ];
-    if let Some(git) = find("git.exe") {
-        if let Some(dir) = git.parent().and_then(Path::parent) {
-            git_paths.insert(0, dir.join("bin/bash.exe"));
-        }
+    if let Some(git) = find("git.exe")
+        && let Some(dir) = git.parent().and_then(Path::parent)
+    {
+        git_paths.insert(0, dir.join("bin/bash.exe"));
     }
     if let Some(path) = git_paths.into_iter().find(|p| p.is_file()) {
         builtins.push(profile("Git Bash", path, "bash"));

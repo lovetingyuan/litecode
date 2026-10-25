@@ -6,6 +6,21 @@ export type DiskDocument = {
   encoding: string;
   eol: string;
 };
+export type ConflictContext = {
+  id: string;
+  path: string;
+  revision: string | null;
+  version: number;
+  encoding: string;
+};
+export type DiffRequest = {
+  title: string;
+  before: string;
+  after: string;
+  language: string;
+  conflict?: ConflictContext;
+  error?: string;
+};
 export type FileKind = "text" | "image" | "svg" | "video" | "audio" | "binary";
 export type FileInfo = { kind: FileKind; size: number; stamp: string };
 export type MediaView = {

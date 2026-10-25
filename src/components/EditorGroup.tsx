@@ -12,7 +12,7 @@ import {
   addHistory,
   moveTab,
   splitGroup,
-  resolveConflict,
+  compareDisk,
   patchDoc,
   saveEditorView,
   openPath,
@@ -31,7 +31,7 @@ import { FileIcon, Icon, IconButton } from "./ui";
 export { FileIcon } from "./ui";
 import { createSearchEditor } from "../search/search";
 import { EditorTabMenu } from "./EditorTabMenu";
-import type { Group, DiskDocument, Query, SearchMatch } from "../types/types";
+import type { Group, Query, SearchMatch } from "../types/types";
 import { isGitIgnored } from "../utils/gitStatus";
 import { isMarkdownView, isTextView } from "../utils/media";
 import { MediaPreview } from "./MediaPreview";
@@ -402,20 +402,6 @@ export function EditorGroup({ group }: { group: Group }) {
           <button onClick={() => void compareDisk(doc.id).catch((e) => notify(errorMessage(e)))}>
             Compare
           </button>
-          <button
-            onClick={() =>
-              void resolveConflict(doc.id, "overwrite").catch((e) => notify(errorMessage(e)))
-            }
-          >
-            Overwrite
-          </button>
-          <button
-            onClick={() =>
-              void resolveConflict(doc.id, "reload").catch((e) => notify(errorMessage(e)))
-            }
-          >
-            Reload
-          </button>
         </div>
       )}
       {doc?.searchQuery && <SearchEditorBar id={doc.id} query={doc.searchQuery} />}
@@ -619,27 +605,5 @@ function SearchEditorBar({ id, query }: { id: string; query: Query }) {
       </button>
       <span className="muted">Double-click a result to open its source.</span>
     </div>
-  );
-}
-
-export async function compareDisk(id: string) {
-  const doc = useApp.getState().docs[id];
-  if (!doc.path) {
-    return;
-  }
-  const disk = await call<DiskDocument>("read_document", {
-    path: doc.path,
-    force: true,
-    encoding: doc.encoding,
-  });
-  window.dispatchEvent(
-    new CustomEvent("show-diff", {
-      detail: {
-        title: `${doc.name} · On Disk ↔ In Editor`,
-        before: disk.text,
-        after: models.get(id)?.getValue() ?? "",
-        language: doc.language,
-      },
-    }),
   );
 }

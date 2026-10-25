@@ -183,8 +183,12 @@ export default function App() {
         syncMaximized();
       }
       const onFocus = await win.onFocusChanged(({ payload: focused }) => {
-        if (!disposed && !focused) {
-          void autoSave("onWindowChange");
+        if (!disposed) {
+          if (focused) {
+            void refreshDocuments().catch((e) => notify(errorMessage(e)));
+          } else {
+            void autoSave("onWindowChange");
+          }
         }
       });
       if (disposed) {

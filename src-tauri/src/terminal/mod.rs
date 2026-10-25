@@ -360,6 +360,7 @@ fn build_command(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri binds these named IPC arguments individually.
 pub async fn terminal_create(
     window: WebviewWindow,
     state: State<'_, AppState>,
@@ -375,7 +376,7 @@ pub async fn terminal_create(
     let root = state.require_workspace_trust(window.label())?;
     let expected = expected_root
         .map(PathBuf::from)
-        .map(|p| std::fs::canonicalize(p))
+        .map(std::fs::canonicalize)
         .transpose()?;
     if root != expected {
         return Err(AppError::new(
@@ -650,10 +651,10 @@ pub fn terminal_ack(
 #[tauri::command]
 pub fn terminal_close(window: WebviewWindow, state: State<'_, AppState>, id: String) -> Result<()> {
     let mut sessions = state.terminals.sessions.lock().unwrap();
-    if let Some(session) = sessions.get(&id) {
-        if session.owner != window.label() {
-            return Err(pty_error("Terminal belongs to another window"));
-        }
+    if let Some(session) = sessions.get(&id)
+        && session.owner != window.label()
+    {
+        return Err(pty_error("Terminal belongs to another window"));
     }
     let removed = sessions.remove(&id);
     drop(sessions);

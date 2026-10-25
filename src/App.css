@@ -3,7 +3,7 @@
 @import "./styles/sidebar-scrollbar.css";
 @plugin "daisyui" {
   themes: false;
-  include: tab;
+  include: tab, button;
   root: ".search-view";
   logs: false;
 }
@@ -1023,6 +1023,15 @@ body.monaco-component {
   background: #0078d4;
 }
 .diff-panel {
+  --color-base-100: #1f1f1f;
+  --color-base-200: #2b2b2b;
+  --color-base-300: #454545;
+  --color-base-content: #ccc;
+  --size-field: 0.25rem;
+  --radius-field: 3px;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
   position: fixed;
   inset: 7%;
   z-index: 151;
@@ -1049,6 +1058,14 @@ body.monaco-component {
 .diff-editor {
   flex: 1;
   min-height: 0;
+}
+/* The global button reset is outside daisyUI's component layer. */
+.diff-panel .btn {
+  border: var(--border) solid var(--color-base-300);
+  background: var(--color-base-200);
+}
+.diff-panel .btn:hover:not(:disabled) {
+  background: var(--color-base-300);
 }
 .conflict-banner {
   display: flex;

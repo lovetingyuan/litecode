@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as Monaco from "monaco-editor";
-import type { Doc } from "../types/types";
+import type { Doc, DiskDocument, DiffRequest } from "../types/types";
 
 vi.mock("./monaco", () => ({
   monaco: {
     languages: { getLanguages: () => [{ id: "plaintext" }], register: vi.fn() },
     Uri: { file: (path: string) => path, parse: (id: string) => id },
-    editor: { getModel: () => null, createModel: vi.fn(), setModelLanguage: vi.fn() },
+    editor: { getModel: () => null, createModel: vi.fn(), setModelLanguage: vi.fn(), EndOfLineSequence: { LF: 0, CRLF: 1 } },
   },
   loadSyntax: vi.fn().mockResolvedValue(undefined),
   languageFor: vi.fn(() => "plaintext"),
@@ -65,6 +65,9 @@ import {
   refreshDocuments,
   renameDocuments,
   beginDocumentMove,
+  readConflictDiff,
+  compareDisk,
+  resolveConflict,
 } from "./documents";
 import { ask } from "../components/dialog";
 import { initialSearch, primarySearchId, setApp, useApp } from "../store/store";
@@ -88,7 +91,7 @@ class Buffer {
     return this.version;
   }
   getEOL() {
-    return "\n";
+    return this.text.includes("\r\n") ? "\r\n" : "\n";
   }
   getLanguageId() {
     return "plaintext";
@@ -97,6 +100,13 @@ class Buffer {
     return false;
   }
   dispose() {}
+  setValue(text: string) { this.edit(text); }
+  pushEOL = vi.fn();
+  pushStackElement = vi.fn();
+  getFullModelRange() { return {}; }
+  pushEditOperations = vi.fn((_selections: unknown[], edits: { text: string }[]) => {
+    this.edit(edits[0].text);
+  });
   onDidChangeContent(listener: () => void) {
     this.listeners.add(listener);
     return { dispose: () => this.listeners.delete(listener) };
@@ -1062,7 +1072,7 @@ describe("Media documents", () => {
     vi.mocked(call).mockImplementation(async (command) => {
       if (command === "inspect_file") {
         if (missing) {
-          throw { code: "io", message: "File missing" };
+          throw { code: "notFound", message: "File missing" };
         }
         return { kind: "image", size: 24, stamp: "new" } as never;
       }
@@ -1364,7 +1374,7 @@ describe("Document identity and save snapshots", () => {
     vi.mocked(monaco.editor.createModel).mockImplementation((text, _lang, uri) => fake(text ?? "", String(uri)) as never);
     vi.mocked(call).mockImplementation(async (command) => {
       if (command === "pick_path") { return "C:/workspace/b.txt" as never; }
-      if (command === "read_document") { throw { code: "io", message: "not found" }; }
+      if (command === "read_document") { throw { code: "notFound", message: "not found" }; }
       return "saved" as never;
     });
     await save(id, true);
@@ -1400,4 +1410,219 @@ it("restores large-file protection without starting a language service", () => {
   restoreDocument({ id: "large-doc", path: "C:/workspace/large.ts", text: "let x=1", version: 1, revision: "r", encoding: "utf8", dirty: false, language: "typescript", kind: "text", fileInfo: { kind: "text", size: 21 * 1024 * 1024, stamp: "1" } });
   expect(useApp.getState().docs["large-doc"].large).toBe(true);
   expect(ensureLanguage).not.toHaveBeenCalled();
+});
+
+describe("External edits and conflict choices", () => {
+  const disk = (revision = "external"): DiskDocument => ({
+    path: "unused", text: "磁盘内容\r\n第二行\r\n", revision, encoding: "utf8", eol: "CRLF",
+  });
+  beforeEach(() => {
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "inspect_file") { return { kind: "text", size: 24, stamp: "external" } as never; }
+      if (command === "read_document") { return disk() as never; }
+      return (command === "save_document" ? "saved-choice" : undefined) as never;
+    });
+  });
+
+  it("reloads a clean buffer without writing to disk", async () => {
+    const { id, buffer } = addDocument({ dirty: false });
+    await refreshDocuments();
+    expect(buffer.getValue()).toBe(disk().text);
+    expect(useApp.getState().docs[id]).toMatchObject({
+      dirty: false, conflict: false, revision: "external", encoding: "utf8", eol: "CRLF",
+    });
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("preserves the dirty buffer and marks conflicts without changing its saved revision", async () => {
+    const { id, buffer } = addDocument();
+    await refreshDocuments();
+    expect(buffer.getValue()).toBe("edited");
+    expect(useApp.getState().docs[id]).toMatchObject({ dirty: true, conflict: true, revision: "old-revision" });
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("shows both snapshots without writing or changing the buffer when comparing/cancelling", async () => {
+    const { id, buffer } = addDocument({ conflict: true });
+    const target = new EventTarget();
+    const shown = vi.fn();
+    target.addEventListener("show-diff", shown);
+    vi.stubGlobal("window", target);
+    await compareDisk(id);
+    const diff = (shown.mock.calls[0][0] as CustomEvent<DiffRequest>).detail;
+    expect(diff).toMatchObject({ before: disk().text, after: "edited", conflict: { id, revision: "external", version: 1 } });
+    expect(writes()).toHaveLength(0);
+    expect(buffer.getValue()).toBe("edited");
+    expect(useApp.getState().docs[id]).toMatchObject({ conflict: true, dirty: true });
+  });
+
+  it("opens comparison for manual save conflicts and suppresses repeated auto-save attempts", async () => {
+    const { id } = addDocument();
+    const target = new EventTarget();
+    const shown = vi.fn();
+    target.addEventListener("show-diff", shown);
+    vi.stubGlobal("window", target);
+    const original = vi.mocked(call).getMockImplementation()!;
+    vi.mocked(call).mockImplementation(async (command, args) => {
+      if (command === "save_document") { throw { code: "conflict", message: "Disk changed" }; }
+      return original(command, args);
+    });
+    await expect(save(id)).rejects.toMatchObject({ code: "conflict" });
+    expect(shown).toHaveBeenCalledOnce();
+    await autoSave("onWindowChange");
+    expect(writes()).toHaveLength(1);
+    expect(shown).toHaveBeenCalledOnce();
+    patchDoc(id, { conflict: false });
+    await autoSave("onWindowChange");
+    expect(writes()).toHaveLength(2);
+    expect(shown).toHaveBeenCalledOnce();
+  });
+
+  it("chooses disk content as an undoable buffer edit without writing to disk", async () => {
+    const { id, buffer } = addDocument({ conflict: true });
+    const diff = await readConflictDiff(id);
+    await resolveConflict(diff.conflict!, "reload");
+    expect(buffer.getValue()).toBe(disk().text);
+    expect(buffer.pushStackElement).toHaveBeenCalledTimes(2);
+    expect(buffer.pushEditOperations).toHaveBeenCalledOnce();
+    expect(useApp.getState().docs[id]).toMatchObject({ dirty: false, conflict: false, revision: "external", eol: "CRLF" });
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("saves exactly the displayed editor content without format-on-save", async () => {
+    const { id, buffer } = addDocument({ conflict: true });
+    buffer.edit("当前内容\r\n保留这一版\r\n");
+    setApp({ settings: { "editor.formatOnSave": true } });
+    vi.mocked(canFormat).mockReturnValue(true);
+    const diff = await readConflictDiff(id);
+    await resolveConflict(diff.conflict!, "overwrite");
+    expect(writes()).toEqual([expect.objectContaining({ text: diff.after, revision: "external" })]);
+    expect(formatModel).not.toHaveBeenCalled();
+    expect(useApp.getState().docs[id]).toMatchObject({ dirty: false, conflict: false, revision: "saved-choice" });
+  });
+
+  it.each(["reload", "overwrite"] as const)("rejects a changed disk snapshot before %s", async (action) => {
+    const { id, buffer } = addDocument({ conflict: true });
+    const diff = await readConflictDiff(id);
+    vi.mocked(call).mockImplementation(async (command) => command === "read_document" ? disk("newer") as never : undefined as never);
+    await expect(resolveConflict(diff.conflict!, action)).rejects.toMatchObject({ code: "conflict" });
+    expect(writes()).toHaveLength(0);
+    expect(buffer.getValue()).toBe("edited");
+    expect((await readConflictDiff(id)).conflict!.revision).toBe("newer");
+  });
+
+  it.each(["version", "path", "encoding", "closed"] as const)("rejects changed %s while comparing", async (change) => {
+    const { id, buffer } = addDocument({ conflict: true });
+    const diff = await readConflictDiff(id);
+    if (change === "version") { buffer.edit("new edits"); }
+    if (change === "path") { patchDoc(id, { path: "C:/workspace/renamed.txt" }); }
+    if (change === "encoding") { patchDoc(id, { encoding: "utf16le" }); }
+    if (change === "closed") { setApp({ docs: {} }); }
+    await expect(resolveConflict(diff.conflict!, "overwrite")).rejects.toMatchObject({ code: "conflict" });
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("rechecks editor changes after the asynchronous disk read", async () => {
+    const { id, buffer } = addDocument({ conflict: true });
+    const diff = await readConflictDiff(id);
+    const pending = deferred<DiskDocument>();
+    vi.mocked(call).mockImplementation(async (command) => command === "read_document" ? await pending.promise as never : undefined as never);
+    const choosing = resolveConflict(diff.conflict!, "reload");
+    await vi.waitFor(() => expect(vi.mocked(call).mock.calls.filter(([cmd]) => cmd === "read_document")).toHaveLength(2));
+    buffer.edit("typed while reading");
+    pending.resolve(disk());
+    await expect(choosing).rejects.toMatchObject({ code: "conflict" });
+    expect(buffer.getValue()).toBe("typed while reading");
+  });
+
+  it("serializes duplicate resolutions and writes only once", async () => {
+    const { id } = addDocument({ conflict: true });
+    const diff = await readConflictDiff(id);
+    const results = await Promise.allSettled([
+      resolveConflict(diff.conflict!, "overwrite"), resolveConflict(diff.conflict!, "overwrite"),
+    ]);
+    expect(results.map(result => result.status)).toEqual(["fulfilled", "rejected"]);
+    expect(writes()).toHaveLength(1);
+  });
+
+  it("preserves the saved baseline if the backend rejects a last-moment disk change", async () => {
+    const { id, buffer } = addDocument({ conflict: true });
+    const diff = await readConflictDiff(id);
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "read_document") { return disk() as never; }
+      if (command === "save_document") { throw { code: "conflict", message: "Changed again" }; }
+      return undefined as never;
+    });
+    await expect(resolveConflict(diff.conflict!, "overwrite")).rejects.toMatchObject({ code: "conflict" });
+    expect(buffer.getValue()).toBe("edited");
+    expect(useApp.getState().docs[id]).toMatchObject({ dirty: true, conflict: true, revision: "old-revision" });
+  });
+
+  it.each(["notFound", "io"])("reports %s reads without presenting an empty disk as a valid choice", async (code) => {
+    const { id, buffer } = addDocument({ conflict: true });
+    vi.mocked(call).mockRejectedValue({ code, message: code === "io" ? "Permission denied" : "File deleted" });
+    const diff = await readConflictDiff(id);
+    expect(diff.error).toContain(code === "io" ? "Permission denied" : "File deleted");
+    expect(diff.conflict!.revision).toBeNull();
+    await expect(resolveConflict(diff.conflict!, "overwrite")).rejects.toMatchObject({ code: "conflict" });
+    expect(buffer.getValue()).toBe("edited");
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("does not mislabel permission errors as file deletion", async () => {
+    const { id } = addDocument();
+    vi.mocked(call).mockRejectedValue({ code: "io", message: "Permission denied" });
+    await refreshDocuments();
+    expect(useApp.getState().docs[id].deleted).not.toBe(true);
+    expect(useApp.getState().notice).toContain("Permission denied");
+  });
+
+  it("discards reads that complete after a newer refresh", async () => {
+    const { id, buffer } = addDocument({ dirty: false });
+    const pending = deferred<DiskDocument>();
+    let reads = 0;
+    const original = vi.mocked(call).getMockImplementation()!;
+    vi.mocked(call).mockImplementation(async (command, args) => {
+      if (command === "read_document" && ++reads === 1) { return await pending.promise as never; }
+      return original(command, args);
+    });
+    const refreshing = refreshDocuments();
+    await vi.waitFor(() => expect(reads).toBe(1));
+    await refreshDocuments();
+    pending.resolve({ ...disk("stale"), text: "stale content" });
+    await refreshing;
+    expect(buffer.getValue()).toBe(disk().text);
+    expect(useApp.getState().docs[id].revision).toBe("external");
+  });
+
+  it("does not discard a pending refresh when an unrelated file changes", async () => {
+    const { id, buffer } = addDocument({ dirty: false });
+    const pending = deferred<DiskDocument>();
+    const original = vi.mocked(call).getMockImplementation()!;
+    vi.mocked(call).mockImplementation(async (command, args) =>
+      command === "read_document" ? await pending.promise as never : original(command, args));
+    const refreshing = refreshDocuments();
+    await vi.waitFor(() => expect(vi.mocked(call).mock.calls.some(([cmd]) => cmd === "read_document")).toBe(true));
+    await refreshDocuments(["C:/workspace/unrelated.txt"]);
+    pending.resolve(disk());
+    await refreshing;
+    expect(buffer.getValue()).toBe(disk().text);
+    expect(useApp.getState().docs[id].revision).toBe("external");
+  });
+
+  it("discards external reads that overlap an edit and successful save", async () => {
+    const { id, buffer } = addDocument({ dirty: false });
+    const pending = deferred<DiskDocument>();
+    const original = vi.mocked(call).getMockImplementation()!;
+    vi.mocked(call).mockImplementation(async (command, args) =>
+      command === "read_document" ? await pending.promise as never : original(command, args));
+    const refreshing = refreshDocuments();
+    await vi.waitFor(() => expect(vi.mocked(call).mock.calls.some(([cmd]) => cmd === "read_document")).toBe(true));
+    buffer.edit("saved newer edits");
+    await save(id);
+    pending.resolve(disk("stale"));
+    await refreshing;
+    expect(buffer.getValue()).toBe("saved newer edits");
+    expect(useApp.getState().docs[id]).toMatchObject({ dirty: false, revision: "saved-choice" });
+  });
 });

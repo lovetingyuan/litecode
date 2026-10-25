@@ -20,12 +20,34 @@ impl AppError {
 
 impl From<std::io::Error> for AppError {
     fn from(e: std::io::Error) -> Self {
-        Self::new("io", e.to_string())
+        let code = if e.kind() == std::io::ErrorKind::NotFound {
+            "notFound"
+        } else {
+            "io"
+        };
+        Self::new(code, e.to_string())
     }
 }
 
 impl From<serde_json::Error> for AppError {
     fn from(e: serde_json::Error) -> Self {
         Self::new("json", e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_files_are_distinct_from_other_io_errors() {
+        assert_eq!(
+            AppError::from(std::io::Error::from(std::io::ErrorKind::NotFound)).code,
+            "notFound"
+        );
+        assert_eq!(
+            AppError::from(std::io::Error::from(std::io::ErrorKind::PermissionDenied)).code,
+            "io"
+        );
     }
 }

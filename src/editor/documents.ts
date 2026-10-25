@@ -11,6 +11,8 @@ import type {
   Session,
   FileInfo,
   MediaView,
+  ConflictContext,
+  DiffRequest,
 } from "../types/types";
 import { isMarkdownDocument, isTextDocument, isTextView } from "../utils/media";
 import { ensureLanguage, releaseLanguageDocument, formatModel, canFormat } from "./languages";
@@ -33,6 +35,7 @@ const savedVersions = new Map<string, number>();
 const savedEncodings = new Map<string, string>();
 const subscriptions = new Map<string, monaco.IDisposable>();
 const saveQueues = new Map<string, Promise<void>>();
+const refreshRequests = new Map<string, symbol>();
 let backupTimer: ReturnType<typeof setTimeout>;
 let autoTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let checkpointQueue = Promise.resolve();
@@ -555,10 +558,7 @@ export async function save(id = activeDoc()?.id, saveAs = false) {
   await saveDocument(id, saveAs);
 }
 
-async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMode?: AutoSaveMode) {
-  if (!id) {
-    return;
-  }
+async function queueDocumentOperation(id: string, operation: () => Promise<void>) {
   const ticket = ++saveSequence;
   const previous = saveQueues.get(id) ?? Promise.resolve();
   const current = previous
@@ -567,8 +567,31 @@ async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMod
       if (documentMove && ticket > documentMove.drainThrough) {
         await documentMove.done;
       }
+      // Reads started before a save must never replace the saved buffer.
+      refreshRequests.delete(id);
+      await operation();
+    });
+  saveQueues.set(id, current);
+  try {
+    await current;
+  } finally {
+    if (saveQueues.get(id) === current) {
+      saveQueues.delete(id);
+    }
+  }
+}
+
+async function saveDocument(
+  id: string | undefined,
+  saveAs: boolean,
+  autoSaveMode?: AutoSaveMode,
+  resolution?: { context: ConflictContext; action: "reload" | "overwrite" },
+) {
+  if (!id) { return; }
+  await queueDocumentOperation(id, async () => {
       let doc = useApp.getState().docs[id];
       let m = models.get(id);
+      if (resolution) { checkConflictContext(resolution.context); }
       if (!doc || !m || !isTextDocument(doc)) {
         return;
       }
@@ -583,6 +606,33 @@ async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMod
       }
       let path = doc.path;
       let revision = doc.revision;
+      if (resolution) {
+        const { context, action } = resolution;
+        const disk = await call<DiskDocument>("read_document", {
+          path: context.path, force: true, encoding: context.encoding,
+        });
+        const fileInfo = doc.kind === "svg"
+          ? await call<FileInfo>("inspect_file", { path: context.path }) : doc.fileInfo;
+        checkConflictContext(context);
+        if (disk.revision !== context.revision) { throw changedConflict(); }
+        if (action === "reload") {
+          m.pushStackElement();
+          m.pushEditOperations([], [{ range: m.getFullModelRange(), text: disk.text }], () => null);
+          if (m.getEOL() !== (disk.eol === "CRLF" ? "\r\n" : "\n")) {
+            m.pushEOL(disk.eol === "CRLF" ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF);
+          }
+          m.pushStackElement();
+          savedVersions.set(id, m.getAlternativeVersionId());
+          savedEncodings.set(id, disk.encoding);
+          patchDoc(id, {
+            dirty: false, revision: disk.revision, encoding: disk.encoding,
+            eol: disk.eol, fileInfo, conflict: false, deleted: false,
+          });
+          scheduleBackup();
+          return;
+        }
+        revision = context.revision;
+      }
       if (!path || saveAs) {
         path = await call<string | null>("pick_path", { kind: "save" });
         if (!path) {
@@ -604,13 +654,13 @@ async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMod
           }
           revision = disk.revision;
         } catch (e) {
-          if ((e as { code?: string }).code !== "io") {
+          if ((e as { code?: string }).code !== "notFound") {
             throw e;
           }
           revision = null;
         }
       }
-      if (useApp.getState().settings["editor.formatOnSave"] === true && canFormat(doc.language)) {
+      if (!resolution && useApp.getState().settings["editor.formatOnSave"] === true && canFormat(doc.language)) {
         try {
           await formatModel(m);
         } catch (e) {
@@ -671,18 +721,11 @@ async function saveDocument(id: string | undefined, saveAs: boolean, autoSaveMod
       } catch (e) {
         if ((e as { code?: string }).code === "conflict") {
           patchDoc(id, { conflict: true });
+          if (!autoSaveMode && !resolution) { await compareDisk(id); }
         }
         throw e;
       }
-    });
-  saveQueues.set(id, current);
-  try {
-    await current;
-  } finally {
-    if (saveQueues.get(id) === current) {
-      saveQueues.delete(id);
-    }
-  }
+  });
 }
 
 export async function saveAll() {
@@ -842,6 +885,7 @@ function disposeDocument(id: string) {
 }
 
 function detachModel(id: string) {
+  refreshRequests.delete(id);
   releaseLanguageDocument(id);
   subscriptions.get(id)?.dispose();
   subscriptions.delete(id);
@@ -1020,22 +1064,30 @@ export async function navigate(direction: number) {
 
 export async function refreshDocuments(changedPaths?: readonly string[]) {
   const affected = changedPaths?.map((path) => normalize(path).replace(/\/$/, ""));
-  for (const doc of Object.values(useApp.getState().docs)) {
+  for (const id of Object.keys(useApp.getState().docs)) {
+    await saveQueues.get(id)?.catch(() => {});
+    const doc = useApp.getState().docs[id];
+    if (!doc) { continue; }
     if (doc.path && affected && !affected.some((path) => normalize(doc.path!) === path || normalize(doc.path!).startsWith(path + "/"))) {continue;}
     if (!doc.path || isMoving(doc.path)) {
       continue;
     }
+    const request = Symbol();
+    refreshRequests.set(id, request);
+    const isCurrent = () => refreshRequests.get(id) === request &&
+      useApp.getState().docs[id] === doc && !saveQueues.has(id) &&
+      !!doc.path && !isMoving(doc.path);
     try {
       const info = await call<FileInfo>("inspect_file", { path: doc.path });
       const current = useApp.getState().docs[doc.id];
-      if (!current || current.path !== doc.path || isMoving(doc.path)) {
+      if (!current || !isCurrent()) {
         continue;
       }
       if (!isTextDocument(doc)) {
         if (info.kind === "text" || info.kind === "svg") {
           try {
             const disk = await call<DiskDocument>("read_document", { path: doc.path, force: true });
-            if (useApp.getState().docs[doc.id]?.path !== doc.path || isMoving(doc.path)) {
+            if (!isCurrent()) {
               continue;
             }
             attachDocument(
@@ -1052,6 +1104,7 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
               disk.text,
             );
           } catch (e) {
+            if (!isCurrent()) { continue; }
             if (!["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
               throw e;
             }
@@ -1089,7 +1142,7 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
         encoding: doc.encoding,
       });
       const latest = useApp.getState().docs[doc.id];
-      if (!latest || latest.path !== doc.path || isMoving(doc.path)) {
+      if (!latest || !isCurrent()) {
         continue;
       }
       if (disk.revision === latest.revision) {
@@ -1106,6 +1159,7 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
       }
       m.setValue(disk.text);
       savedVersions.set(doc.id, m.getAlternativeVersionId());
+      savedEncodings.set(doc.id, disk.encoding);
       patchDoc(doc.id, {
         revision: disk.revision,
         kind: info.kind,
@@ -1113,13 +1167,15 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
         dirty: false,
         conflict: false,
         deleted: false,
+        encoding: disk.encoding,
+        eol: disk.eol,
       });
     } catch (e) {
       const latest = useApp.getState().docs[doc.id];
-      if (!latest || latest.path !== doc.path || isMoving(doc.path)) {
+      if (!latest || !isCurrent()) {
         continue;
       }
-      if ((e as { code?: string }).code === "io") {
+      if ((e as { code?: string }).code === "notFound") {
         patchDoc(doc.id, { deleted: true, conflict: isTextDocument(latest) });
       } else if (["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
         if (latest.dirty) {
@@ -1128,42 +1184,58 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
           detachModel(doc.id);
           patchDoc(doc.id, { kind: "binary", imageSize: undefined });
         }
+      } else {
+        notify(`Could not refresh ${doc.name}: ${errorMessage(e)}`);
       }
     }
   }
 }
 
-export async function resolveConflict(id: string, action: "reload" | "overwrite") {
+export async function readConflictDiff(id: string): Promise<DiffRequest> {
   const doc = useApp.getState().docs[id];
-  if (!doc?.path) {
-    return;
-  }
-  let disk: DiskDocument;
+  if (!doc?.path || !models.has(id)) { throw changedConflict(); }
+  let disk: DiskDocument | undefined;
+  let error: string | undefined;
   try {
     disk = await call("read_document", { path: doc.path, force: true, encoding: doc.encoding });
   } catch (e) {
-    if (action === "overwrite" && doc.deleted) {
-      patchDoc(id, { revision: null });
-      await save(id);
-      return;
-    }
-    throw e;
+    error = `无法读取磁盘版本：${errorMessage(e)}`;
   }
-  if (action === "reload") {
-    const m = models.get(id)!;
-    m.pushStackElement();
-    m.pushEditOperations([], [{ range: m.getFullModelRange(), text: disk.text }], () => null);
-    m.pushStackElement();
-    savedVersions.set(id, m.getAlternativeVersionId());
-    patchDoc(id, { dirty: false, revision: disk.revision, conflict: false, deleted: false });
-    if (doc.kind === "svg") {
-      patchDoc(id, { fileInfo: await call<FileInfo>("inspect_file", { path: doc.path }) });
-    }
-  } else {
-    patchDoc(id, { revision: disk.revision });
-    await save(id);
+  const latest = useApp.getState().docs[id];
+  const m = models.get(id);
+  if (!latest || latest.path !== doc.path || latest.encoding !== doc.encoding || !m) {
+    throw changedConflict();
   }
-  scheduleBackup();
+  return {
+    title: `${latest.name} · 解决保存冲突`,
+    before: disk?.text ?? "", after: m.getValue(), language: latest.language, error,
+    conflict: { id, path: latest.path!, version: latest.version,
+      revision: disk?.revision ?? null, encoding: latest.encoding },
+  };
+}
+
+export async function compareDisk(id: string) {
+  const diff = await readConflictDiff(id);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent<DiffRequest>("show-diff", { detail: diff }));
+  }
+}
+
+function changedConflict() {
+  return { code: "conflict", message: "文件或编辑内容已变化，请查看更新后的差异，再次选择最终版本。" };
+}
+
+function checkConflictContext(context: ConflictContext) {
+  const doc = useApp.getState().docs[context.id];
+  if (!doc || !models.has(context.id) || !doc.conflict ||
+    doc.path !== context.path || doc.version !== context.version ||
+    doc.encoding !== context.encoding || context.revision === null) {
+    throw changedConflict();
+  }
+}
+
+export async function resolveConflict(context: ConflictContext, action: "reload" | "overwrite") {
+  await saveDocument(context.id, false, undefined, { context, action });
 }
 
 export async function renameDocumentPaths(from: string, to: string) {
