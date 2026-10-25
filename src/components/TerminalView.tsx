@@ -414,7 +414,9 @@ function TerminalPane({ id, visible }: { id: string; visible: boolean }) {
         {(pane.status === "error" || pane.status === "exited") && (
           <div className="terminal-exit" role="status">
             <span>{pane.error}</span>
-            <button onClick={() => restartPane(id)}>Restart Terminal</button>
+            <button onClick={() => safe(restartPane(id))}>
+              {pane.errorCode === "workspaceTrust" ? "Trust Workspace and Retry" : "Restart Terminal"}
+            </button>
           </div>
         )}
       </ContextMenu.Trigger>

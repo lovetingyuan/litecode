@@ -22,6 +22,7 @@ export type Pane = {
   reportedCwd: boolean;
   status: "starting" | "running" | "exited" | "error";
   error?: string;
+  errorCode?: string;
   exitCode?: number;
   attempt?: number;
 };

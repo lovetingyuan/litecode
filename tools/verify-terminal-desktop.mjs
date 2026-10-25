@@ -202,6 +202,17 @@ try {
     .getByRole("button", { name: "Terminal (Ctrl+`)", exact: true })
     .click();
   await page
+    .getByRole("button", { name: "Restricted Mode", exact: true })
+    .click();
+  await waitState(
+    (s) => Object.values(s.panes).some((p) => p.errorCode === "workspaceTrust"),
+    "Restricted terminal did not report its trust error",
+  );
+  await page.getByRole("button", { name: "Trust Workspace and Retry", exact: true }).click();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  assert.equal(Object.values((await state()).panes)[0].status, "error");
+  await page.getByRole("button", { name: "Trust Workspace and Retry", exact: true }).click();
+  await page
     .getByRole("button", { name: "Trust Workspace", exact: true })
     .click();
   let s = await waitState(
@@ -223,7 +234,37 @@ try {
   assert.equal(await page.locator(".sidebar").isVisible(), false);
   checks.push(
     "Terminal activity icon opens a trusted real PTY at project root and fills the workspace",
+    "Restricted terminal offers trust and retry; cancelling preserves the error and approving starts the shell",
   );
+
+  const cdp = await page.context().newCDPSession(page);
+  async function dropPaths(id, files) {
+    const box = await page.locator(`[data-terminal-pane="${id}"] .terminal-host`).boundingBox();
+    assert(box);
+    for (const type of ["dragEnter", "dragOver", "drop"]) {
+      await cdp.send("Input.dispatchDragEvent", {
+        type,
+        x: box.x + box.width / 2,
+        y: box.y + box.height / 2,
+        data: { items: [], files, dragOperationsMask: 1 },
+      });
+    }
+  }
+  const droppedFolder = path.join(run, "external 中文 O'Brien;$(echo x)");
+  await mkdir(droppedFolder);
+  await runtime("pasteTerminal", first, "Write-Output ('DROP_RESULT:' + ");
+  await dropPaths(first, [droppedFolder]);
+  await output(droppedFolder.replaceAll("\\", "/").replaceAll("'", "''"), first);
+  assert.equal((await state()).panes[first].cwd.toLowerCase(), root.toLowerCase());
+  assert.equal((await state()).tabs.length, 1);
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  const terminalBody = page.locator(`[data-terminal-pane="${first}"]`);
+  await terminalBody.locator("textarea").press("End");
+  await page.keyboard.type("); Write-Output ('DROP_' + 'DONE')");
+  await page.keyboard.press("Enter");
+  await output("DROP_DONE", first);
+  await output("DROP_RESULT:" + droppedFolder.replaceAll("\\", "/"), first);
+  checks.push("Native folder drop inserts a literal path without executing or switching the workspace");
 
   await shell(
     `Set-Location -LiteralPath '${nested.replaceAll("'", "''")}'`,

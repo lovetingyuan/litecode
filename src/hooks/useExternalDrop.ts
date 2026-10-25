@@ -42,9 +42,23 @@ export function useExternalDrop(ready: boolean) {
     }
     function target(
       event: DragEvent,
-    ): { tree: ExplorerDropTarget | null; group: string; element: HTMLElement } | null {
+    ): { tree: ExplorerDropTarget | null; group: string; element: HTMLElement; terminal?: string } | null {
       const path = event.composedPath();
       if (document.querySelector('[role="dialog"]')) {
+        return null;
+      }
+      const terminal = path.find(
+        (e) => e instanceof HTMLElement && e.matches("[data-terminal-pane]"),
+      ) as HTMLElement | undefined;
+      if (terminal) {
+        return {
+          tree: null,
+          group: useApp.getState().activeGroup,
+          element: terminal,
+          terminal: terminal.dataset.terminalPane,
+        };
+      }
+      if (path.some((e) => e instanceof HTMLElement && e.matches(".terminal-view"))) {
         return null;
       }
       const tree = externalExplorer()?.resolve(path) ?? null;
@@ -164,7 +178,12 @@ export function useExternalDrop(ready: boolean) {
         if (drop.failed.length) {
           notify(drop.failed.map((f) => `${pathTitle(f.path)}: ${f.message}`).join("\n"));
         }
-        if (dropTarget.tree) {
+        if (dropTarget.terminal) {
+          const { pasteDroppedPaths } = await import("../terminal/runtime");
+          if (!controller.signal.aborted) {
+            await pasteDroppedPaths(dropTarget.terminal, drop.items.map((item) => item.path));
+          }
+        } else if (dropTarget.tree) {
           await externalExplorer()?.copy(drop, dropTarget.tree.directory, controller.signal);
         } else {
           const items = await call<DropItem[]>("authorize_external_drop", { batchId });

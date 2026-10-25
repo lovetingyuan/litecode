@@ -8,7 +8,7 @@ import { Channel } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { call, desktop, errorMessage } from "../core/bridge";
-import { trustedCall } from "../core/workspaceTrust";
+import { manageWorkspaceTrust, trustedCall } from "../core/workspaceTrust";
 import { useApp, setApp, notify } from "../store/store";
 import { ask } from "../components/dialog";
 import { layoutGroups, type SplitDirection } from "../editor/editorLayout";
@@ -29,6 +29,7 @@ import {
   terminalOptions,
   terminalSetting,
 } from "./settings";
+import { quoteDroppedPaths } from "./drop";
 
 type Created = {
   id: string;
@@ -58,6 +59,7 @@ type Runtime = {
   output: Channel<ArrayBuffer | number[]>;
   events: Channel<Event>;
   integration: boolean;
+  shellKind?: string;
   cols: number;
   rows: number;
 };
@@ -248,12 +250,24 @@ export function resetTerminals() {
     find: false,
   });
 }
-export function restartPane(id: string) {
+export async function restartPane(id: string) {
+  const pane = useTerminal.getState().panes[id];
+  const root = useApp.getState().root;
+  if (!pane) {
+    return;
+  }
+  if (pane.errorCode === "workspaceTrust" && !(await manageWorkspaceTrust())) {
+    return;
+  }
+  if (useApp.getState().root !== root || useTerminal.getState().panes[id] !== pane) {
+    return;
+  }
   disposeRuntime(id);
   sources.delete(id);
   patchPane(id, {
     status: "starting",
     error: undefined,
+    errorCode: undefined,
     exitCode: undefined,
     reportedCwd: false,
     attempt: (useTerminal.getState().panes[id]?.attempt ?? 0) + 1,
@@ -348,6 +362,7 @@ async function startPane(id: string, r: Runtime) {
     r.sessionId = created.id;
     if (created.windowsBuild) { r.terminal.options.windowsPty = { backend: "conpty", buildNumber: created.windowsBuild }; }
     r.integration = created.integration;
+    r.shellKind = created.profile.kind;
     patchPane(id, {
       profile: created.profile.name,
       initialCwd: created.cwd,
@@ -362,7 +377,11 @@ async function startPane(id: string, r: Runtime) {
   } catch (error) {
     if (!r.disposed) {
       const message = errorMessage(error);
-      patchPane(id, { status: "error", error: message });
+      patchPane(id, {
+        status: "error",
+        error: message,
+        errorCode: (error as { code?: string } | null)?.code,
+      });
       r.terminal.writeln(`\r\n\x1b[31m${plainTerminalText(message)}\x1b[0m`);
     }
   }
@@ -693,6 +712,14 @@ export async function pasteTerminal(id = activePane(), text?: string) {
     r.terminal.paste(text);
     r.terminal.focus();
   }
+}
+export async function pasteDroppedPaths(id: string, paths: string[]) {
+  const r = runtimes.get(id);
+  if (!paths.length || !r || r.disposed || useTerminal.getState().panes[id]?.status !== "running") {
+    return;
+  }
+  focusTerminal(id);
+  await pasteTerminal(id, quoteDroppedPaths(paths, r.shellKind));
 }
 export function clearTerminal() {
   const id = activePane();
