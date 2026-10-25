@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "@vscode/codicons/dist/codicon.css";
 @import "./styles/sidebar-scrollbar.css";
+@plugin "daisyui" {
+  themes: false;
+  include: tab;
+  root: ".search-view";
+  logs: false;
+}
 
 .workbench-layout {
   flex: 1;
@@ -664,7 +670,8 @@ kbd {
   min-width: 0;
   scrollbar-width: none;
 }
-.editor-tabs::-webkit-scrollbar {
+.editor-tabs::-webkit-scrollbar,
+.search-tabs::-webkit-scrollbar {
   display: none;
 }
 .editor-tabs-scrollbar {
@@ -682,6 +689,7 @@ kbd {
   opacity: 0;
 }
 .tabs-toolbar:hover .editor-tabs-scrollbar-thumb,
+.search-tabs-toolbar:hover .editor-tabs-scrollbar-thumb,
 .editor-tabs-scrollbar[data-dragging] .editor-tabs-scrollbar-thumb {
   opacity: 1;
 }
@@ -1077,6 +1085,70 @@ body.monaco-component {
   background: #232323;
   color: #ccc;
   --search-result-height: 26px;
+  --color-base-100: #232323;
+  --color-base-300: #37373d;
+  --color-base-content: #ccc;
+  --color-primary: #007fd4;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --radius-field: 0;
+  --tab-height: 32px;
+}
+.search-panel,
+.search-panel-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.search-panel[hidden] {
+  display: none;
+}
+.search-tabs-toolbar {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 0;
+  border-bottom: 1px solid var(--color-base-300);
+}
+.search-view .search-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  flex-shrink: 0;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.search-tabs .tab {
+  flex: 0 0 auto;
+  height: 32px;
+  min-width: 65px;
+  max-width: 180px;
+  padding: 0 12px;
+  font-size: 13px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+}
+.search-tabs .tab:has(+ .icon-button) {
+  padding-right: 28px;
+}
+.search-tabs .tab span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.search-tabs .tab-active {
+  background: var(--color-base-300);
+  border-bottom-color: var(--color-primary);
+}
+.search-tabs .icon-button {
+  flex: 0 0 auto;
+  align-self: center;
+  position: relative;
+  margin-left: -25px;
+  margin-right: 5px;
+  height: 20px;
+  width: 20px;
 }
 .search-view .view-title {
   font-size: 14px;
@@ -1206,17 +1278,6 @@ body.monaco-component {
   line-height: 21px;
   flex-shrink: 0;
   overflow-wrap: anywhere;
-}
-.search-view .search-editor-link {
-  color: #3794ff;
-  padding: 0;
-  font: inherit;
-  border-radius: 0;
-  text-align: left;
-}
-.search-view .search-editor-link:hover {
-  background: none;
-  text-decoration: underline;
 }
 .search-view .search-results {
   flex: 1;

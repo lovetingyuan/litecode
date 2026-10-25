@@ -3,8 +3,7 @@ import type {
   Doc,
   Group,
   Location,
-  Query,
-  SearchMatch,
+  SearchSession,
   GitSnapshot,
   Keybinding,
   QuickPick,
@@ -20,6 +19,17 @@ const initialGroup = (): Group => ({
   views: {},
 });
 const group = initialGroup();
+export const primarySearchId = "search";
+export const initialSearch = (id = primarySearchId, number = 1): SearchSession => ({
+  id,
+  number,
+  query: { ...defaultQuery },
+  results: [],
+  searching: false,
+  searchErrors: [],
+  limited: false,
+  requestId: null,
+});
 type State = {
   ready: boolean;
   root: string | null;
@@ -46,12 +56,9 @@ type State = {
   quick: string | QuickPick | null;
   notice: string | null;
   noticeLink: string | null;
-  query: Query;
-  results: SearchMatch[];
-  searching: boolean;
-  searchErrors: string[];
-  limited: boolean;
-  requestId: string | null;
+  searchSessions: SearchSession[];
+  activeSearchId: string;
+  nextSearchNumber: number;
   searchHistory: string[];
   languageStatus: string;
   set: (patch: Partial<State> | ((state: State) => Partial<State>)) => void;
@@ -82,12 +89,9 @@ export const useApp = create<State>((set) => ({
   noticeLink: null,
   keybindings: [],
   dataDir: "",
-  query: { ...defaultQuery },
-  results: [],
-  searching: false,
-  searchErrors: [],
-  limited: false,
-  requestId: null,
+  searchSessions: [initialSearch()],
+  activeSearchId: primarySearchId,
+  nextSearchNumber: 2,
   searchHistory: [],
   languageStatus: "Plain Text",
   set: (patch) =>
@@ -127,6 +131,13 @@ export const useApp = create<State>((set) => ({
     }),
 }));
 export const setApp = (patch: Parameters<State["set"]>[0]) => useApp.getState().set(patch);
+export const searchSession = (id = useApp.getState().activeSearchId) =>
+  useApp.getState().searchSessions.find((search) => search.id === id);
+export function patchSearch(id: string, patch: Partial<SearchSession>) {
+  setApp((s) => ({
+    searchSessions: s.searchSessions.map((search) => search.id === id ? { ...search, ...patch } : search),
+  }));
+}
 export const activeDoc = () => {
   const s = useApp.getState();
   const id = s.groups.find((g) => g.id === s.activeGroup)?.active;

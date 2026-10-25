@@ -19,7 +19,7 @@ vi.mock("../core/bridge", () => ({
 vi.mock("../components/dialog", () => ({ ask: vi.fn() }));
 vi.mock("../components/Explorer", () => ({ refreshTree: vi.fn(), revealInTree: vi.fn() }));
 vi.mock("../search/search", () => ({
-  createSearchEditor: vi.fn(), undoReplacement: vi.fn(), nextSearchResult: vi.fn(),
+  createSearchTab: vi.fn(), activateSearchTab: vi.fn(), focusSearch: vi.fn(), undoReplacement: vi.fn(), nextSearchResult: vi.fn(),
 }));
 vi.mock("./editorStatus", () => ({ changeLanguage: vi.fn() }));
 vi.mock("./languages", () => ({
@@ -67,7 +67,7 @@ import {
   beginDocumentMove,
 } from "./documents";
 import { ask } from "../components/dialog";
-import { setApp, useApp } from "../store/store";
+import { initialSearch, primarySearchId, setApp, useApp } from "../store/store";
 
 class Buffer {
   private version = 1;
@@ -167,6 +167,15 @@ beforeEach(() => {
 });
 
 describe("Editor view snapshots", () => {
+  it("persists only the primary search query even when another search is active", () => {
+    const main = { ...initialSearch(), query: { ...initialSearch().query, text: "primary" } };
+    const secondary = { ...initialSearch("secondary", 2), query: { ...initialSearch().query, text: "secondary" } };
+    setApp({ searchSessions: [main, secondary], activeSearchId: secondary.id });
+    expect(session().query).toEqual(main.query);
+    expect(session()).not.toHaveProperty("searchSessions");
+    expect(session()).not.toHaveProperty("activeSearchId");
+    setApp({ searchSessions: [initialSearch()], activeSearchId: primarySearchId });
+  });
   function view(line: number): Monaco.editor.ICodeEditorViewState {
     return {
       cursorState: [],

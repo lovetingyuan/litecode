@@ -1,5 +1,5 @@
 import { call, channel, errorMessage } from "../core/bridge";
-import { useApp, setApp, notify } from "../store/store";
+import { useApp, setApp, notify, initialSearch, primarySearchId, searchSession, patchSearch } from "../store/store";
 import {
   checkpoint,
   newDocument,
@@ -14,21 +14,76 @@ import {
   patchMediaView,
 } from "../editor/documents";
 import { monaco } from "../editor/monaco";
-import type { SearchMatch, DiskDocument } from "../types/types";
+import type { SearchMatch, DiskDocument, Query } from "../types/types";
 import { isTextDocument } from "../utils/media";
 
-export async function runSearch(query = useApp.getState().query) {
-  const previous = useApp.getState().requestId;
-  if (previous) {
-    void call("search_cancel", { requestId: previous }).catch(() => {});
+export function focusSearch() {
+  setTimeout(() => window.dispatchEvent(new Event("focus-search")), 0);
+}
+
+export function activateSearchTab(id: string) {
+  if (searchSession(id)) {
+    setApp({ activeSearchId: id });
   }
-  const requestId = crypto.randomUUID();
-  const changed = JSON.stringify(query) !== JSON.stringify(useApp.getState().query);
+}
+
+export function createSearchTab() {
+  const s = useApp.getState();
+  const search = initialSearch(crypto.randomUUID(), s.nextSearchNumber);
   setApp({
-    ...(changed ? { query } : {}),
+    searchSessions: [...s.searchSessions, search], activeSearchId: search.id,
+    nextSearchNumber: s.nextSearchNumber + 1, sidebar: "search", view: "editor",
+  });
+  focusSearch();
+  return search.id;
+}
+
+export function closeSearchTab(id: string) {
+  const s = useApp.getState();
+  const index = s.searchSessions.findIndex((search) => search.id === id);
+  if (id === primarySearchId || index < 0) {
+    return;
+  }
+  cancelSearch(id);
+  setApp({
+    searchSessions: useApp.getState().searchSessions.filter((search) => search.id !== id),
+    activeSearchId: s.activeSearchId === id ? s.searchSessions[index - 1].id : s.activeSearchId,
+  });
+  if (s.activeSearchId === id) {
+    focusSearch();
+  }
+}
+
+export function resetSearchTabs() {
+  const query = searchSession(primarySearchId)!.query;
+  for (const search of useApp.getState().searchSessions) {
+    cancelSearch(search.id);
+  }
+  setApp({ searchSessions: [{ ...initialSearch(), query: { ...query } }], activeSearchId: primarySearchId });
+}
+
+useApp.subscribe((state, previous) => {
+  if (state.root !== previous.root) {
+    resetSearchTabs();
+  }
+});
+
+export async function runSearch(query?: Query, id = useApp.getState().activeSearchId) {
+  const search = searchSession(id);
+  if (!search) {
+    return;
+  }
+  query ??= search.query;
+  cancelSearch(id);
+  const requestId = crypto.randomUUID();
+  const root = useApp.getState().root;
+  let completed = false;
+  const current = () => useApp.getState().root === root && searchSession(id)?.requestId === requestId;
+  patchSearch(id, {
+    ...(query !== search.query ? { query } : {}),
     results: [],
     searching: !!query.text,
-    requestId,
+    requestId: query.text ? requestId : null,
     limited: false,
     searchErrors: [],
   });
@@ -37,39 +92,47 @@ export async function runSearch(query = useApp.getState().query) {
   }
   try {
     await checkpoint();
-    if (useApp.getState().requestId !== requestId) {
+    if (!current()) {
       return;
     }
     const onBatch = channel((batch) => {
-      const s = useApp.getState();
-      if (s.requestId !== batch.requestId) {
+      if (!current() || batch.requestId !== requestId) {
         return;
       }
-      setApp({
+      const s = searchSession(id)!;
+      completed = batch.done;
+      patchSearch(id, {
         results: [...s.results, ...batch.matches],
         searching: !batch.done,
         limited: batch.limited,
         searchErrors: [...s.searchErrors, ...batch.errors],
+        requestId: batch.done ? null : requestId,
       });
       void call("search_ack", { requestId: batch.requestId, sequence: batch.sequence });
     });
     await call("search_start", { requestId, query, onBatch });
-    setApp((s) => ({
-      searchHistory: [query.text, ...s.searchHistory.filter((q) => q !== query.text)].slice(0, 30),
-    }));
+    // Cancellation can reach Rust before search_start has registered the task.
+    if (!completed && !current()) {
+      void call("search_cancel", { requestId }).catch(() => {});
+    }
+    if (useApp.getState().root === root && searchSession(id)?.query === query) {
+      setApp((s) => ({
+        searchHistory: [query.text, ...s.searchHistory.filter((q) => q !== query.text)].slice(0, 30),
+      }));
+    }
   } catch (e) {
-    if (useApp.getState().requestId === requestId) {
-      setApp({ searching: false, searchErrors: [errorMessage(e)] });
+    if (current()) {
+      patchSearch(id, { searching: false, requestId: null, searchErrors: [errorMessage(e)] });
     }
   }
 }
 
-export function cancelSearch() {
-  const id = useApp.getState().requestId;
-  if (id) {
-    void call("search_cancel", { requestId: id }).catch(() => {});
+export function cancelSearch(id = useApp.getState().activeSearchId) {
+  const requestId = searchSession(id)?.requestId;
+  if (requestId) {
+    void call("search_cancel", { requestId }).catch(() => {});
   }
-  setApp({ searching: false });
+  patchSearch(id, { requestId: null, searching: false });
 }
 
 export async function openMatch(match: SearchMatch, side = false, group?: string) {
@@ -101,7 +164,7 @@ export async function openMatch(match: SearchMatch, side = false, group?: string
 let navigationResults: SearchMatch[] = [];
 let navigationIndex = -1;
 export async function nextSearchResult(direction = 1) {
-  const results = useApp.getState().results;
+  const results = searchSession()!.results;
   if (!results.length) {
     return;
   }
@@ -124,7 +187,7 @@ export async function replaceMatches(
   matches: SearchMatch[],
   replacement: string,
   preserve = false,
-  query = useApp.getState().query,
+  query = searchSession(primarySearchId)!.query,
   preview = false,
 ) {
   const byFile = new Map<string, SearchMatch[]>();
@@ -302,8 +365,8 @@ export async function undoReplacement(redo = false) {
 }
 
 export async function createSearchEditor(
-  query = useApp.getState().query,
-  matches = useApp.getState().results,
+  query = searchSession()!.query,
+  matches = searchSession()!.results,
   id?: string,
 ) {
   const lines = [

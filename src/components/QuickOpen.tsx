@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { useApp, setApp, notify } from "../store/store";
+import { useApp, setApp, notify, searchSession } from "../store/store";
 import { commands, execute, openFolder } from "../core/commands";
 import {
   basename,
@@ -162,7 +162,10 @@ export function QuickOpen() {
     let cancelled = false;
     setResults([]);
     const timer = setTimeout(() => {
-      const query = { ...useApp.getState().query, text: value.slice(1).trim() };
+      const query = {
+        ...searchSession()!.query,
+        text: value.slice(1).trim(),
+      };
       if (!query.text) {
         return;
       }
@@ -499,7 +502,7 @@ export function QuickOpen() {
                 committed.current = true;
                 close(true);
                 setApp({ sidebar: "search" });
-                void runSearch({ ...useApp.getState().query, text });
+                void runSearch({ ...searchSession()!.query, text });
               }}
             >
               Open in Search View <Icon name="arrow-right" />

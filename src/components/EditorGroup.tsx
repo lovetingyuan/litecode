@@ -81,32 +81,6 @@ export function EditorGroup({ group }: { group: Group }) {
     return () => observer.disconnect();
   }, [group.active, activeTabIndex, revealRequest]);
   useEffect(() => {
-    const element = tabs.current;
-    if (!element) {
-      return;
-    }
-    const scroll = (event: WheelEvent) => {
-      if (
-        event.shiftKey ||
-        event.deltaX ||
-        !event.deltaY ||
-        element.scrollWidth <= element.clientWidth
-      ) {
-        return;
-      }
-      event.preventDefault();
-      const unit =
-        event.deltaMode === WheelEvent.DOM_DELTA_LINE
-          ? element.clientHeight
-          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-            ? element.clientWidth
-            : 1;
-      element.scrollLeft += event.deltaY * unit;
-    };
-    element.addEventListener("wheel", scroll, { passive: false });
-    return () => element.removeEventListener("wheel", scroll);
-  }, []);
-  useEffect(() => {
     if (!host.current) {
       return;
     }
@@ -480,7 +454,7 @@ export function EditorGroup({ group }: { group: Group }) {
   );
 }
 
-function EditorTabsScrollbar({
+export function EditorTabsScrollbar({
   viewportRef,
   tabIds,
 }: {
@@ -510,7 +484,26 @@ function EditorTabsScrollbar({
       slider.style.transform = `translateX(${(element.scrollLeft / (scrollWidth - width)) * (width - thumbWidth)}px)`;
     };
     update();
+    const scroll = (event: WheelEvent) => {
+      if (
+        event.shiftKey ||
+        event.deltaX ||
+        !event.deltaY ||
+        element.scrollWidth <= element.clientWidth
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const unit =
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? element.clientHeight
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? element.clientWidth
+            : 1;
+      element.scrollLeft += event.deltaY * unit;
+    };
     element.addEventListener("scroll", update, { passive: true });
+    element.addEventListener("wheel", scroll, { passive: false });
     const observer = new ResizeObserver(update);
     observer.observe(element);
     for (const tab of element.children) {
@@ -518,6 +511,7 @@ function EditorTabsScrollbar({
     }
     return () => {
       element.removeEventListener("scroll", update);
+      element.removeEventListener("wheel", scroll);
       observer.disconnect();
     };
   }, [viewportRef, tabIds]);

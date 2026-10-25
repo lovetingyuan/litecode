@@ -6,7 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { bootstrap, call, desktop, errorMessage } from "../core/bridge";
 import { initializeEditor, monaco } from "../editor/monaco";
-import { useApp, setApp, notify } from "../store/store";
+import { useApp, setApp, notify, patchSearch, primarySearchId } from "../store/store";
 import {
   checkpoint,
   restoreDocument,
@@ -59,7 +59,8 @@ function start() {
     }
     const session = boot.session ?? {};
     if (session.query) {
-      setApp({ query: session.query, searchHistory: session.searchHistory ?? [] });
+      patchSearch(primarySearchId, { query: session.query });
+      setApp({ searchHistory: session.searchHistory ?? [] });
     }
     const docs = useApp.getState().docs;
     const legacySvg = boot.documents
@@ -481,7 +482,7 @@ export default function App() {
           {s.view === "editor" && doc && group && !isTextView(doc, group) && (
             <MediaStatus doc={doc} group={group} />
           )}
-          {s.searching && <span>Searching…</span>}
+          {s.searchSessions.some((search) => search.searching) && <span>Searching…</span>}
           <span className="status-item" title={s.languageStatus}>
             <Icon name="check" />
           </span>

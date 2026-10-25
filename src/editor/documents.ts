@@ -1,6 +1,6 @@
 import { monaco, languageFor, loadSyntax } from "./monaco";
 import { call, desktop, errorMessage } from "../core/bridge";
-import { useApp, setApp, notify, activeDoc } from "../store/store";
+import { useApp, setApp, notify, activeDoc, searchSession, primarySearchId } from "../store/store";
 import { ask } from "../components/dialog";
 import type {
   DiskDocument,
@@ -164,7 +164,7 @@ export function session(): Session {
     sidebarWidth: s.sidebarWidth,
     history: s.history,
     historyIndex: s.historyIndex,
-    query: s.query,
+    query: searchSession(primarySearchId)!.query,
     searchHistory: s.searchHistory,
   };
 }

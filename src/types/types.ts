@@ -127,6 +127,16 @@ export type SearchMatch = {
   preview: string;
   matched: string;
 };
+export type SearchSession = {
+  id: string;
+  number: number;
+  query: Query;
+  results: SearchMatch[];
+  searching: boolean;
+  searchErrors: string[];
+  limited: boolean;
+  requestId: string | null;
+};
 export type SearchBatch = {
   requestId: string;
   sequence: number;

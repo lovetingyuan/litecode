@@ -1,5 +1,5 @@
 import { call, desktop, errorMessage } from "./bridge";
-import { activeDoc, useApp, setApp, notify } from "../store/store";
+import { activeDoc, useApp, setApp, notify, primarySearchId } from "../store/store";
 import {
   checkpoint,
   closeDocument,
@@ -24,7 +24,7 @@ import {
 } from "../editor/documents";
 import type { SplitDirection } from "../editor/editorLayout";
 import { refreshTree, revealInTree } from "../components/Explorer";
-import { createSearchEditor, undoReplacement, nextSearchResult } from "../search/search";
+import { createSearchTab, activateSearchTab, focusSearch, undoReplacement, nextSearchResult } from "../search/search";
 import { changeLanguage } from "../editor/editorStatus";
 import { restartLanguages, stopLanguages, languageReport } from "../editor/languages";
 import { manageWorkspaceTrust } from "./workspaceTrust";
@@ -591,7 +591,8 @@ export const commands: Command[] = [
     menu: "Edit",
     run: () => {
       setApp({ sidebar: "search", view: "editor" });
-      setTimeout(() => window.dispatchEvent(new Event("focus-search")), 0);
+      activateSearchTab(primarySearchId);
+      focusSearch();
     },
   },
   {
@@ -765,8 +766,8 @@ export const commands: Command[] = [
   },
   {
     id: "search.action.openNewEditor",
-    label: "New Search Editor",
-    run: () => createSearchEditor(),
+    label: "New Search",
+    run: () => createSearchTab(),
   },
   { id: "workbench.action.quickTextSearch", label: "Quick Search…", run: () => quick("%") },
   {
@@ -973,7 +974,8 @@ export function installKeys() {
     // Text-editing shortcuts belong to Monaco or the focused input, preserving its context rules.
     const global = defaults.filter(
       (c) =>
-        !["Edit", "Selection"].includes(c.command.menu ?? "") &&
+        (c.command.id === "workbench.action.findInFiles" ||
+          !["Edit", "Selection"].includes(c.command.menu ?? "")) &&
         !["F2", "F12", "Shift+F12", "Shift+Alt+F"].includes(c.key),
     );
     const command = global.find((c) => normalizeKey(c.key) === sequence)?.command.id;

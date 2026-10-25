@@ -1,12 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useApp, setApp, notify } from "../store/store";
-import { cancelSearch, createSearchEditor, openMatch, replaceMatches, runSearch } from "../search/search";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useApp, notify, patchSearch, primarySearchId, searchSession } from "../store/store";
+import { activateSearchTab, cancelSearch, closeSearchTab, createSearchTab, openMatch, replaceMatches, runSearch } from "../search/search";
 import { basename, relative, splitGroup } from "../editor/documents";
 import { Icon, IconButton } from "./ui";
 import { errorMessage, desktop } from "../core/bridge";
 import { ask } from "./dialog";
 import { revealInTree } from "./Explorer";
-import { FileIcon } from "./EditorGroup";
+import { EditorTabsScrollbar, FileIcon } from "./EditorGroup";
 import { languageFor } from "../editor/monaco";
 import { searchPreview } from "../utils/searchPreview";
 import {
@@ -20,12 +20,82 @@ import type { Query, SearchMatch } from "../types/types";
 const resultHeight = 26;
 const resultBottomPadding = 48;
 export function SearchView() {
-  const query = useApp((s) => s.query);
-  const results = useApp((s) => s.results);
-  const searching = useApp((s) => s.searching);
+  const sessions = useApp((s) => s.searchSessions);
   const root = useApp((s) => s.root);
-  const errors = useApp((s) => s.searchErrors);
-  const limited = useApp((s) => s.limited);
+  useEffect(() => {
+    void runSearch(undefined, primarySearchId);
+  }, []);
+  return (
+    <section className="view search-view" aria-label="Search"
+      style={{ "--search-result-height": `${resultHeight}px` } as CSSProperties}>
+      {sessions.map((session) => <SearchPanel key={`${root}:${session.id}`} id={session.id} />)}
+    </section>
+  );
+}
+
+function SearchTabs() {
+  const sessions = useApp((s) => s.searchSessions);
+  const activeId = useApp((s) => s.activeSearchId);
+  const tabs = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = tabs.current;
+    const active = element?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!element || !active) { return; }
+    const reveal = () => {
+      const bounds = active.getBoundingClientRect();
+      const viewport = element.getBoundingClientRect();
+      if (bounds.left < viewport.left) { element.scrollLeft -= viewport.left - bounds.left; }
+      else if (bounds.right > viewport.right) { element.scrollLeft += bounds.right - viewport.right; }
+    };
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    observer.observe(element);
+    observer.observe(active);
+    return () => observer.disconnect();
+  }, [activeId]);
+  if (sessions.length === 1) { return null; }
+  return (
+    <div className="search-tabs-toolbar">
+    <div ref={tabs} role="tablist" aria-label="Search tabs" className="tabs search-tabs"
+      onKeyDown={(event) => {
+        const index = sessions.findIndex((session) => session.id === activeId);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? sessions.length - 1
+          : event.key === "ArrowRight" ? (index + 1) % sessions.length
+          : event.key === "ArrowLeft" ? (index + sessions.length - 1) % sessions.length : -1;
+        if (next < 0 || !(event.target as HTMLElement).closest('[role="tab"]')) { return; }
+        event.preventDefault();
+        const id = sessions[next].id;
+        activateSearchTab(id);
+        requestAnimationFrame(() => document.getElementById(`search-tab-${id}`)?.focus());
+      }}>
+      {sessions.map((session) => {
+        const title = session.id === primarySearchId ? "Search" : session.query.text || `Search ${session.number}`;
+        return (
+          <Fragment key={session.id}>
+            <button id={`search-tab-${session.id}`} role="tab" type="button"
+              className={`tab${session.id === activeId ? " tab-active" : ""}`}
+              aria-selected={session.id === activeId} aria-controls={`search-panel-${session.id}`}
+              tabIndex={session.id === activeId ? 0 : -1} title={title}
+              onClick={() => activateSearchTab(session.id)}>
+              <span>{title.replace(/\s+/g, " ")}</span>
+            </button>
+            {session.id !== primarySearchId && <IconButton icon="close" label={`Close search: ${title}`}
+              onClick={() => closeSearchTab(session.id)} />}
+          </Fragment>
+        );
+      })}
+    </div>
+    <EditorTabsScrollbar viewportRef={tabs} tabIds={sessions.map((session) => session.id)} />
+    </div>
+  );
+}
+
+function SearchPanel({ id }: { id: string }) {
+  const session = useApp((s) => s.searchSessions.find((search) => search.id === id)!);
+  const active = useApp((s) => s.activeSearchId === id);
+  const multiple = useApp((s) => s.searchSessions.length > 1);
+  const { query, results, searching, searchErrors: errors, limited } = session;
+  const root = useApp((s) => s.root);
   const history = useApp((s) => s.searchHistory);
   const [replace, setReplace] = useState(false);
   const [replacement, setReplacement] = useState("");
@@ -34,23 +104,25 @@ export function SearchView() {
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const [listMode, setListMode] = useState(true);
   const [scroll, setScroll] = useState(0);
+  const scrollTop = useRef(0);
+  const wasActive = useRef(false);
   const [height, setHeight] = useState(400);
   const [selected, setSelected] = useState(-1);
   const [menu, setMenu] = useState<{ x: number; y: number; row: ResultRow } | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const pendingSearch = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => {
-    pendingSearch.current = setTimeout(() => void runSearch(query), 250);
-    return () => clearTimeout(pendingSearch.current);
-  }, [query]);
+  useEffect(() => () => clearTimeout(pendingSearch.current), []);
   useEffect(() => {
     const focus = () => {
+      if (useApp.getState().activeSearchId !== id) { return; }
       input.current?.focus();
       input.current?.select();
     };
     window.addEventListener("focus-search", focus);
-    const observer = new ResizeObserver((entries) => setHeight(entries[0].contentRect.height));
+    const observer = new ResizeObserver((entries) => {
+      if (entries[0].contentRect.height > 0) { setHeight(entries[0].contentRect.height); }
+    });
     if (viewport.current) {
       observer.observe(viewport.current);
     }
@@ -58,7 +130,10 @@ export function SearchView() {
       window.removeEventListener("focus-search", focus);
       observer.disconnect();
     };
-  }, []);
+  }, [id]);
+  useEffect(() => {
+    if (!active) { setMenu(null); }
+  }, [active]);
   useEffect(() => {
     if (!menu) {
       return;
@@ -73,18 +148,26 @@ export function SearchView() {
   const rows = useMemo(() => searchResultRows(nodes, collapsed), [nodes, collapsed]);
   const contentHeight = rows.length ? rows.length * resultHeight + resultBottomPadding : 0;
   useLayoutEffect(() => {
-    const top = Math.min(viewport.current?.scrollTop ?? 0, Math.max(0, contentHeight - height));
+    const resumed = active && !wasActive.current;
+    wasActive.current = active;
+    if (!active) { return; }
+    const top = Math.min(
+      resumed ? scrollTop.current : viewport.current?.scrollTop ?? 0,
+      Math.max(0, contentHeight - height),
+    );
     if (viewport.current) {
       viewport.current.scrollTop = top;
     }
     setScroll(top);
+    scrollTop.current = top;
     if (selected >= rows.length) {
       setSelected(-1);
     }
-  }, [contentHeight, rows.length, height, selected]);
+  }, [active, contentHeight, rows.length, height, selected]);
   function resetSelection() {
     setSelected(-1);
     setScroll(0);
+    scrollTop.current = 0;
     if (viewport.current) {
       viewport.current.scrollTop = 0;
     }
@@ -92,24 +175,31 @@ export function SearchView() {
   function search() {
     clearTimeout(pendingSearch.current);
     resetSelection();
-    void runSearch();
+    void runSearch(undefined, id);
   }
   function clearResults() {
     clearTimeout(pendingSearch.current);
-    cancelSearch();
-    setApp({ requestId: null, results: [], searchErrors: [], limited: false });
+    cancelSearch(id);
+    patchSearch(id, { results: [], searchErrors: [], limited: false });
     resetSelection();
   }
   function update(patch: Partial<Query>) {
-    cancelSearch();
+    clearTimeout(pendingSearch.current);
+    cancelSearch(id);
     resetSelection();
-    setApp({
-      query: { ...query, ...patch },
+    const next = { ...query, ...patch };
+    patchSearch(id, {
+      query: next,
       requestId: null,
       results: [],
       searchErrors: [],
       limited: false,
     });
+    pendingSearch.current = setTimeout(() => {
+      if (useApp.getState().root === root && searchSession(id)?.query === next) {
+        void runSearch(next, id);
+      }
+    }, 250);
   }
   function toggle(path: string) {
     setCollapsed((previous) => {
@@ -124,9 +214,10 @@ export function SearchView() {
   }
   function removeRow(row: ResultRow) {
     const removed = new Set(searchRowMatches(row));
-    setApp({ results: results.filter((match) => !removed.has(match)) });
+    patchSearch(id, { results: results.filter((match) => !removed.has(match)) });
   }
   async function replaceRows(matches: SearchMatch[], preview = false) {
+    if (id !== primarySearchId) { return; }
     if (
       !preview &&
       matches.length > 1 &&
@@ -138,10 +229,11 @@ export function SearchView() {
     ) {
       return;
     }
+    if (useApp.getState().root !== root || searchSession(id)?.query !== query) { return; }
     try {
       await replaceMatches(matches, replacement, preserve, query, preview);
-      if (!preview) {
-        await runSearch(query);
+      if (!preview && useApp.getState().root === root && searchSession(id)?.query === query) {
+        await runSearch(query, id);
       }
     } catch (e) {
       notify(errorMessage(e));
@@ -157,24 +249,20 @@ export function SearchView() {
   const first = Math.max(0, Math.floor(scroll / resultHeight) - 5);
   const visible = rows.slice(first, first + Math.ceil(height / resultHeight) + 12);
   return (
-    <section
-      className="view search-view"
-      aria-label="Search"
-      style={{ "--search-result-height": `${resultHeight}px` } as CSSProperties}
-    >
+    <div className="view search-panel" hidden={!active}>
       <div className="view-title">
         <span>Search</span>
         <div className="actions">
           <IconButton
             icon={searching ? "search-stop" : "refresh"}
             label={searching ? "Cancel Search" : "Refresh Search"}
-            onClick={searching ? cancelSearch : search}
+            onClick={searching ? () => cancelSearch(id) : search}
           />
           <IconButton icon="clear-all" label="Clear Search Results" onClick={clearResults} />
           <IconButton
             icon="new-file"
-            label="Open New Search Editor"
-            onClick={() => void createSearchEditor()}
+            label="New Search"
+            onClick={() => createSearchTab()}
           />
           <IconButton
             icon={listMode ? "list-flat" : "list-tree"}
@@ -198,16 +286,20 @@ export function SearchView() {
           />
         </div>
       </div>
+      {active && <SearchTabs />}
+      <div className="search-panel-content" id={`search-panel-${id}`} role="tabpanel"
+        aria-labelledby={multiple ? `search-tab-${id}` : undefined}
+        aria-label={id === primarySearchId ? "Search" : query.text || `Search ${session.number}`}>
       <div className="search-form">
         <div className="search-inputs">
-          <IconButton
+          {id === primarySearchId && <IconButton
             className="icon-button search-replace-toggle"
             icon={replace ? "chevron-down" : "chevron-right"}
             label="Toggle Replace"
             aria-expanded={replace}
-            aria-controls="search-replace-row"
+            aria-controls={`search-replace-row-${id}`}
             onClick={() => setReplace(!replace)}
-          />
+          />}
           <div className="search-query-row">
             <div className="input-options">
               <textarea
@@ -223,7 +315,8 @@ export function SearchView() {
                     search();
                   }
                   if (e.key === "Escape") {
-                    cancelSearch();
+                    clearTimeout(pendingSearch.current);
+                    cancelSearch(id);
                   }
                   if (e.altKey && e.key === "ArrowUp" && history.length) {
                     update({
@@ -258,7 +351,7 @@ export function SearchView() {
             </div>
           </div>
           {replace && (
-            <div className="search-query-row" id="search-replace-row">
+            <div className="search-query-row" id={`search-replace-row-${id}`}>
               <div className="input-options">
                 <input
                   placeholder="Replace"
@@ -289,16 +382,16 @@ export function SearchView() {
             icon="ellipsis"
             label="Toggle Search Details"
             aria-expanded={details}
-            aria-controls="search-details"
+            aria-controls={`search-details-${id}`}
             onClick={() => setDetails(!details)}
           />
         </div>
         {details && (
-          <div className="search-details" id="search-details">
-            <label htmlFor="search-include">files to include</label>
+          <div className="search-details" id={`search-details-${id}`}>
+            <label htmlFor={`search-include-${id}`}>files to include</label>
             <div className="input-options">
               <input
-                id="search-include"
+                id={`search-include-${id}`}
                 value={query.include}
                 onChange={(e) => update({ include: e.target.value })}
                 placeholder="e.g. *.ts, src/**/include"
@@ -320,10 +413,10 @@ export function SearchView() {
                 />
               </div>
             </div>
-            <label htmlFor="search-exclude">files to exclude</label>
+            <label htmlFor={`search-exclude-${id}`}>files to exclude</label>
             <div className="input-options">
               <input
-                id="search-exclude"
+                id={`search-exclude-${id}`}
                 value={query.exclude}
                 onChange={(e) => update({ exclude: e.target.value })}
               />
@@ -348,15 +441,6 @@ export function SearchView() {
               ? `${results.length} results in ${files.length} files`
               : "No results found."
             : "Search across files in your workspace."}
-        {results.length > 0 && (
-          <>
-            {" "}
-            -{" "}
-            <button className="search-editor-link" onClick={() => void createSearchEditor()}>
-              Open in editor
-            </button>
-          </>
-        )}
       </div>
       {limited && (
         <p className="inline-warning">
@@ -374,7 +458,12 @@ export function SearchView() {
         tabIndex={0}
         role="tree"
         aria-label="Search results"
-        onScroll={(e) => setScroll(e.currentTarget.scrollTop)}
+        onScroll={(e) => {
+          if (active) {
+            scrollTop.current = e.currentTarget.scrollTop;
+            setScroll(scrollTop.current);
+          }
+        }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
@@ -595,7 +684,8 @@ export function SearchView() {
           })()}
         </div>
       )}
-    </section>
+      </div>
+    </div>
   );
 }
 
