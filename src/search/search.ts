@@ -1,5 +1,5 @@
 import { call, channel, errorMessage } from "../core/bridge";
-import { useApp, setApp, notify, initialSearch, primarySearchId, searchSession, patchSearch } from "../store/store";
+import { useApp, setApp, initialSearch, primarySearchId, searchSession, patchSearch } from "../store/store";
 import {
   checkpoint,
   newDocument,
@@ -7,9 +7,7 @@ import {
   models,
   showDocument,
   normalize,
-  relative,
   patchDoc,
-  basename,
   editors,
   patchMediaView,
 } from "../editor/documents";
@@ -186,193 +184,7 @@ export async function nextSearchResult(direction = 1) {
   await openMatch(results[navigationIndex]);
 }
 
-type ReplacementEdit = { id: string; before: string; after: string; version: number };
-type Transaction = { open: ReplacementEdit[]; disk: string | null };
-type DiskEdit = { path: string; before: string; after: string; encoding: string; revision: string };
-type Report = { succeeded: string[]; failed: string[] };
-const undoStack: Transaction[] = [];
-const redoStack: Transaction[] = [];
-
-export async function replaceMatches(
-  matches: SearchMatch[],
-  replacement: string,
-  preserve = false,
-  query = searchSession(primarySearchId)!.query,
-  preview = false,
-) {
-  const byFile = new Map<string, SearchMatch[]>();
-  matches.forEach((m) => {
-    const key = m.documentId ?? normalize(m.path);
-    byFile.set(key, [...(byFile.get(key) ?? []), m]);
-  });
-  const transaction: ReplacementEdit[] = [];
-  const errors: string[] = [];
-  const diskEdits: DiskEdit[] = [];
-  for (const list of byFile.values()) {
-    let temporary: monaco.editor.ITextModel | undefined;
-    try {
-      const first = list[0];
-      const doc = first.documentId
-        ? useApp.getState().docs[first.documentId]
-        : Object.values(useApp.getState().docs).find(
-            (d) => d.path && normalize(d.path) === normalize(first.path),
-          );
-      if (doc && !isTextDocument(doc)) {
-        throw new Error(`${relative(first.path)} is no longer a text document. Search again.`);
-      }
-      let disk: DiskDocument | undefined;
-      if (!doc) {
-        disk = await call<DiskDocument>("read_document", { path: first.path });
-        temporary = monaco.editor.createModel(disk.text);
-      }
-      const m = doc ? models.get(doc.id)! : temporary!;
-      if (doc && first.version !== null && first.version !== doc.version) {
-        throw new Error(`${relative(first.path)} changed after searching. Search again.`);
-      }
-      const version = m.getVersionId();
-      const planned = await call<
-        { line: number; column: number; endLine: number; endColumn: number; text: string }[]
-      >("replacement_plan", { text: m.getValue(), query, replacement, preserveCase: preserve });
-      if (m.getVersionId() !== version) {
-        throw new Error(
-          `${doc?.name ?? first.path} changed while preparing replacements. Search again.`,
-        );
-      }
-      const edits = list.map((match) => {
-        const range = new monaco.Range(match.line, match.column, match.endLine, match.endColumn);
-        if (m.getValueInRange(range) !== match.matched) {
-          throw new Error(`${relative(match.path)} changed after searching. Search again.`);
-        }
-        const plan = planned.find(
-          (p) =>
-            p.line === match.line &&
-            p.column === match.column &&
-            p.endLine === match.endLine &&
-            p.endColumn === match.endColumn,
-        );
-        if (!plan) {
-          throw new Error("Search and replacement ranges changed. Search again before replacing.");
-        }
-        return { range, text: plan.text };
-      });
-      const before = m.getValue();
-      let after = before;
-      for (const edit of [...edits].sort(
-        (a, b) =>
-          m.getOffsetAt(b.range.getStartPosition()) - m.getOffsetAt(a.range.getStartPosition()),
-      )) {
-        const start = m.getOffsetAt(edit.range.getStartPosition());
-        const end = m.getOffsetAt(edit.range.getEndPosition());
-        after = after.slice(0, start) + edit.text + after.slice(end);
-      }
-      if (preview) {
-        window.dispatchEvent(
-          new CustomEvent("show-diff", {
-            detail: {
-              title: `Replace Preview · ${doc?.name ?? basename(first.path)}`,
-              before,
-              after,
-              language: doc?.language ?? "plaintext",
-            },
-          }),
-        );
-        return;
-      }
-      if (doc) {
-        m.pushStackElement();
-        m.pushEditOperations([], edits, () => null);
-        m.pushStackElement();
-        transaction.push({
-          id: doc.id,
-          before,
-          after: m.getValue(),
-          version: useApp.getState().docs[doc.id].version,
-        });
-      } else if (disk) {
-        diskEdits.push({
-          path: first.path,
-          before: disk.text,
-          after,
-          encoding: disk.encoding,
-          revision: disk.revision,
-        });
-      }
-    } catch (e) {
-      errors.push(errorMessage(e));
-    } finally {
-      temporary?.dispose();
-    }
-  }
-  let diskId: string | null = null;
-  let saved = 0;
-  if (diskEdits.length) {
-    const transactionId = crypto.randomUUID();
-    try {
-      const report = await call<Report>("replace_disk", { transactionId, edits: diskEdits });
-      saved = report.succeeded.length;
-      errors.push(...report.failed);
-      if (saved) {
-        diskId = transactionId;
-      }
-    } catch (e) {
-      errors.push(errorMessage(e));
-    }
-  }
-  if (transaction.length || diskId) {
-    undoStack.push({ open: transaction, disk: diskId });
-    redoStack.length = 0;
-    await checkpoint();
-  }
-  if (!preview) {
-    notify(
-      `${saved} closed file(s) saved; ${transaction.length} open editor(s) updated. Open editors retain unsaved edits.${errors.length ? `\n${errors.join("\n")}` : ""}`,
-    );
-  }
-  return errors;
-}
-
-export async function undoReplacement(redo = false) {
-  const from = redo ? redoStack : undoStack;
-  const to = redo ? undoStack : redoStack;
-  const transaction = from[from.length - 1];
-  if (!transaction) {
-    return;
-  }
-  if (
-    transaction.open.some(
-      (edit) => models.get(edit.id)?.getValue() !== (redo ? edit.before : edit.after),
-    )
-  ) {
-    notify(
-      "A replaced document changed. Undo those edits first, then retry the linked replacement undo.",
-    );
-    return;
-  }
-  for (const edit of transaction.open) {
-    const m = models.get(edit.id)!;
-    m.pushStackElement();
-    m.pushEditOperations(
-      [],
-      [{ range: m.getFullModelRange(), text: redo ? edit.after : edit.before }],
-      () => null,
-    );
-    m.pushStackElement();
-  }
-  if (transaction.disk) {
-    const report = await call<Report>("replay_replacement", {
-      transactionId: transaction.disk,
-      redo,
-    });
-    if (report.failed.length) {
-      notify(
-        `Replacement ${redo ? "redo" : "undo"} partially failed:\n${report.failed.join("\n")}`,
-      );
-    }
-  }
-  from.pop();
-  to.push(transaction);
-  await checkpoint();
-}
+export { replaceMatches, undoReplacement, retryReplacement, recoverInterruptedReplacements } from "./replacements";
 
 export async function createSearchEditor(
   query = searchSession()!.query,

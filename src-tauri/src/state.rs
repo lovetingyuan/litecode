@@ -109,6 +109,10 @@ pub fn recovery_path(path: &Path) -> Result<PathBuf> {
 }
 
 impl AppState {
+    pub fn authorize_recovery(&self, label: &str, path: &str) -> Result<PathBuf> {
+        self.authorize_path(label, recovery_path(Path::new(path))?)
+    }
+
     pub fn authorize(&self, label: &str, path: &str) -> Result<PathBuf> {
         self.authorize_path(label, canonical(Path::new(path))?)
     }

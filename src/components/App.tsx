@@ -34,6 +34,7 @@ import { initializeLanguages } from "../editor/languages";
 import { isTextView } from "../utils/media";
 import { MediaStatus } from "./MediaStatus";
 import { useExternalDrop } from "../hooks/useExternalDrop";
+import { recoverInterruptedReplacements } from "../search/replacements";
 import {
   changeIndent,
   changeEncoding,
@@ -109,6 +110,7 @@ function start() {
       await refreshTree();
     }
     await refreshDocuments();
+    if (desktop) { void recoverInterruptedReplacements().catch((error) => notify(errorMessage(error))); }
   })());
 }
 

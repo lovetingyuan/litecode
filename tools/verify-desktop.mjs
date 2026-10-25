@@ -331,6 +331,8 @@ try {
   const after = before.replaceAll("needle", "replaced");
   const report = await invoke("replace_disk", {
     transactionId,
+    expectedRoot: fixture,
+    buffers: [],
     edits: [
       {
         path: path.join(fixture, "README.md"),
@@ -344,12 +346,15 @@ try {
   assert.equal(report.ok, true);
   assert.equal(report.value.succeeded.length, 1);
   assert.equal(await readFile(path.join(fixture, "README.md"), "utf8"), after);
+  assert.equal((await invoke("finish_replacement", { transactionId })).ok, true);
   const undone = await invoke("replay_replacement", { transactionId, redo: false });
   assert.equal(undone.value.succeeded.length, 1);
   assert.equal(await readFile(path.join(fixture, "README.md"), "utf8"), before);
+  assert.equal((await invoke("finish_replacement", { transactionId })).ok, true);
   const redone = await invoke("replay_replacement", { transactionId, redo: true });
   assert.equal(redone.value.succeeded.length, 1);
   assert.equal(await readFile(path.join(fixture, "README.md"), "utf8"), after);
+  assert.equal((await invoke("finish_replacement", { transactionId })).ok, true);
   checks.push("Journaled disk replacement and version-checked undo/redo preserve CRLF and Unicode");
   if (installTools) {
     await request("POST", url("/timeouts"), { script: 300000 });

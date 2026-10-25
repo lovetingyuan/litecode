@@ -139,7 +139,7 @@ it("preserves original mixed line endings in the disk replacement journal", asyn
   x.call.mockImplementation(async (command: string) => {
     if (command === "read_document") { return { text: original, encoding: "utf8", revision: "original-byte-hash" }; }
     if (command === "replacement_plan") { return [{ line: 1, column: 1, endLine: 1, endColumn: 2, text: "x" }]; }
-    if (command === "replace_disk") { return { succeeded: ["mixed.txt"], failed: [] }; }
+    if (command === "replace_disk") { return { succeeded: ["mixed.txt"], failed: [], remaining: [], complete: true }; }
   });
   await replaceMatches([{ path: "mixed.txt", documentId: null, version: null, line: 1, column: 1, endLine: 1, endColumn: 2, matched: "a", preview: "a" }], "x", false, query("a"));
   const write = x.call.mock.calls.find(([command]) => command === "replace_disk");

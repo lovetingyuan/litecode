@@ -19,7 +19,7 @@ vi.mock("../core/bridge", () => ({
 vi.mock("../components/dialog", () => ({ ask: vi.fn() }));
 vi.mock("../components/Explorer", () => ({ refreshTree: vi.fn(), revealInTree: vi.fn() }));
 vi.mock("../search/search", () => ({
-  createSearchTab: vi.fn(), activateSearchTab: vi.fn(), focusSearch: vi.fn(), undoReplacement: vi.fn(), nextSearchResult: vi.fn(),
+  createSearchTab: vi.fn(), activateSearchTab: vi.fn(), focusSearch: vi.fn(), undoReplacement: vi.fn(), nextSearchResult: vi.fn(), retryReplacement: vi.fn(), recoverInterruptedReplacements: vi.fn(),
 }));
 vi.mock("./editorStatus", () => ({ changeLanguage: vi.fn() }));
 vi.mock("./languages", () => ({

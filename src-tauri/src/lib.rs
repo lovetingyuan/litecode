@@ -6,6 +6,8 @@ mod file_clipboard;
 mod file_creation;
 mod file_moves;
 mod files;
+#[cfg(windows)]
+mod instance;
 mod lsp;
 mod media;
 mod quick_files;
@@ -19,19 +21,31 @@ mod workspace;
 
 use tauri::Manager;
 
+fn data_directory(
+    app: &tauri::AppHandle,
+) -> std::result::Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    let portable = std::env::current_exe()?.parent().unwrap().join("data");
+    Ok(if portable.is_dir() {
+        portable
+    } else {
+        app.path().app_data_dir()?
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    media::register(tauri::Builder::default())
+    let builder = media::register(tauri::Builder::default());
+    #[cfg(windows)]
+    let builder = builder.plugin(instance::init());
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
-            let portable = std::env::current_exe()?.parent().unwrap().join("data");
-            let data_dir = if portable.is_dir() {
-                portable
-            } else {
-                app.path().app_data_dir()?
-            };
+            #[cfg(windows)]
+            let data_dir = app.state::<instance::Instance>().data_dir.clone();
+            #[cfg(not(windows))]
+            let data_dir = data_directory(app.handle())?;
             std::fs::create_dir_all(&data_dir)?;
             app.manage(state::AppState {
                 data_dir,
@@ -41,13 +55,40 @@ pub fn run() {
                 external_drop::install(&window)?;
             }
             let state = app.state::<state::AppState>();
-            let labels = state.recovery_windows().unwrap_or_else(|error| {
+            let mut labels = state.recovery_windows().unwrap_or_else(|error| {
                 state.startup_warnings.lock().unwrap().push(format!(
                     "Could not inspect recovery sessions: {}",
                     error.message
                 ));
                 vec![]
             });
+            match transactions::pending_windows(&state) {
+                Ok(pending) => {
+                    for (label, root) in pending {
+                        if let Some(root) = root
+                            .and_then(|p| state::canonical(&p).ok())
+                            .filter(|p| p.is_dir())
+                        {
+                            state
+                                .windows
+                                .lock()
+                                .unwrap()
+                                .entry(label.clone())
+                                .or_default()
+                                .root = Some(root);
+                        }
+                        if label != "main" {
+                            labels.push(label);
+                        }
+                    }
+                }
+                Err(error) => state.startup_warnings.lock().unwrap().push(format!(
+                    "Could not inspect replacement recovery: {}. Backups were preserved.",
+                    error.message
+                )),
+            }
+            labels.sort();
+            labels.dedup();
             for label in labels {
                 if let Err(error) = commands::create_editor_window(app.handle(), &state, &label) {
                     state
@@ -134,6 +175,10 @@ pub fn run() {
             replacement::replacement_plan,
             transactions::replace_disk,
             transactions::replay_replacement,
+            transactions::finish_replacement,
+            transactions::resume_replacement,
+            transactions::replacement_recovery,
+            transactions::recover_replacement,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

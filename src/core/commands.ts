@@ -24,7 +24,7 @@ import {
 } from "../editor/documents";
 import type { SplitDirection } from "../editor/editorLayout";
 import { refreshTree, revealInTree } from "../components/Explorer";
-import { createSearchTab, activateSearchTab, focusSearch, undoReplacement, nextSearchResult } from "../search/search";
+import { createSearchTab, activateSearchTab, focusSearch, undoReplacement, nextSearchResult, retryReplacement, recoverInterruptedReplacements } from "../search/search";
 import { changeLanguage } from "../editor/editorStatus";
 import { restartLanguages, stopLanguages, languageReport } from "../editor/languages";
 import { manageWorkspaceTrust } from "./workspaceTrust";
@@ -600,6 +600,16 @@ export const commands: Command[] = [
     label: "Undo Workspace Replacement",
     menu: "Edit",
     run: () => undoReplacement(),
+  },
+  {
+    id: "litecode.retryReplace",
+    label: "Search: Retry Interrupted Replacement",
+    run: retryReplacement,
+  },
+  {
+    id: "litecode.recoverReplace",
+    label: "Search: Recover Interrupted Replacements",
+    run: recoverInterruptedReplacements,
   },
   {
     id: "litecode.redoReplace",

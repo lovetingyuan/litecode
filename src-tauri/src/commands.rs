@@ -88,6 +88,12 @@ pub async fn bootstrap(window: WebviewWindow, state: State<'_, AppState>) -> Res
                 }
                 w.documents.insert(d.id.clone(), d);
             }
+            if let Err(error) = crate::transactions::restore_buffers(&state, window.label(), w) {
+                warnings.push(format!(
+                    "Could not inspect replacement buffers: {}. Backups were preserved.",
+                    error.message
+                ));
+            }
         }
     }
     let root = state
@@ -240,6 +246,9 @@ pub async fn open_workspace(
         }
     }
     let _disk = state.disk_lock.lock().unwrap();
+    if !new_window {
+        crate::transactions::ensure_no_pending(&state, window.label())?;
+    }
     remember(&state, &visible_path(&root))?;
     if new_window {
         let label = format!(
