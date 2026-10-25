@@ -11,12 +11,14 @@ const entries = [
   ["api-web-components.md", 3],
   ["recipe-react.md", 1],
 ];
-const docs = entries.map(([name]) => ({
+const distantPreview = "中文\t" + "x".repeat(497) + "function tail";
+const docs = entries.map(([name], i) => ({
   id: `file:///${root}/.agents/skills/trees/references/${name}`,
   path: `${root}/.agents/skills/trees/references/${name}`,
   name,
   language: "markdown",
-  text: "export function example() {}\n".repeat(10),
+  text: "export function example() {}\n".repeat(10)
+    + (i === 0 ? "short line\n".repeat(69) + distantPreview + "\n" : ""),
   encoding: "utf8",
   eol: "LF",
   revision: "fixture",
@@ -359,10 +361,12 @@ try {
     await sash.press("ArrowRight");
   }
 
-  // Opening a preview must retain the original UTF-16 location after clipping.
+  // Opening a clipped preview must reveal the real match on both scroll axes.
   const distant = {
     ...matches[0],
-    preview: "x".repeat(500) + "function tail",
+    preview: distantPreview,
+    line: 80,
+    endLine: 80,
     column: 501,
     endColumn: 509,
   };
@@ -370,9 +374,63 @@ try {
   assert.ok((await search.locator(".result-preview").textContent()).startsWith("…"));
   assert.equal(await search.locator(".result-preview mark").textContent(), "function");
   await search.locator(".result-preview").click();
-  // The fixture's real model has a short line; use an existing valid hit for navigation.
+  await page.evaluate(async (url) => { window.__searchEditor = (await import(url)).editor(); }, urls.documents);
+  const matchVisible = (hit) => page.waitForFunction((hit) => {
+    const editor = window.__searchEditor;
+    const start = editor.getScrolledVisiblePosition({ lineNumber: hit.line, column: hit.column });
+    const end = editor.getScrolledVisiblePosition({ lineNumber: hit.endLine, column: hit.endColumn });
+    const layout = editor.getLayoutInfo();
+    const selection = editor.getSelection();
+    return selection.startLineNumber === hit.line && selection.startColumn === hit.column
+      && selection.endLineNumber === hit.endLine && selection.endColumn === hit.endColumn
+      && start && end && start.left >= layout.contentLeft
+      && end.left <= layout.contentLeft + layout.contentWidth - layout.verticalScrollbarWidth
+      && start.top >= 0 && end.top + end.height <= layout.height;
+  }, hit);
+  await matchVisible(distant);
+  assert.ok(await page.evaluate(async (url) => (await import(url)).editor().getScrollLeft() > 0, urls.documents));
+  // Reopening a match must also scroll horizontally when its line is already visible.
+  await page.evaluate(async (url) => (await import(url)).editor().setScrollLeft(0), urls.documents);
+  await search.locator(".result-preview").click();
+  await matchVisible(distant);
   await patch({ results: matches });
   await search.locator(".result-preview").first().click();
+  await matchVisible(matches[0]);
+  assert.equal(await page.evaluate(() => window.__searchEditor.getScrollLeft()), 0,
+    "A short-line match resets horizontal scrolling to the start");
+  const near = { ...distant, column: 30, endColumn: 38, matched: "x".repeat(8) };
+  await patch({ results: [distant, near] });
+  await search.locator(".result-preview").first().click();
+  await matchVisible(distant);
+  await search.locator(".result-preview").nth(1).click();
+  await matchVisible(near);
+  assert.equal(await page.evaluate(() => window.__searchEditor.getScrollLeft()), 0,
+    "A match near the start of a long line resets horizontal scrolling");
+  const edgeColumn = await page.evaluate(() => {
+    const editor = window.__searchEditor;
+    const layout = editor.getLayoutInfo();
+    const width = layout.contentWidth - layout.verticalScrollbarWidth;
+    let column = 1;
+    while (editor.getOffsetForColumn(80, column + 1) <= width) { column++; }
+    return column;
+  });
+  const edge = { ...near, column: edgeColumn - 8, endColumn: edgeColumn };
+  await patch({ results: [distant, edge] });
+  await search.locator(".result-preview").first().click();
+  await matchVisible(distant);
+  await search.locator(".result-preview").nth(1).click();
+  await matchVisible(edge);
+  assert.equal(await page.evaluate(() => window.__searchEditor.getScrollLeft()), 0,
+    "A fully visible match at the right edge does not scroll for reveal padding");
+  await action("search", "nextSearchResult");
+  await matchVisible(distant);
+  await action("search", "nextSearchResult");
+  await matchVisible(edge);
+  assert.equal(await page.evaluate(() => window.__searchEditor.getScrollLeft()), 0,
+    "Next-result navigation also prefers the start when the match fits");
+  await patch({ results: matches });
+  await search.locator(".result-preview").first().click();
+  await matchVisible(matches[0]);
   assert.deepEqual(
     await page.evaluate(async (url) => {
       const s = (await import(url)).editor().getSelection();
@@ -381,7 +439,7 @@ try {
     [1, 8, 16],
   );
   assert.equal(await search.getByRole("button", { name: "Open in editor", exact: true }).count(), 0);
-  console.log("PASS: clipped highlight, original source navigation and no editor handoff");
+  console.log("PASS: clipped highlight, vertical and horizontal match reveal, repeated navigation and no editor handoff");
 
   await button("Clear Search Results").click();
   const many = Array.from({ length: 20_000 }, (_, i) => ({

@@ -158,7 +158,17 @@ export async function openMatch(match: SearchMatch, side = false, group?: string
   // showDocument reveals the position next frame; apply the range after that reveal.
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   const e = editors.get(groupId);
-  e?.setSelection(new monaco.Range(match.line, match.column, match.endLine, match.endColumn));
+  const range = new monaco.Range(match.line, match.column, match.endLine, match.endColumn);
+  e?.setSelection(range);
+  e?.revealRangeInCenterIfOutsideViewport(range, monaco.editor.ScrollType.Immediate);
+  if (e && match.line === match.endLine) {
+    const start = e.getOffsetForColumn(match.line, match.column);
+    const end = e.getOffsetForColumn(match.endLine, match.endColumn);
+    const layout = e.getLayoutInfo();
+    if (start >= 0 && end >= 0 && Math.max(start, end) <= layout.contentWidth - layout.verticalScrollbarWidth) {
+      e.setScrollLeft(0, monaco.editor.ScrollType.Immediate);
+    }
+  }
 }
 
 let navigationResults: SearchMatch[] = [];
