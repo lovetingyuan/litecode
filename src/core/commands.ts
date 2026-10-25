@@ -684,7 +684,7 @@ export const commands: Command[] = [
       setApp((s) => ({
         settings: {
           ...s.settings,
-          "editor.wordWrap": s.settings["editor.wordWrap"] === "on" ? "off" : "on",
+          "editor.wordWrap": ["on", "wordWrapColumn", "bounded"].includes(String(s.settings["editor.wordWrap"])) ? "off" : "on",
         },
       })),
   },

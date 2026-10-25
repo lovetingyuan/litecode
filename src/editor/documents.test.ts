@@ -72,6 +72,14 @@ import { setApp, useApp } from "../store/store";
 class Buffer {
   private version = 1;
   private listeners = new Set<() => void>();
+  private options = { tabSize: 4, insertSpaces: true };
+  getOptions() { return this.options; }
+  updateOptions = vi.fn((options: Partial<typeof this.options>) => {
+    this.options = { ...this.options, ...options };
+  });
+  detectIndentation = vi.fn((insertSpaces: boolean, tabSize: number) => {
+    this.updateOptions({ insertSpaces, tabSize });
+  });
   constructor(private text: string) {}
   getValue() {
     return this.text;
@@ -259,6 +267,22 @@ describe("Editor tab actions", () => {
     return ids;
   }
 
+  it("disables preview replacement across groups without closing or changing fixed tabs", () => {
+    const ids = setup();
+    setSticky(ids[0], "one", true);
+    setApp({ settings: { "workbench.editor.enablePreview": false } });
+    expect(useApp.getState().groups.every((group) => group.preview === null)).toBe(true);
+    const next = addDocument({ dirty: false });
+    showDocument(next.id, { preserveFocus: true });
+    expect(useApp.getState().groups[0]).toMatchObject({ tabs: [...ids, next.id], preview: null, sticky: [ids[0]] });
+    expect(models.has(ids[3])).toBe(true);
+    expect(normalizeGroup({ id: "restored", tabs: [next.id], active: next.id, preview: next.id, views: {} }).preview).toBeNull();
+    setApp({ settings: {} });
+    const preview = addDocument({ dirty: false });
+    showDocument(preview.id, { preserveFocus: true });
+    expect(useApp.getState().groups[0].preview).toBe(preview.id);
+  });
+
   it("keeps preview persistence separate from group-local pinning", () => {
     const ids = setup();
     keepOpen(ids[3], "one");
@@ -428,6 +452,24 @@ describe("Editor tab actions", () => {
     expect(saved.groupMru).toEqual(["two", "one"]);
     expect(saved.editorLayout).toEqual(useApp.getState().editorLayout);
     expect(saved.groups.find((g) => g.id === "two")?.tabs).toContain(ids[3]);
+  });
+});
+
+describe("Live model settings", () => {
+  it("updates existing and newly created models, including documents outside the active group", () => {
+    const first = addDocument();
+    const second = addDocument();
+    const settings = { "editor.detectIndentation": false, "editor.tabSize": 8, "editor.insertSpaces": false };
+    setApp({ settings });
+    for (const { buffer } of [first, second, addDocument()]) {
+      expect(buffer.getOptions()).toMatchObject({ tabSize: 8, insertSpaces: false });
+      expect(buffer.getValue()).toBe("edited");
+    }
+    first.buffer.detectIndentation.mockClear();
+    setApp({ settings: { ...settings, "editor.cursorStyle": "block" } });
+    expect(first.buffer.detectIndentation).not.toHaveBeenCalled();
+    setApp({ settings: {} });
+    expect(first.buffer.detectIndentation).toHaveBeenCalledWith(true, 4);
   });
 });
 afterEach(() => {

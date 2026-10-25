@@ -224,12 +224,12 @@
       "minimum": 1,
       "maximum": 16,
       "default": 4,
-      "description": "一个 Tab 显示的空格宽度，范围 1–16。"
+      "description": "一个 Tab 显示的空格宽度，范围 1–16；detectIndentation 开启时，以文件检测结果为准。"
     },
     "editor.wordWrap": {
-      "enum": ["off", "on"],
+      "enum": ["off", "on", "wordWrapColumn", "bounded"],
       "default": "off",
-      "description": "自动折行：off 关闭；on 按编辑器宽度折行，不修改文件中的换行符。"
+      "description": "自动折行：off 关闭，on 按编辑器宽度，wordWrapColumn 按指定列，bounded 按编辑器宽度和指定列中的较小值。不修改文件内容。"
     },
     "editor.minimap.enabled": {
       "type": "boolean",
@@ -341,6 +341,348 @@
       "type": ["string", "null"],
       "default": null,
       "description": "Oxfmt 可执行文件路径。null 表示先从 PATH 查找，再尝试项目和应用安装的 Oxfmt。"
+    },
+    "editor.lineNumbers": {
+      "enum": [
+        "off",
+        "on",
+        "relative",
+        "interval"
+      ],
+      "default": "on",
+      "description": "行号显示方式：off 关闭，on 绝对行号，relative 相对行号，interval 每十行显示。"
+    },
+    "editor.renderWhitespace": {
+      "enum": [
+        "none",
+        "boundary",
+        "selection",
+        "trailing",
+        "all"
+      ],
+      "default": "selection",
+      "description": "空白字符显示方式：none 不显示，boundary 显示边界空白，selection 仅选区，trailing 仅行尾，all 全部。"
+    },
+    "editor.rulers": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          {
+            "type": "object",
+            "properties": {
+              "column": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+              },
+              "color": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "column"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "default": [],
+      "description": "垂直参考线的列位置，例如 [80, 120]，也支持 {\"column\": 80, \"color\": \"#808080\"}。空数组不显示。"
+    },
+    "editor.renderLineHighlight": {
+      "enum": [
+        "none",
+        "gutter",
+        "line",
+        "all"
+      ],
+      "default": "line",
+      "description": "当前行高亮区域：none 关闭，gutter 行号区域，line 文本区域，all 两者。"
+    },
+    "editor.guides.indentation": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否显示缩进参考线。"
+    },
+    "editor.guides.bracketPairs": {
+      "enum": [
+        true,
+        "active",
+        false
+      ],
+      "default": true,
+      "description": "括号对参考线：true 显示全部，active 仅当前括号对，false 关闭。"
+    },
+    "editor.bracketPairColorization.enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否为配对括号着色。"
+    },
+    "editor.folding": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否启用代码折叠；大文件模式下始终关闭。"
+    },
+    "editor.fontWeight": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        {
+          "type": "string",
+          "pattern": "^(normal|bold|1000|[1-9][0-9]{0,2})$"
+        }
+      ],
+      "default": "normal",
+      "description": "编辑器字重：normal、bold 或 1–1000 的数字及数字字符串。"
+    },
+    "editor.letterSpacing": {
+      "type": "number",
+      "minimum": -5,
+      "maximum": 20,
+      "default": 0,
+      "description": "编辑器字符间距，单位为像素。"
+    },
+    "editor.cursorStyle": {
+      "enum": [
+        "line",
+        "block",
+        "underline",
+        "line-thin",
+        "block-outline",
+        "underline-thin"
+      ],
+      "default": "line",
+      "description": "编辑器光标样式。"
+    },
+    "editor.cursorBlinking": {
+      "enum": [
+        "blink",
+        "smooth",
+        "phase",
+        "expand",
+        "solid"
+      ],
+      "default": "blink",
+      "description": "编辑器光标闪烁方式；solid 为常亮。"
+    },
+    "editor.cursorSmoothCaretAnimation": {
+      "enum": [
+        "off",
+        "explicit",
+        "on"
+      ],
+      "default": "off",
+      "description": "光标平滑动画：off 关闭，explicit 仅手动移动，on 始终启用。"
+    },
+    "editor.scrollBeyondLastLine": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否允许滚动到最后一行之后。"
+    },
+    "editor.smoothScrolling": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否启用编辑器平滑滚动。"
+    },
+    "editor.mouseWheelZoom": {
+      "type": "boolean",
+      "default": false,
+      "description": "是否允许 Ctrl+鼠标滚轮调整编辑器字号。"
+    },
+    "editor.wordWrapColumn": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "default": 80,
+      "description": "wordWrapColumn 和 bounded 折行模式使用的列数，不改变文件内容。"
+    },
+    "editor.insertSpaces": {
+      "type": "boolean",
+      "default": true,
+      "description": "按 Tab 时是否插入空格。detectIndentation 开启时，以文件检测结果为准；不改写已有缩进。"
+    },
+    "editor.detectIndentation": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否根据文件内容自动检测 Tab 宽度及空格缩进；关闭时使用 tabSize 和 insertSpaces。"
+    },
+    "editor.quickSuggestions": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "enum": [
+            "on",
+            "off",
+            "offWhenInlineCompletions"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "other": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "enum": [
+                    "on",
+                    "off",
+                    "offWhenInlineCompletions"
+                  ]
+                }
+              ]
+            },
+            "comments": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "enum": [
+                    "on",
+                    "off",
+                    "offWhenInlineCompletions"
+                  ]
+                }
+              ]
+            },
+            "strings": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "enum": [
+                    "on",
+                    "off",
+                    "offWhenInlineCompletions"
+                  ]
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "default": {
+        "other": "offWhenInlineCompletions",
+        "comments": "off",
+        "strings": "off"
+      },
+      "description": "输入时自动显示补全。支持布尔值、on/off/offWhenInlineCompletions，或分别设置 other、comments、strings。仅提供当前补全列表支持的模式。"
+    },
+    "editor.quickSuggestionsDelay": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1073741824,
+      "default": 10,
+      "description": "输入后显示自动补全的延迟，单位为毫秒。"
+    },
+    "editor.suggestOnTriggerCharacters": {
+      "type": "boolean",
+      "default": true,
+      "description": "输入语言定义的触发字符时是否自动显示补全。"
+    },
+    "editor.acceptSuggestionOnEnter": {
+      "enum": [
+        "on",
+        "smart",
+        "off"
+      ],
+      "default": "on",
+      "description": "是否用 Enter 接受补全：smart 仅在补全会改变文本时接受，off 仅插入换行。"
+    },
+    "editor.parameterHints.enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否自动显示函数参数提示，需要语言服务支持。"
+    },
+    "editor.hover.enabled": {
+      "enum": [
+        "on",
+        "off",
+        "onKeyboardModifier"
+      ],
+      "default": "on",
+      "description": "悬停提示：on 开启，off 关闭，onKeyboardModifier 按住 Ctrl 或 Alt 时显示。"
+    },
+    "editor.hover.delay": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10000,
+      "default": 300,
+      "description": "显示悬停提示的延迟，单位为毫秒。"
+    },
+    "editor.inlayHints.enabled": {
+      "enum": [
+        "on",
+        "onUnlessPressed",
+        "offUnlessPressed",
+        "off"
+      ],
+      "default": "on",
+      "description": "行内提示开关，需要语言服务支持；onUnlessPressed 和 offUnlessPressed 用 Ctrl+Alt 临时切换。"
+    },
+    "editor.autoClosingBrackets": {
+      "enum": [
+        "always",
+        "languageDefined",
+        "beforeWhitespace",
+        "never"
+      ],
+      "default": "languageDefined",
+      "description": "括号自动闭合方式：always 始终，languageDefined 按语言规则，beforeWhitespace 仅空白字符前，never 关闭。"
+    },
+    "editor.autoClosingQuotes": {
+      "enum": [
+        "always",
+        "languageDefined",
+        "beforeWhitespace",
+        "never"
+      ],
+      "default": "languageDefined",
+      "description": "引号自动闭合方式：always 始终，languageDefined 按语言规则，beforeWhitespace 仅空白字符前，never 关闭。"
+    },
+    "editor.autoSurround": {
+      "enum": [
+        "languageDefined",
+        "quotes",
+        "brackets",
+        "never"
+      ],
+      "default": "languageDefined",
+      "description": "选中文本后自动包围方式：languageDefined 按语言规则，quotes 仅引号，brackets 仅括号，never 关闭。"
+    },
+    "workbench.editor.enablePreview": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否使用可复用的预览标签。关闭后新打开文件保持独立标签，已有标签不会被关闭。"
+    },
+    "breadcrumbs.enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否显示编辑器路径面包屑。Markdown/SVG 的视图切换入口始终保留。"
+    },
+    "diffEditor.renderSideBySide": {
+      "type": "boolean",
+      "default": true,
+      "description": "差异查看器是否左右并排显示；关闭时在同一列显示差异。"
+    },
+    "diffEditor.ignoreTrimWhitespace": {
+      "type": "boolean",
+      "default": true,
+      "description": "差异比较时是否忽略行首和行尾空白的变化。"
     }
   }
 }

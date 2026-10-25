@@ -10,3 +10,5 @@ LiteCode is a local code editor for Windows 11, built with Tauri, React, and Mon
 - Syntax highlighting, code completion, navigation, diagnostics, and formatting.
 - Live Markdown preview, plus image, audio, and video previews.
 - User and workspace settings, session restoration, and backups of unsaved changes.
+
+Open **Preferences: Open User Settings (JSON)** to see supported settings with descriptions and defaults. Settings are grouped and sorted when opened; comments and custom values are preserved. Workspace `.litecode/settings.json` files are also organized when opened, without adding defaults. Saving does not reorder settings.

@@ -8,6 +8,7 @@ import { join, normalize, openPath, pathTitle } from "../editor/documents";
 import { workspaceDirectories } from "../explorer/workspaceTree";
 import { attachBreadcrumbTree, breadcrumbSegments } from "../explorer/breadcrumbTree";
 import { isMarkdownDocument } from "../utils/media";
+import { settingValue } from "../utils/settings";
 import type { Doc, Group } from "../types/types";
 import { EditorViewMenu } from "./MediaStatus";
 import { FileIcon, Icon } from "./ui";
@@ -18,13 +19,15 @@ export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
   const root = useApp((state) => state.root);
   const epoch = useApp((state) => state.workspaceEpoch);
   const activeGroup = useApp((state) => state.activeGroup);
+  const enabled = useApp((state) => settingValue(state.settings, "breadcrumbs.enabled") as boolean);
   const [selected, setSelected] = useState<string | null>(null);
   const restoreFocus = useRef(false);
-  useEffect(() => { setSelected(null); }, [doc.id, doc.path, root, epoch, activeGroup]);
+  useEffect(() => { setSelected(null); }, [doc.id, doc.path, root, epoch, activeGroup, enabled]);
   const segments = breadcrumbSegments(doc.path ?? undefined, doc.name, root);
+  if (!enabled && doc.kind !== "svg" && !isMarkdownDocument(doc)) { return null; }
   return (
     <div className="breadcrumbs">
-      <nav className="breadcrumbs-path" aria-label="File breadcrumbs">
+      {enabled && <nav className="breadcrumbs-path" aria-label="File breadcrumbs">
         {segments.map((segment, index) => {
           const content = <>{index === segments.length - 1 && <FileIcon language={doc.language} />}{segment.label}</>;
           const path = segment.workspacePath;
@@ -68,7 +71,7 @@ export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
             </span>
           );
         })}
-      </nav>
+      </nav>}
       {(doc.kind === "svg" || isMarkdownDocument(doc)) && <EditorViewMenu doc={doc} group={group} />}
     </div>
   );

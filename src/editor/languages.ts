@@ -180,7 +180,7 @@ export async function formatModelText(m: monaco.editor.ITextModel, language = m.
     return applyEdits(
       m.getValue(),
       format(m.getValue(), undefined, {
-        insertSpaces: true,
+        insertSpaces: m.getOptions().insertSpaces,
         tabSize: m.getOptions().tabSize,
         eol: m.getEOL(),
       }),

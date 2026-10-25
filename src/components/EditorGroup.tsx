@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { useApp, setApp, notify } from "../store/store";
 import { monaco } from "../editor/monaco";
-import { editorFontOptions } from "../editor/font";
+import { editorOptions } from "../editor/settings";
 import {
   models,
   editors,
@@ -110,23 +110,15 @@ export function EditorGroup({ group }: { group: Group }) {
     if (!host.current) {
       return;
     }
+    const state = useApp.getState();
+    const currentGroup = state.groups.find((g) => g.id === group.id);
     const e = monaco.editor.create(host.current, {
       theme: "dark-modern",
       model: null,
       automaticLayout: true,
-      ...editorFontOptions(useApp.getState().settings),
-      fontSize: 14,
-      lineHeight: 20,
+      ...editorOptions(state.settings, currentGroup?.active ? state.docs[currentGroup.active]?.large : false),
       padding: { top: 8 },
-      scrollBeyondLastLine: true,
-      smoothScrolling: true,
-      cursorBlinking: "blink",
-      renderLineHighlight: "line",
-      minimap: { enabled: true },
-      bracketPairColorization: { enabled: true },
-      guides: { bracketPairs: true },
       fixedOverflowWidgets: true,
-      tabSize: 4,
       unicodeHighlight: { ambiguousCharacters: false },
     });
     instance.current = e;
@@ -227,16 +219,7 @@ export function EditorGroup({ group }: { group: Group }) {
     previousTextView.current = textView;
   }, [group.id, group.active, group.views, doc?.path, textView]);
   useEffect(() => {
-    instance.current?.updateOptions({
-      fontSize: Number(settings["editor.fontSize"] ?? 14),
-      ...editorFontOptions(settings),
-      lineHeight: Number(settings["editor.lineHeight"] ?? 20),
-      tabSize: Number(settings["editor.tabSize"] ?? 4),
-      wordWrap: settings["editor.wordWrap"] === "on" ? "on" : "off",
-      minimap: { enabled: !doc?.large && settings["editor.minimap.enabled"] !== false },
-      folding: !doc?.large,
-      readOnly: false,
-    });
+    instance.current?.updateOptions(editorOptions(settings, doc?.large));
   }, [group.id, settings, doc?.large]);
   async function openTreeDrop(raw: string) {
     const { root, treeRoot } = useApp.getState();

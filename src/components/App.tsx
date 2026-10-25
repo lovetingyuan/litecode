@@ -16,6 +16,7 @@ import {
   editor,
   autoSave,
   normalizeGroup,
+  models,
 } from "../editor/documents";
 import { commands, execute, installKeys, openFolder } from "../core/commands";
 import { Explorer, refreshTree } from "./Explorer";
@@ -467,9 +468,7 @@ export default function App() {
                 Ln {s.cursor.line}, Col {s.cursor.column}
                 {s.cursor.selected ? ` (${s.cursor.selected} selected)` : ""}
               </button>
-              <button onClick={changeIndent}>
-                Spaces: {String(s.settings["editor.tabSize"] ?? 4)}
-              </button>
+              <IndentationStatus documentId={doc.id} />
               <button onClick={changeEncoding}>
                 {doc.encoding.toUpperCase().replace("UTF8", "UTF-8")}
               </button>
@@ -530,5 +529,20 @@ export default function App() {
       )}
       <DialogHost />
     </div>
+  );
+}
+
+function IndentationStatus({ documentId }: { documentId: string }) {
+  const model = models.get(documentId);
+  const [options, setOptions] = useState(() => model?.getOptions());
+  useEffect(() => {
+    setOptions(model?.getOptions());
+    const listener = model?.onDidChangeOptions(() => setOptions(model.getOptions()));
+    return () => listener?.dispose();
+  }, [model]);
+  return (
+    <button onClick={changeIndent}>
+      {options?.insertSpaces === false ? "Tabs" : "Spaces"}: {options?.tabSize ?? 4}
+    </button>
   );
 }

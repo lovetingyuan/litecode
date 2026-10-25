@@ -14,11 +14,21 @@ import type {
 } from "../types/types";
 import { isMarkdownDocument, isTextDocument, isTextView } from "../utils/media";
 import { ensureLanguage, releaseLanguageDocument, formatModel, canFormat } from "./languages";
-import { parseConfiguration } from "../utils/settings";
+import { organizeSettings, parseConfiguration, settingValue } from "../utils/settings";
+import { applyModelSettings, modelSettingKeys } from "./settings";
 import { layoutGroups, restoreLayout, splitLayout, type SplitDirection } from "./editorLayout";
 
 export const models = new Map<string, monaco.editor.ITextModel>();
 export const editors = new Map<string, monaco.editor.IStandaloneCodeEditor>();
+useApp.subscribe((state, previous) => {
+  if (state.settings === previous.settings) { return; }
+  if (modelSettingKeys.some((key) => settingValue(state.settings, key) !== settingValue(previous.settings, key))) {
+    for (const m of models.values()) { applyModelSettings(m, state.settings); }
+  }
+  if (!settingValue(state.settings, "workbench.editor.enablePreview") && state.groups.some((g) => g.preview)) {
+    setApp({ groups: state.groups.map((g) => ({ ...g, preview: null })) });
+  }
+});
 const savedVersions = new Map<string, number>();
 const savedEncodings = new Map<string, string>();
 const subscriptions = new Map<string, monaco.IDisposable>();
@@ -200,6 +210,7 @@ export function attachDocument(doc: Doc, text: string, initiallyDirty = false) {
   }
   const uri = doc.path ? monaco.Uri.file(visiblePath(doc.path)) : monaco.Uri.parse(doc.id);
   const m = monaco.editor.getModel(uri) ?? monaco.editor.createModel(text, doc.language, uri);
+  applyModelSettings(m, useApp.getState().settings);
   models.set(doc.id, m);
   if (!initiallyDirty) {
     savedVersions.set(doc.id, m.getAlternativeVersionId());
@@ -361,6 +372,23 @@ export async function openPath(
       }
     }
   }
+  const state = useApp.getState();
+  if ((state.dataDir && normalize(path) === normalize(join(state.dataDir, "settings.json"))) ||
+    (state.root && normalize(path) === normalize(join(state.root, ".litecode/settings.json")))) {
+    const m = models.get(id);
+    if (m) {
+      try {
+        const text = organizeSettings(m.getValue());
+        if (text !== m.getValue()) {
+          m.pushStackElement();
+          m.pushEditOperations([], [{ range: m.getFullModelRange(), text }], () => null);
+          m.pushStackElement();
+        }
+      } catch (error) {
+        notify(`Settings were not organized: ${errorMessage(error)}`);
+      }
+    }
+  }
   showDocument(id, options);
   return id;
 }
@@ -399,6 +427,7 @@ export function normalizeGroup(group: Group): Group {
     sticky,
     tabs: [...sticky, ...group.tabs.filter((id) => !sticky.includes(id))],
     preview:
+      settingValue(useApp.getState().settings, "workbench.editor.enablePreview") &&
       group.preview && group.tabs.includes(group.preview) && !sticky.includes(group.preview)
         ? group.preview
         : null,
@@ -441,6 +470,7 @@ export function showDocument(
 ) {
   const s = useApp.getState();
   const groupId = options.group ?? s.activeGroup;
+  const pinned = options.pinned || !settingValue(s.settings, "workbench.editor.enablePreview");
   if (
     options.line &&
     (s.docs[id]?.kind === "svg" || (s.docs[id] && isMarkdownDocument(s.docs[id])))
@@ -455,7 +485,7 @@ export function showDocument(
       }
       let tabs = [...g.tabs];
       const existing = tabs.includes(id);
-      if (!existing && !options.pinned && g.preview && !s.docs[g.preview]?.dirty) {
+      if (!existing && !pinned && g.preview && !s.docs[g.preview]?.dirty) {
         tabs = tabs.filter((t) => t !== g.preview);
       }
       if (!tabs.includes(id)) {
@@ -465,7 +495,7 @@ export function showDocument(
         ...g,
         tabs,
         active: options.background ? g.active : id,
-        preview: options.pinned ? (g.preview === id ? null : g.preview) : existing ? g.preview : id,
+        preview: pinned ? (g.preview === id ? null : g.preview) : existing ? g.preview : id,
       };
     }),
     activeGroup: options.background ? s.activeGroup : groupId,

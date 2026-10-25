@@ -1,4 +1,4 @@
-import { activeDoc, useApp, setApp } from "../store/store";
+import { activeDoc, setApp } from "../store/store";
 import { models, patchDoc, scheduleBackup } from "./documents";
 import { monaco, loadSyntax } from "./monaco";
 import type { QuickPick } from "../types/types";
@@ -8,7 +8,7 @@ export function changeIndent() {
   if (!doc) {
     return;
   }
-  const active = String(useApp.getState().settings["editor.tabSize"] ?? 4);
+  const active = String(models.get(doc.id)?.getOptions().tabSize ?? 4);
   setApp({
     quick: {
       title: "Select Tab Size",

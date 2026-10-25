@@ -103,11 +103,11 @@
   min-height: 0;
   overflow: hidden;
 }
-.terminal-pane.focused::after {
+.terminal-panel > .pane-layout .terminal-pane.focused::after {
   content: "";
   position: absolute;
   inset: 0;
-  outline: 1px solid #0078d4;
+  outline: 1px solid #3b596f;
   outline-offset: -1px;
   pointer-events: none;
   z-index: 6;

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { monaco } from "../editor/monaco";
 import { editorFontOptions } from "../editor/font";
+import { diffOptions } from "../editor/settings";
 import { useApp } from "../store/store";
 import { IconButton } from "./ui";
 type Diff = { title: string; before: string; after: string; language: string };
@@ -23,6 +24,7 @@ export function DiffViewer() {
     const after = monaco.editor.createModel(diff.after, diff.language);
     const editor = monaco.editor.createDiffEditor(host, {
       ...editorFontOptions(useApp.getState().settings),
+      ...diffOptions(useApp.getState().settings),
       automaticLayout: true,
       theme: "dark-modern",
       readOnly: true,
@@ -38,7 +40,7 @@ export function DiffViewer() {
     };
   }, [diff, host]);
   useEffect(() => {
-    instance.current?.updateOptions(editorFontOptions(settings));
+    instance.current?.updateOptions({ ...editorFontOptions(settings), ...diffOptions(settings) });
   }, [settings]);
   return (
     <Dialog.Root

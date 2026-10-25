@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { editor } from "monaco-editor";
 
 type ClientOptions = {
   clientOptions: {
@@ -62,6 +63,18 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
+});
+
+it.each([true, false])("formats JSONC with the model's insertSpaces=%s and line endings", async (insertSpaces) => {
+  const { formatModelText } = await import("./languages");
+  const text = await formatModelText({
+    getLanguageId: () => "jsonc",
+    getValue: () => '{"x":{"value":1}}',
+    getOptions: () => ({ tabSize: 2, insertSpaces }),
+    getEOL: () => "\r\n",
+  } as unknown as editor.ITextModel);
+  expect(text).toContain(insertSpaces ? '\r\n  "x": {' : '\r\n\t"x": {');
+  expect(text).toContain(insertSpaces ? '\r\n    "value": 1' : '\r\n\t\t"value": 1');
 });
 
 it("reinitializes services with the new workspace after stopping the old clients", async () => {
