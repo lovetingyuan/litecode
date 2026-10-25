@@ -60,6 +60,7 @@ pub struct AppState {
     pub disk_lock: Mutex<()>,
     pub searches: Mutex<HashMap<String, Arc<SearchTask>>>,
     pub servers: Mutex<HashMap<String, crate::lsp::Server>>,
+    pub terminals: crate::terminal::Service,
     pub startup_warnings: Mutex<Vec<String>>,
     pub data_dir: PathBuf,
 }
@@ -146,7 +147,7 @@ impl AppState {
         {
             return Err(AppError::new(
                 "workspaceTrust",
-                "Restricted Mode: trust this workspace before running language services or external formatters.",
+                "Restricted Mode: trust this workspace before running terminals, language services or external formatters.",
             ));
         }
         Ok(root)
@@ -185,6 +186,11 @@ impl AppState {
             &serde_json::to_vec(&roots)?,
         )?;
         if !trusted {
+            for (label, w) in windows.iter() {
+                if w.root.as_ref() == Some(&expected) {
+                    self.terminals.close_window(label);
+                }
+            }
             let labels: Vec<_> = windows
                 .iter()
                 .filter(|(_, w)| w.root.as_ref() == Some(&expected))

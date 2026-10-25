@@ -111,6 +111,11 @@ try {
   has(env, 5, "${HOST}", "identifier.dotenv");
   has(env, 7, "NEXT", "identifier.dotenv");
   has(env, 7, "# comment", "comment.dotenv");
+  await page.waitForFunction(() => new Set(
+    [...document.querySelectorAll(".monaco-editor .view-line span")]
+      .filter((span) => span.textContent.trim())
+      .map((span) => getComputedStyle(span).color),
+  ).size >= 4);
   const colors = await page.locator(".monaco-editor .view-line span").evaluateAll((spans) =>
     [...new Set(spans.filter((span) => span.textContent.trim()).map((span) => getComputedStyle(span).color))],
   );

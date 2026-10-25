@@ -12,6 +12,7 @@ mod quick_files;
 mod replacement;
 mod search;
 mod state;
+mod terminal;
 mod tools;
 mod transactions;
 mod workspace;
@@ -61,6 +62,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 let state = window.state::<state::AppState>();
+                state.terminals.close_window(window.label());
                 for (key, task) in state.searches.lock().unwrap().iter() {
                     if key.starts_with(&format!("{}/", window.label())) {
                         task.cancelled
@@ -77,6 +79,7 @@ pub fn run() {
                     }
                 });
                 state.windows.lock().unwrap().remove(window.label());
+                state.terminals.close_window(window.label());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -117,6 +120,13 @@ pub fn run() {
             lsp::lsp_send,
             lsp::lsp_ack,
             lsp::lsp_stop,
+            terminal::terminal_profiles,
+            terminal::terminal_create,
+            terminal::terminal_write,
+            terminal::terminal_resize,
+            terminal::terminal_ack,
+            terminal::terminal_close,
+            terminal::terminal_update_cwd,
             tools::tool_status,
             tools::format_document,
             tools::install_tools,

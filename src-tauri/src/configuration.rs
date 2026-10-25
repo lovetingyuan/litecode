@@ -38,11 +38,22 @@ pub fn load_settings(user: &Path, workspace: Option<&Path>, warnings: &mut Vec<S
     {
         if let Some(values) = read_json(&path, warnings).as_object() {
             for (key, value) in values {
-                if matches!(key.as_str(), "files.exclude" | "search.exclude")
-                    && let Some(rules) = value.as_object()
+                if matches!(
+                    key.as_str(),
+                    "files.exclude"
+                        | "search.exclude"
+                        | "terminal.integrated.profiles.windows"
+                        | "terminal.integrated.env.windows"
+                ) && let Some(rules) = value.as_object()
                 {
                     settings[key].as_object_mut().unwrap().extend(rules.clone());
-                } else if !matches!(key.as_str(), "files.exclude" | "search.exclude") {
+                } else if !matches!(
+                    key.as_str(),
+                    "files.exclude"
+                        | "search.exclude"
+                        | "terminal.integrated.profiles.windows"
+                        | "terminal.integrated.env.windows"
+                ) {
                     settings[key] = value.clone();
                 }
             }
@@ -71,6 +82,21 @@ pub fn defaults() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_maps_merge_entries_and_null_profiles_hide_detection() {
+        let temp = tempfile::tempdir().unwrap();
+        let user = temp.path().join("settings.json");
+        let root = temp.path().join("project");
+        fs::create_dir_all(root.join(".litecode")).unwrap();
+        fs::write(&user, r#"{"terminal.integrated.env.windows":{"A":"user","B":"keep"},"terminal.integrated.profiles.windows":{"Test":{"path":"C:/shell.exe"}}}"#).unwrap();
+        fs::write(root.join(".litecode/settings.json"), r#"{"terminal.integrated.env.windows":{"A":null},"terminal.integrated.profiles.windows":{"Command Prompt":null}}"#).unwrap();
+        let config = load_settings(&user, Some(&root), &mut vec![]);
+        assert!(config["terminal.integrated.env.windows"]["A"].is_null());
+        assert_eq!(config["terminal.integrated.env.windows"]["B"], "keep");
+        assert!(config["terminal.integrated.profiles.windows"]["Test"].is_object());
+        assert!(config["terminal.integrated.profiles.windows"]["Command Prompt"].is_null());
+    }
 
     #[test]
     fn exclusion_patterns_merge_individually_across_configuration_layers() {

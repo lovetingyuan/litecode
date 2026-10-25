@@ -2,6 +2,189 @@
   "type": "object",
   "additionalProperties": true,
   "properties": {
+    "terminal.integrated.fontFamily": {
+      "type": "string",
+      "default": "",
+      "description": "终端字体。空字符串继承 editor.fontFamily；保存后即时生效。"
+    },
+    "terminal.integrated.fontSize": {
+      "type": "number",
+      "minimum": 6,
+      "maximum": 100,
+      "default": 14,
+      "description": "终端字号，单位为像素。"
+    },
+    "terminal.integrated.lineHeight": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 3,
+      "default": 1,
+      "description": "终端行高，为字号倍数。"
+    },
+    "terminal.integrated.letterSpacing": {
+      "type": "number",
+      "minimum": -5,
+      "maximum": 20,
+      "default": 0,
+      "description": "终端字符间距，单位为像素。"
+    },
+    "terminal.integrated.scrollback": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100000,
+      "default": 1000,
+      "description": "终端保留的回滚行数。"
+    },
+    "terminal.integrated.fontWeight": {
+      "type": ["string", "number"],
+      "default": "normal",
+      "description": "终端普通文字字重，可填写 normal、bold 或 100–900。"
+    },
+    "terminal.integrated.fontWeightBold": {
+      "type": ["string", "number"],
+      "default": "bold",
+      "description": "终端粗体文字字重，可填写 normal、bold 或 100–900。"
+    },
+    "terminal.integrated.cursorStyle": {
+      "enum": [
+        "block",
+        "underline",
+        "bar"
+      ],
+      "default": "block",
+      "description": "终端光标样式：block 方块、underline 下划线、bar 竖线。"
+    },
+    "terminal.integrated.cursorBlinking": {
+      "type": "boolean",
+      "default": false,
+      "description": "终端光标是否闪烁。"
+    },
+    "terminal.integrated.smoothScrolling": {
+      "type": "boolean",
+      "default": false,
+      "description": "终端是否平滑滚动。"
+    },
+    "terminal.integrated.enableBell": {
+      "type": "boolean",
+      "default": false,
+      "description": "终端是否播放响铃。"
+    },
+    "terminal.integrated.copyOnSelection": {
+      "type": "boolean",
+      "default": false,
+      "description": "终端选择文本后自动复制到剪贴板。"
+    },
+    "terminal.integrated.mouseWheelZoom": {
+      "type": "boolean",
+      "default": false,
+      "description": "是否允许 Ctrl+鼠标滚轮调整终端字号。"
+    },
+    "terminal.integrated.shellIntegration.enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "新终端是否启用 Shell 集成，自动上报当前目录。禁用后分屏只能继承最后已知目录。"
+    },
+    "terminal.integrated.gpuAcceleration": {
+      "enum": [
+        "auto",
+        "on",
+        "off"
+      ],
+      "default": "auto",
+      "description": "终端 WebGL 硬件加速。不可用时自动回退，不中断会话。"
+    },
+    "terminal.integrated.rightClickBehavior": {
+      "enum": [
+        "default",
+        "copyPaste",
+        "paste",
+        "selectWord",
+        "nothing"
+      ],
+      "default": "default",
+      "description": "终端右键行为。Windows 的 default 与 copyPaste 相同：有选区复制，否则粘贴。Shift+右键打开菜单。"
+    },
+    "terminal.integrated.enableMultiLinePasteWarning": {
+      "enum": [
+        "auto",
+        "always",
+        "never"
+      ],
+      "default": "auto",
+      "description": "多行粘贴提示：auto 在 Shell 未启用括号粘贴时提示，always 始终提示，never 不提示。"
+    },
+    "terminal.integrated.defaultProfile.windows": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null,
+      "description": "新终端的默认 Shell profile。null 自动选择 PowerShell 7、Windows PowerShell 或 cmd。"
+    },
+    "terminal.integrated.profiles.windows": {
+      "type": "object",
+      "default": {},
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "null"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "description": "Windows Shell profiles。支持 path 或 source、args 和 env；null 隐藏自动检测项。"
+    },
+    "terminal.integrated.env.windows": {
+      "type": "object",
+      "default": {},
+      "additionalProperties": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "description": "新终端的环境变量覆盖；null 删除变量。支持 ${workspaceFolder}、${userHome} 和 ${env:NAME}。"
+    },
+    "terminal.integrated.cwd": {
+      "type": "string",
+      "default": "",
+      "description": "新 tab 的启动目录。空字符串使用项目根目录，无项目时使用用户主目录；相对路径基于项目。支持 ${workspaceFolder}、${userHome} 和 ${env:NAME}。"
+    },
+    "terminal.integrated.splitCwd": {
+      "enum": [
+        "inherited",
+        "initial",
+        "workspaceRoot"
+      ],
+      "default": "inherited",
+      "description": "分屏启动目录：inherited 继承当前目录，initial 使用源会话启动目录，workspaceRoot 使用当前项目根目录。"
+    },
     "workbench.editor.openSideBySideDirection": {
       "enum": ["right", "down"],
       "default": "right",

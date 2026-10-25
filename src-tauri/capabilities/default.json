@@ -12,6 +12,7 @@
     "core:window:allow-destroy",
     "core:window:allow-set-title",
     "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-text",
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "http://*" }, { "url": "https://*" }, { "url": "mailto:*" }]

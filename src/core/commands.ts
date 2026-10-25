@@ -28,8 +28,17 @@ import { createSearchEditor, undoReplacement, nextSearchResult } from "../search
 import { changeLanguage } from "../editor/editorStatus";
 import { restartLanguages, stopLanguages, languageReport } from "../editor/languages";
 import { manageWorkspaceTrust } from "./workspaceTrust";
-import { normalizeKey, resolveBinding } from "../utils/keybindings";
-import { completeSettings, parseConfiguration, updateSetting } from "../utils/settings";
+import {
+  matchesWhen,
+  normalizeKey,
+  resolveBinding,
+} from "../utils/keybindings";
+import {
+  completeSettings,
+  parseConfiguration,
+  updateSetting,
+} from "../utils/settings";
+import { terminalSelections, useTerminal } from "../terminal/state";
 
 export type EditorContext = { groupId: string; documentId: string };
 export type Command = {
@@ -38,6 +47,7 @@ export type Command = {
   key?: string;
   aliases?: string[];
   menu?: string;
+  when?: string;
   run: (context?: EditorContext) => unknown;
 };
 export const splitDirections = [
@@ -65,7 +75,11 @@ export function editorTarget(context?: EditorContext) {
 }
 export function canRevealInExplorer(path: string | null) {
   const root = useApp.getState().root;
-  return !!path && !!root && normalize(path).startsWith(normalize(root).replace(/\/$/, "") + "/");
+  return (
+    !!path &&
+    !!root &&
+    normalize(path).startsWith(normalize(root).replace(/\/$/, "") + "/")
+  );
 }
 async function copyEditorPath(context: EditorContext | undefined, useRelative: boolean) {
   const path = editorTarget(context)?.doc.path;
@@ -129,7 +143,12 @@ export async function openFolder(newWindow = false, recentPath?: string) {
     if (switching) {
       await resetEditors();
     }
-    setApp({ root: path, settings: config.settings, keybindings: config.keybindings ?? [] });
+    setApp({
+      ...(switching ? { view: "editor" as const } : {}),
+      root: path,
+      settings: config.settings,
+      keybindings: config.keybindings ?? [],
+    });
     if (switching) {
       await checkpoint();
     }
@@ -165,6 +184,155 @@ async function openSettings() {
   return id;
 }
 export const commands: Command[] = [
+  {
+    id: "workbench.action.terminal.toggleTerminal",
+    label: "Terminal: Toggle Terminal",
+    key: "Ctrl+`",
+    menu: "View",
+    run: () => import("../terminal/runtime").then((t) => t.showTerminal(true)),
+  },
+  {
+    id: "workbench.action.terminal.new",
+    label: "Terminal: New Terminal",
+    key: "Ctrl+Shift+`",
+    run: () => import("../terminal/runtime").then((t) => t.newTerminal()),
+  },
+  {
+    id: "workbench.action.terminal.split",
+    label: "Terminal: Split Terminal",
+    key: "Ctrl+Shift+5",
+    when: "terminalFocus",
+    run: () => import("../terminal/runtime").then((t) => t.splitTerminal()),
+  },
+  {
+    id: "workbench.action.terminal.splitRight",
+    label: "Terminal: Split Right",
+    run: () =>
+      import("../terminal/runtime").then((t) => t.splitTerminal("right")),
+  },
+  {
+    id: "workbench.action.terminal.splitDown",
+    label: "Terminal: Split Down",
+    run: () =>
+      import("../terminal/runtime").then((t) => t.splitTerminal("down")),
+  },
+  {
+    id: "workbench.action.terminal.kill",
+    label: "Terminal: Close Pane",
+    key: "Ctrl+Shift+W",
+    when: "terminalFocus",
+    run: () => import("../terminal/runtime").then((t) => t.closePane()),
+  },
+  {
+    id: "workbench.action.terminal.focusNext",
+    label: "Terminal: Next Tab",
+    key: "Ctrl+PageDown",
+    aliases: ["Ctrl+Tab"],
+    when: "terminalFocus",
+    run: () => import("../terminal/runtime").then((t) => t.nextTerminal(1)),
+  },
+  {
+    id: "workbench.action.terminal.focusPrevious",
+    label: "Terminal: Previous Tab",
+    key: "Ctrl+PageUp",
+    aliases: ["Ctrl+Shift+Tab"],
+    when: "terminalFocus",
+    run: () => import("../terminal/runtime").then((t) => t.nextTerminal(-1)),
+  },
+  ...(["left", "right", "up", "down"] as const).map((direction) => ({
+    id: `workbench.action.terminal.focus${direction[0].toUpperCase()}${direction.slice(1)}`,
+    label: `Terminal: Focus ${direction}`,
+    key: `Alt+${direction[0].toUpperCase()}${direction.slice(1)}`,
+    when: "terminalFocus",
+    run: () =>
+      import("../terminal/runtime").then((t) => t.moveFocus(direction)),
+  })),
+  {
+    id: "workbench.action.terminal.copySelection",
+    label: "Terminal: Copy Selection",
+    key: "Ctrl+Shift+C",
+    aliases: ["Ctrl+C"],
+    when: "terminalFocus && terminalHasSelection",
+    run: () => import("../terminal/runtime").then((t) => t.copyTerminal()),
+  },
+  {
+    id: "workbench.action.terminal.paste",
+    label: "Terminal: Paste",
+    key: "Ctrl+Shift+V",
+    aliases: ["Ctrl+V"],
+    when: "terminalFocus",
+    run: () => import("../terminal/runtime").then((t) => t.pasteTerminal()),
+  },
+  {
+    id: "workbench.action.terminal.focusFind",
+    label: "Terminal: Find",
+    key: "Ctrl+F",
+    when: "terminalFocus",
+    run: () => useTerminal.setState({ find: true }),
+  },
+  {
+    id: "workbench.action.terminal.clear",
+    label: "Terminal: Clear",
+    run: () => import("../terminal/runtime").then((t) => t.clearTerminal()),
+  },
+  ...(
+    [
+      [-1, "Out", "Ctrl+-"],
+      [1, "In", "Ctrl+="],
+      [0, "Reset", "Ctrl+0"],
+    ] as const
+  ).map(([delta, name, key]) => ({
+    id: `workbench.action.terminal.fontZoom${name}`,
+    label: `Terminal: Font Zoom ${name}`,
+    key,
+    when: "terminalFocus",
+    run: () => import("../terminal/runtime").then((t) => t.zoomTerminal(delta)),
+  })),
+  {
+    id: "workbench.action.terminal.selectDefaultProfile",
+    label: "Terminal: Select Default Profile",
+    run: async () => {
+      const { refreshProfiles } = await import("../terminal/runtime");
+      await refreshProfiles();
+      setApp({
+        quick: {
+          title: "Select Default Terminal Profile",
+          active: useTerminal.getState().defaultProfile ?? undefined,
+          items: useTerminal.getState().profiles.map((profile) => ({
+            id: profile.name,
+            label: profile.name,
+            description: profile.path,
+            run: async () => {
+              const returnToTerminal = useApp.getState().view === "terminal";
+              const id = await openSettings();
+              if (id) {
+                const model = models.get(id)!;
+                model.pushEditOperations(
+                  [],
+                  [
+                    {
+                      range: model.getFullModelRange(),
+                      text: updateSetting(
+                        model.getValue(),
+                        "terminal.integrated.defaultProfile.windows",
+                        profile.name,
+                      ),
+                    },
+                  ],
+                  () => null,
+                );
+                await save(id);
+              }
+              await refreshProfiles();
+              if (returnToTerminal) {
+                setApp({ view: "terminal" });
+              }
+            },
+          })),
+        },
+      });
+    },
+  },
   {
     id: "workbench.trust.manage",
     label: "Workspaces: Manage Workspace Trust",
@@ -422,7 +590,7 @@ export const commands: Command[] = [
     key: "Ctrl+Shift+F",
     menu: "Edit",
     run: () => {
-      setApp({ sidebar: "search" });
+      setApp({ sidebar: "search", view: "editor" });
       setTimeout(() => window.dispatchEvent(new Event("focus-search")), 0);
     },
   },
@@ -485,7 +653,7 @@ export const commands: Command[] = [
     label: "Explorer",
     key: "Ctrl+Shift+E",
     menu: "View",
-    run: () => setApp({ sidebar: "explorer" }),
+    run: () => setApp({ sidebar: "explorer", view: "editor" }),
   },
   {
     id: "workbench.action.toggleSidebarVisibility",
@@ -669,6 +837,10 @@ export function keyContext(target: HTMLElement, editorContext?: EditorContext) {
   const typing =
     ["INPUT", "TEXTAREA"].includes(target.tagName) && !target.closest(".monaco-editor");
   return {
+    terminalFocus: !!target.closest(".terminal-pane"),
+    terminalHasSelection: terminalSelections.has(
+      target.closest<HTMLElement>(".terminal-pane")?.dataset.terminalPane ?? "",
+    ),
     editorTextFocus: !!target.closest(".monaco-editor"),
     editorFocus: !!target.closest(".editor-group"),
     inputFocus: typing,
@@ -688,6 +860,7 @@ function defaultBindings(
   bindings = useApp.getState().keybindings,
 ) {
   return commands
+    .filter((command) => matchesWhen(command.when, context))
     .filter(
       (command) =>
         command.id !==
@@ -738,8 +911,15 @@ export function installKeys() {
     }
     const target = e.target as HTMLElement;
     const typing =
-      ["INPUT", "TEXTAREA"].includes(target.tagName) && !target.closest(".monaco-editor");
-    const key = `${e.ctrlKey ? "Ctrl+" : ""}${e.shiftKey ? "Shift+" : ""}${e.altKey ? "Alt+" : ""}${e.key.length === 1 ? e.key.toUpperCase() : (({ ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down" } as Record<string, string>)[e.key] ?? e.key)}`;
+      ["INPUT", "TEXTAREA"].includes(target.tagName) &&
+      !target.closest(".monaco-editor");
+    const physical =
+      e.code === "Backquote"
+        ? "`"
+        : e.ctrlKey && /^Digit\d$/.test(e.code)
+          ? e.code.slice(5)
+          : e.key;
+    const key = `${e.ctrlKey ? "Ctrl+" : ""}${e.shiftKey ? "Shift+" : ""}${e.altKey ? "Alt+" : ""}${physical.length === 1 ? physical.toUpperCase() : (({ ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down" } as Record<string, string>)[physical] ?? physical)}`;
     const state = useApp.getState();
     const context = keyContext(target);
     const sequence = normalizeKey(chord ? `${chord} ${key}` : key);
@@ -768,6 +948,25 @@ export function installKeys() {
       e.stopPropagation();
       if (id) {
         void execute(id);
+      }
+      return;
+    }
+    if (context.terminalFocus) {
+      const command = defaults.find(
+        (c) =>
+          normalizeKey(c.key) === sequence &&
+          (c.command.id.startsWith("workbench.action.terminal.") ||
+            [
+              "workbench.action.showCommands",
+              "workbench.action.quickOpen",
+              "workbench.view.explorer",
+              "workbench.action.findInFiles",
+            ].includes(c.command.id)),
+      )?.command.id;
+      if (command) {
+        e.preventDefault();
+        e.stopPropagation();
+        void execute(command);
       }
       return;
     }

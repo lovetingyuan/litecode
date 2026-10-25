@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { Popover } from "@base-ui/react/popover";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -33,7 +33,12 @@ import { initializeLanguages } from "../editor/languages";
 import { isTextView } from "../utils/media";
 import { MediaStatus } from "./MediaStatus";
 import { useExternalDrop } from "../hooks/useExternalDrop";
-import { changeIndent, changeEncoding, changeEol } from "../editor/editorStatus";
+import {
+  changeIndent,
+  changeEncoding,
+  changeEol,
+} from "../editor/editorStatus";
+const TerminalView = lazy(() => import("./TerminalView"));
 
 let startup: Promise<void> | undefined;
 function start() {
@@ -284,8 +289,14 @@ export default function App() {
           />
           <IconButton
             icon="layout"
-            label="Split Editor"
-            onClick={() => void execute("workbench.action.splitEditor")}
+            label={s.view === "terminal" ? "Split Terminal" : "Split Editor"}
+            onClick={() =>
+              void execute(
+                s.view === "terminal"
+                  ? "workbench.action.terminal.split"
+                  : "workbench.action.splitEditor",
+              )
+            }
           />
         </div>
         <div className="window-controls">
@@ -311,20 +322,43 @@ export default function App() {
         <nav className="activitybar" aria-label="Views">
           <div>
             <button
-              className={s.sidebar === "explorer" ? "active" : ""}
+              className={
+                s.view === "editor" && s.sidebar === "explorer" ? "active" : ""
+              }
               aria-label="Explorer (Ctrl+Shift+E)"
               title="Explorer (Ctrl+Shift+E)"
-              onClick={() => setApp({ sidebar: s.sidebar === "explorer" ? null : "explorer" })}
+              onClick={() =>
+                setApp({
+                  view: "editor",
+                  sidebar:
+                    s.view === "editor" && s.sidebar === "explorer"
+                      ? null
+                      : "explorer",
+                })
+              }
             >
               <Icon name="files" />
             </button>
             <button
-              className={s.sidebar === "search" ? "active" : ""}
+              className={
+                s.view === "editor" && s.sidebar === "search" ? "active" : ""
+              }
               aria-label="Search (Ctrl+Shift+F)"
               title="Search (Ctrl+Shift+F)"
               onClick={() => void execute("workbench.action.findInFiles")}
             >
               <Icon name="search" />
+            </button>
+            <button
+              disabled={!s.ready}
+              className={s.view === "terminal" ? "active" : ""}
+              aria-label="Terminal (Ctrl+`)"
+              title="Terminal (Ctrl+`)"
+              onClick={() =>
+                void execute("workbench.action.terminal.toggleTerminal")
+              }
+            >
+              <Icon name="terminal" />
             </button>
           </div>
           <button
@@ -352,13 +386,20 @@ export default function App() {
           >
             <main className="editors" aria-label="Editors">
               <div
-                className={`editor-groups${showWelcome ? " welcome-hidden" : ""}`}
-                inert={showWelcome}
-                aria-hidden={showWelcome || undefined}
+                className={`editor-groups${showWelcome ? " welcome-hidden" : ""}${s.view === "terminal" ? " workbench-editor-hidden" : ""}`}
+                inert={showWelcome || s.view === "terminal"}
+                aria-hidden={showWelcome || s.view === "terminal" || undefined}
               >
                 {s.editorLayout && <EditorLayoutView node={s.editorLayout} />}
               </div>
-              {showWelcome && <WelcomePage />}
+              {showWelcome && s.view === "editor" && <WelcomePage />}
+              {s.view === "terminal" && (
+                <Suspense
+                  fallback={<div className="startup">Starting terminal…</div>}
+                >
+                  <TerminalView />
+                </Suspense>
+              )}
             </main>
           </WorkbenchLayout>
         )}
@@ -420,7 +461,7 @@ export default function App() {
           </button>
         </div>
         <div className="status-right">
-          {doc && isTextView(doc, group) && (
+          {s.view === "editor" && doc && isTextView(doc, group) && (
             <>
               <button onClick={() => setApp({ quick: ":" })}>
                 Ln {s.cursor.line}, Col {s.cursor.column}
@@ -438,7 +479,9 @@ export default function App() {
               </button>
             </>
           )}
-          {doc && group && !isTextView(doc, group) && <MediaStatus doc={doc} group={group} />}
+          {s.view === "editor" && doc && group && !isTextView(doc, group) && (
+            <MediaStatus doc={doc} group={group} />
+          )}
           {s.searching && <span>Searching…</span>}
           <span className="status-item" title={s.languageStatus}>
             <Icon name="check" />

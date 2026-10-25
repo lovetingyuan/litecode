@@ -472,6 +472,7 @@ export function showDocument(
     // Reopening the already active document must also reveal its tab.
     ...(!options.background
       ? {
+          view: "editor" as const,
           tabRevealRequests: {
             ...s.tabRevealRequests,
             [groupId]: (s.tabRevealRequests[groupId] ?? 0) + 1,

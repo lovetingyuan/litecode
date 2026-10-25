@@ -49,9 +49,16 @@ export function QuickOpen() {
   const list = useRef<HTMLDivElement>(null);
   const [symbolItems, setSymbolItems] = useState<SymbolItem[]>([]);
   const saved = useRef<ReturnType<typeof session> | null>(null);
-  const activePosition = useRef<{ lineNumber: number; column: number } | null>(null);
+  const savedView = useRef<"editor" | "terminal">("editor");
+  const activePosition = useRef<{ lineNumber: number; column: number } | null>(
+    null,
+  );
   const committed = useRef(false);
-  const pendingChoice = useRef<{ index: number; side: boolean; background: boolean } | null>(null);
+  const pendingChoice = useRef<{
+    index: number;
+    side: boolean;
+    background: boolean;
+  } | null>(null);
   const composing = useRef(false);
   if (previousRequest !== request) {
     setPreviousRequest(request);
@@ -120,6 +127,7 @@ export function QuickOpen() {
       return;
     }
     if (!saved.current) {
+      savedView.current = useApp.getState().view;
       saved.current = structuredClone(session());
       activePosition.current = editor()?.getPosition() ?? null;
       committed.current = false;
@@ -344,9 +352,14 @@ export function QuickOpen() {
         activeGroup: saved.current.activeGroup,
         history: saved.current.history,
         historyIndex: saved.current.historyIndex,
+        view: savedView.current,
       });
       const position = activePosition.current;
       requestAnimationFrame(() => {
+        if (useApp.getState().view === "terminal") {
+          void import("../terminal/runtime").then((t) => t.focusTerminal());
+          return;
+        }
         if (position) {
           editor()?.setPosition(position);
         }
@@ -357,7 +370,13 @@ export function QuickOpen() {
     setValue(null);
     setApp({ quick: null });
     if (accept) {
-      requestAnimationFrame(() => editor()?.focus());
+      requestAnimationFrame(() => {
+        if (useApp.getState().view === "terminal") {
+          void import("../terminal/runtime").then((t) => t.focusTerminal());
+        } else {
+          editor()?.focus();
+        }
+      });
     }
   }, []);
   const help = !picker && text.startsWith("?");
@@ -542,7 +561,11 @@ const QuickResults = memo(function QuickResults({
       <span className="quick-label">
         {item.positions
           ? [...item.label].map((char, index) =>
-              item.positions!.includes(index) ? <mark key={index}>{char}</mark> : char,
+              item.positions!.includes(index) ? (
+                <mark key={index}>{char}</mark>
+              ) : (
+                char
+              ),
             )
           : item.label}
       </span>

@@ -18,12 +18,13 @@ export function FileIcon({ language }: { language: string }) {
 export function IconButton({
   icon,
   label,
+  className = "",
   ...props
 }: { icon: string; label: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
-      className={`icon-button ${props.className ?? ""}`}
+      className={`icon-button ${className}`}
       {...props}
       title={label}
       aria-label={label}

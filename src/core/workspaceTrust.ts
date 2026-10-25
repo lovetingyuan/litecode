@@ -18,7 +18,7 @@ export async function manageWorkspaceTrust(root = useApp.getState().root) {
   cancelWorkspaceTrustPrompt();
   const choice = await ask(
     "Workspace Trust",
-    `Only trust folders from authors you trust. Language services and formatters can execute code from this folder.\n\n${root}`,
+    `Only trust folders from authors you trust. Terminals, language services and formatters can execute code from this folder.\n\n${root}`,
     ["Restricted Mode", "Trust Workspace", "Cancel"],
   );
   if (!choice || choice === "Cancel" || useApp.getState().root !== root) {
@@ -46,7 +46,7 @@ function requestTrust(root: string) {
   const pending = (async () => {
     const choice = await ask(
       "Do you trust the authors of this folder?",
-      `Language services and formatters can execute code from this folder. Restricted Mode keeps text editing available.\n\n${root}`,
+      `Terminals, language services and formatters can execute code from this folder. Restricted Mode keeps text editing available.\n\n${root}`,
       ["Restricted Mode", "Trust Workspace"],
       { signal: controller.signal },
     );
@@ -64,10 +64,14 @@ function requestTrust(root: string) {
   return pending;
 }
 
-export async function trustedCall<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+export async function trustedCall<T>(
+  command: string,
+  args?: Record<string, unknown> | (() => Record<string, unknown>),
+): Promise<T> {
   const root = useApp.getState().root;
+  const argumentsForCall = () => (typeof args === "function" ? args() : args);
   try {
-    return await call<T>(command, args);
+    return await call<T>(command, argumentsForCall());
   } catch (error) {
     if (
       (error as { code?: string })?.code !== "workspaceTrust" ||
@@ -78,6 +82,6 @@ export async function trustedCall<T>(command: string, args?: Record<string, unkn
     ) {
       throw error;
     }
-    return call<T>(command, args);
+    return call<T>(command, argumentsForCall());
   }
 }

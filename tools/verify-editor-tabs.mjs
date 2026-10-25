@@ -431,7 +431,12 @@ try {
   const ids = {
     firstGroup: session.groups[0].id,
     active: session.groups[1].active,
-    moved: session.groups[0].tabs.find((id) => id.endsWith("/file-03.txt")),
+    // Newly opened documents use opaque IDs rather than their file paths.
+    moved: await documentAction("openPath", "C:/tab-fixture/file-03.txt", {
+      group: session.groups[0].id,
+      pinned: true,
+      background: true,
+    }),
   };
   await documentAction("moveTab", ids.active, secondGroup, secondGroup);
   await visible("Reordering the same active tab to the end reveals it", 1);

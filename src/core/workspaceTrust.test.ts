@@ -71,6 +71,32 @@ it("propagates unrelated failures without requesting trust", async () => {
   expect(mocks.ask).not.toHaveBeenCalled();
 });
 
+it("recreates channel arguments after an invocation rejected for trust", async () => {
+  const { trustedCall } = await import("./workspaceTrust");
+  const argumentsForCall = vi
+    .fn()
+    .mockReturnValueOnce({ channel: "first" })
+    .mockReturnValueOnce({ channel: "second" });
+  mocks.ask.mockResolvedValue("Trust Workspace");
+  let attempts = 0;
+  mocks.call.mockImplementation(async (command) => {
+    if (command === "set_workspace_trust") {
+      return;
+    }
+    if (!attempts++) {
+      throw denied;
+    }
+    return "started";
+  });
+  expect(await trustedCall("terminal_create", argumentsForCall)).toBe(
+    "started",
+  );
+  expect(argumentsForCall).toHaveBeenCalledTimes(2);
+  expect(mocks.call).toHaveBeenCalledWith("terminal_create", {
+    channel: "second",
+  });
+});
+
 it("revokes trust through the manage command and suppresses automatic prompts", async () => {
   const { trustedCall, manageWorkspaceTrust } = await import("./workspaceTrust");
   mocks.ask.mockResolvedValue("Restricted Mode");

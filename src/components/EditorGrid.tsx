@@ -12,7 +12,13 @@ import { useApp, setApp } from "../store/store";
 import { scheduleBackup } from "../editor/documents";
 
 // Allotment owns dragging. Add keyboard access and balance only the clicked pair.
-function PaneLayout({ children, label, onChange, ...props }: AllotmentProps & { label: string }) {
+export function PaneLayout({
+  children,
+  label,
+  onChange,
+  onCommit = scheduleBackup,
+  ...props
+}: AllotmentProps & { label: string; onCommit?: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const handle = useRef<AllotmentHandle>(null);
   const sizes = useRef<number[]>(props.defaultSizes ?? []);
@@ -61,7 +67,7 @@ function PaneLayout({ children, label, onChange, ...props }: AllotmentProps & { 
         next[index] = half;
         next[index + 1] = half;
         handle.current?.resize(next);
-        scheduleBackup();
+        onCommit();
       }}
       onKeyDown={(event) => {
         const index = indexOf(event.target);
@@ -80,7 +86,7 @@ function PaneLayout({ children, label, onChange, ...props }: AllotmentProps & { 
         next[index] += delta;
         next[index + 1] -= delta;
         handle.current?.resize(next);
-        scheduleBackup();
+        onCommit();
       }}
     >
       <Allotment
@@ -93,7 +99,7 @@ function PaneLayout({ children, label, onChange, ...props }: AllotmentProps & { 
             onChange?.(next);
           }
         }}
-        onDragEnd={() => scheduleBackup()}
+        onDragEnd={onCommit}
       >
         {children}
       </Allotment>
@@ -152,9 +158,10 @@ export function WorkbenchLayout({
   sidebar: ReactNode;
   children: ReactNode;
 }) {
-  const visible = useApp((s) => !!s.sidebar);
+  const visible = useApp((s) => !!s.sidebar && s.view === "editor");
   const sidebarWidth = useApp((s) => s.sidebarWidth);
   const layout = useApp((s) => s.editorLayout);
+  const terminal = useApp((s) => s.view === "terminal");
   const host = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(window.innerWidth - 48);
   useEffect(() => {
@@ -171,7 +178,11 @@ export function WorkbenchLayout({
         proportionalLayout={false}
         defaultSizes={[sidebarWidth, Math.max(160, width - sidebarWidth)]}
         onChange={(sizes) => {
-          if (useApp.getState().sidebar && sizes[0] >= 170) {
+          if (
+            useApp.getState().sidebar &&
+            useApp.getState().view === "editor" &&
+            sizes[0] >= 170
+          ) {
             setApp({ sidebarWidth: sizes[0] });
             scheduleBackup();
           }
@@ -187,7 +198,9 @@ export function WorkbenchLayout({
           {sidebar}
         </Allotment.Pane>
         <Allotment.Pane
-          minSize={layout ? minimumLayoutSize(layout).width : 160}
+          minSize={
+            terminal ? 160 : layout ? minimumLayoutSize(layout).width : 160
+          }
           priority={LayoutPriority.High}
         >
           {children}

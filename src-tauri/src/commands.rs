@@ -51,6 +51,7 @@ pub fn remember(state: &AppState, path: &str) -> Result<()> {
 
 #[tauri::command]
 pub async fn bootstrap(window: WebviewWindow, state: State<'_, AppState>) -> Result<Bootstrap> {
+    state.terminals.close_window(window.label());
     // A reloaded WebView cannot acknowledge its old Channels.
     for (key, task) in state.searches.lock().unwrap().iter() {
         if key.starts_with(&format!("{}/", window.label())) {
@@ -266,6 +267,7 @@ pub async fn open_workspace(
             }
         }
         w.root = Some(root.clone());
+        state.terminals.close_window(window.label());
         drop(windows);
         workspace::watch(window.app_handle(), window.label(), root)?;
         Ok(true)
@@ -568,7 +570,9 @@ pub async fn open_directory(
             "The folder no longer exists or is not a directory.",
         ));
     }
-    std::process::Command::new("explorer.exe").arg(path).spawn()?;
+    std::process::Command::new("explorer.exe")
+        .arg(path)
+        .spawn()?;
     Ok(())
 }
 
