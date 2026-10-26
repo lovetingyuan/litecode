@@ -10,25 +10,29 @@ vi.mock("../editor/monaco", () => ({
   monaco: {
     Range: class {
       constructor(public startLineNumber: number, public startColumn: number, public endLineNumber: number, public endColumn: number) {}
-      getStartPosition() { return { column: this.startColumn }; }
-      getEndPosition() { return { column: this.endColumn }; }
+      getStartPosition() { return { lineNumber: this.startLineNumber, column: this.startColumn }; }
+      getEndPosition() { return { lineNumber: this.endLineNumber, column: this.endColumn }; }
     },
     editor: { createModel: (text: string) => makeModel(text) },
   },
 }));
-import { replaceMatches, undoReplacement, retryReplacement, recoverInterruptedReplacements } from "./replacements";
+import { replaceMatches, cancelReplacementPlan, undoReplacement, retryReplacement, recoverInterruptedReplacements } from "./replacements";
 import { models } from "../editor/documents";
 import { defaultQuery, type Doc, type SearchMatch } from "../types/types";
-import { setApp } from "../store/store";
+import { setApp, useApp } from "../store/store";
 
 function makeModel(initial: string) {
   let text = initial;
+  const offset = (p: { lineNumber?: number; column: number }) => {
+    const lines = text.split("\n");
+    return lines.slice(0, (p.lineNumber ?? 1) - 1).reduce((n, line) => n + line.length + 1, 0) + p.column - 1;
+  };
   const push = vi.fn((_cursor, edits) => {
     for (const edit of edits) { text = edit.text; }
   });
   return {
-    getValue: () => text, getVersionId: () => 1, getEOL: () => "\n",
-    getValueInRange: () => text.slice(0, 1), getOffsetAt: (p: { column: number }) => p.column - 1,
+    getValue: () => text, getVersionId: () => 1, getEOL: () => "\n", isDisposed: () => false,
+    getValueInRange: (r: { getStartPosition: () => { column: number }; getEndPosition: () => { column: number } }) => text.slice(offset(r.getStartPosition()), offset(r.getEndPosition())), getOffsetAt: offset,
     pushEditOperations: push, pushStackElement: vi.fn(), getFullModelRange: () => ({}), dispose: vi.fn(),
   };
 }
@@ -42,7 +46,7 @@ let record: any;
 let custom: ((command: string, args: any) => unknown) | undefined;
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.stubGlobal("window", { dispatchEvent: vi.fn() });
   setApp({ root: "reset" });
   setApp({ root, docs: {} });
@@ -70,7 +74,7 @@ beforeEach(() => {
     if (command === "recover_replacement") { record.targetAfter = false; return complete(); }
   });
 });
-afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 function openBuffer() {
   const doc: Doc = { id: "open", path: root + "/open.txt", name: "open.txt", kind: "text", language: "plaintext", eol: "LF", encoding: "utf8", revision: "original", version: 1, dirty: true };
@@ -82,6 +86,98 @@ function openBuffer() {
 const openHit = { ...hit, path: root + "/open.txt", documentId: "open", version: 1 };
 
 describe("Workspace replacement safety", () => {
+  it.each(["replacement_plan_begin", "replacement_plan"])("cancels while %s is pending and releases the task without a transaction", async (stage) => {
+    const m = openBuffer();
+    let release!: (result?: unknown) => void;
+    custom = (command) => command === stage ? new Promise(resolve => { release = resolve; }) : undefined;
+    const pending = replaceMatches([openHit], "x", false, query);
+    await vi.waitFor(() => expect(release).toBeDefined());
+    expect(useApp.getState().replacementPhase).toBe("planning");
+    expect(await replaceMatches([openHit], "x", false, query)).toEqual(["A replacement is already running"]);
+    cancelReplacementPlan();
+    release(stage === "replacement_plan" ? [{ ...openHit, text: "x" }] : undefined);
+    expect(await pending).toBeNull();
+    expect(m.getValue()).toBe("a");
+    expect(x.call.mock.calls.some(([command]) => command === "replace_disk")).toBe(false);
+    expect(x.call).toHaveBeenCalledWith("replacement_plan_release", expect.any(Object));
+    expect(useApp.getState().replacementPhase).toBeNull();
+    custom = undefined;
+    expect(await replaceMatches([openHit], "x", false, query)).toEqual([]);
+  });
+
+  it("cancels at the final checkpoint before creating a transaction", async () => {
+    const m = openBuffer();
+    let release!: () => void;
+    x.checkpoint.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    const pending = replaceMatches([openHit], "x", false, query);
+    await vi.waitFor(() => expect(release).toBeDefined());
+    cancelReplacementPlan();
+    release();
+    expect(await pending).toBeNull();
+    expect(m.getValue()).toBe("a");
+    expect(x.call.mock.calls.some(([command]) => command === "replace_disk")).toBe(false);
+  });
+
+  it("discards a late preview when the workspace changes", async () => {
+    let release!: (result: unknown) => void;
+    custom = (command) => command === "replacement_plan" ? new Promise(resolve => { release = resolve; }) : undefined;
+    const pending = replaceMatches([hit], "x", false, query, true);
+    await vi.waitFor(() => expect(release).toBeDefined());
+    setApp({ root: "C:/other" });
+    release([{ ...hit, text: "x" }]);
+    expect(await pending).toBeNull();
+    expect(window.dispatchEvent).not.toHaveBeenCalled();
+    expect(x.call.mock.calls.some(([command]) => command === "replace_disk")).toBe(false);
+    expect(x.call).toHaveBeenCalledWith("replacement_plan_cancel", expect.any(Object));
+  });
+
+  it("yields during frontend assembly and cancels without applying any files", async () => {
+    vi.spyOn(performance, "now").mockImplementation(() => vi.getMockedSystemTime()!.valueOf());
+    const hits = Array.from({ length: 1000 }, (_, i) => ({ ...hit, column: i + 1, endColumn: i + 2 }));
+    custom = (command) => {
+      if (command === "read_document") { return { text: "a".repeat(1000), encoding: "utf8", revision: "before" }; }
+      if (command === "replacement_plan") {
+        // Force a frontend scheduling boundary after the native result arrives.
+        vi.advanceTimersByTime(10);
+        setTimeout(cancelReplacementPlan, 0);
+        return hits.map(match => ({ ...match, text: "x" }));
+      }
+    };
+    expect(await replaceMatches(hits, "x", false, query)).toBeNull();
+    expect(x.call.mock.calls.some(([command]) => command === "replace_disk")).toBe(false);
+  });
+
+  it("builds selected unsorted edits in UTF-16 coordinates without replacing unselected matches", async () => {
+    const text = "a🙂 a中 a";
+    const hits = [1, 5, 8].map(column => ({ ...hit, column, endColumn: column + 1 }));
+    custom = (command) => {
+      if (command === "read_document") { return { text, encoding: "utf8", revision: "before" }; }
+      if (command === "replacement_plan") { return hits.map(match => ({ ...match, text: "x" })); }
+    };
+    expect(await replaceMatches([hits[2], hits[0]], "x", false, query)).toEqual([]);
+    expect(x.call.mock.calls.find(([command]) => command === "replace_disk")![1].edits[0].after).toBe("x🙂 a中 x");
+  });
+
+  it("keeps cancellation disabled once disk application has started", async () => {
+    const m = openBuffer();
+    custom = (command) => {
+      if (command === "replace_disk") {
+        expect(useApp.getState().replacementPhase).toBe("applying");
+        cancelReplacementPlan();
+      }
+    };
+    expect(await replaceMatches([openHit], "x", false, query)).toEqual([]);
+    expect(m.getValue()).toBe("x");
+    expect(x.call.mock.calls.some(([command]) => command === "replacement_plan_cancel")).toBe(false);
+  });
+
+  it("releases a planning task after a native planning failure", async () => {
+    custom = (command) => command === "replacement_plan" ? Promise.reject(new Error("bad pattern")) : undefined;
+    expect(await replaceMatches([hit], "x", false, query)).toEqual(["bad pattern"]);
+    expect(x.call).toHaveBeenCalledWith("replacement_plan_release", expect.any(Object));
+    expect(useApp.getState().replacementPhase).toBeNull();
+  });
+
   it("persists the group before touching open buffers and commits only after checkpoint", async () => {
     const m = openBuffer();
     custom = (command) => {

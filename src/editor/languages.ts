@@ -271,9 +271,8 @@ async function startLanguage(serverId: string, language: string, root: string | 
     let client: MonacoLanguageClient | undefined;
     const reader = new IpcReader();
     const writer = new IpcWriter(serverId);
-    const onEvent = new Channel<{ sequence: number; kind: string; message: Message | string }>();
     const logs: string[] = [];
-    onEvent.onmessage = (event) => {
+    const handleEvent = (event: { sequence: number; kind: string; message: Message | string }) => {
       if (event.kind === "message") {
         reader.accept(event.message as Message);
         void call("lsp_ack", { serverId, sequence: event.sequence }).catch(() => {});
@@ -296,11 +295,11 @@ async function startLanguage(serverId: string, language: string, root: string | 
       const { description, initializationOptions } = await trustedCall<{
         description: string;
         initializationOptions: Record<string, unknown>;
-      }>("lsp_start", {
+      }>("lsp_start", () => ({
         serverId,
         language,
-        onEvent,
-      });
+        onEvent: new Channel(handleEvent),
+      }));
       if (epoch !== languageEpoch) {
         await call("lsp_stop", { serverId });
         return;

@@ -60,6 +60,7 @@ type State = {
   activeSearchId: string;
   nextSearchNumber: number;
   searchHistory: string[];
+  replacementPhase: "planning" | "applying" | null;
   languageStatus: string;
   set: (patch: Partial<State> | ((state: State) => Partial<State>)) => void;
 };
@@ -93,6 +94,7 @@ export const useApp = create<State>((set) => ({
   activeSearchId: primarySearchId,
   nextSearchNumber: 2,
   searchHistory: [],
+  replacementPhase: null,
   languageStatus: "Plain Text",
   set: (patch) =>
     set((state) => {

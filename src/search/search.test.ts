@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const x = vi.hoisted(() => ({ call: vi.fn() }));
 vi.mock("../core/bridge", () => ({ call: x.call, channel: (fn: unknown) => fn, errorMessage: (e: any) => e.message }));
 vi.mock("../editor/documents", () => ({ checkpoint: vi.fn(), newDocument: vi.fn(), openPath: vi.fn(), models: new Map(), showDocument: vi.fn(), normalize: (s: string) => s, relative: (s: string) => s, patchDoc: vi.fn(), basename: (s: string) => s, editors: new Map(), patchMediaView: vi.fn() }));
-vi.mock("../editor/monaco", () => ({ monaco: { Range: class { constructor(public startLineNumber: number, public startColumn: number, public endLineNumber: number, public endColumn: number) { } getStartPosition() { return { column: this.startColumn } } getEndPosition() { return { column: this.endColumn } } }, editor: { createModel: (text: string) => ({ getValue: () => text.replace(/\r\n/g, "\n"), getVersionId: () => 1, getValueInRange: () => "a", getOffsetAt: (p: any) => p.column - 1, dispose: () => { } }) } } }));
+vi.mock("../editor/monaco", () => ({ monaco: { Range: class { constructor(public startLineNumber: number, public startColumn: number, public endLineNumber: number, public endColumn: number) { } getStartPosition() { return { column: this.startColumn } } getEndPosition() { return { column: this.endColumn } } }, editor: { createModel: (text: string) => ({ getValue: () => text.replace(/\r\n/g, "\n"), getVersionId: () => 1, isDisposed: () => false, getValueInRange: () => "a", getOffsetAt: (p: any) => p.column - 1, dispose: () => { } }) } } }));
 import { activateSearchTab, cancelSearch, closeSearchTab, createSearchTab, replaceMatches, runSearch } from "../search/search";
 import { checkpoint } from "../editor/documents";
 import { initialSearch, patchSearch, primarySearchId, searchSession, setApp, useApp } from "../store/store";
 import { defaultQuery, type SearchBatch, type SearchMatch } from "../types/types";
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.stubGlobal("window", { dispatchEvent: vi.fn() });
   setApp({ root: null, docs: {}, searchSessions: [initialSearch()], activeSearchId: primarySearchId, nextSearchNumber: 2, searchHistory: [] });
   vi.clearAllMocks();

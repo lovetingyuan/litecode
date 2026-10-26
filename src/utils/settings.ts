@@ -71,7 +71,7 @@ const groupTitles = ["编辑器", "工作台与面包屑", "文件", "搜索", "
 const groupHeadings = new Set(groupTitles.map((title) => `// --- LiteCode: ${title} ---`));
 function settingGroup(key: string) {
   const prefix = key.split(".")[0];
-  if (prefix === "editor" || prefix === "diffEditor") { return 0; }
+  if (prefix === "editor" || prefix === "diffEditor" || prefix === "merge-conflict") { return 0; }
   if (prefix === "workbench" || prefix === "breadcrumbs") { return 1; }
   if (prefix === "files") { return 2; }
   if (prefix === "search") { return 3; }

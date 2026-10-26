@@ -282,8 +282,15 @@ fn build_command(
             format!("Shell executable does not exist: {}", executable.display()),
         ));
     }
-    // cmd.exe interprets forward slashes in argv[0] as switches, even with lpApplicationName.
-    let executable = tools::process_path(&std::fs::canonicalize(executable)?);
+    // App execution aliases (e.g. Store PowerShell) are executable by CreateProcessW
+    // but cannot be canonicalized (ERROR_CANT_ACCESS_FILE / 1920).
+    // cmd.exe also requires native separators in argv[0], even with lpApplicationName.
+    let executable = match std::fs::canonicalize(&executable) {
+        Ok(path) => path,
+        Err(error) if cfg!(windows) && error.raw_os_error() == Some(1920) => executable,
+        Err(error) => return Err(error.into()),
+    };
+    let executable = tools::process_path(&executable);
     let mut cmd = CommandBuilder::new(executable);
     let requested = settings["terminal.integrated.shellIntegration.enabled"]
         .as_bool()
@@ -701,6 +708,34 @@ mod tests {
         assert!(size(0, 10).is_err());
         assert!(size(1001, 10).is_err());
         assert!(size(80, 24).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn store_powershell_alias_can_build_a_command() {
+        let Some(local) = std::env::var_os("LOCALAPPDATA") else {
+            return;
+        };
+        let alias = PathBuf::from(local).join("Microsoft/WindowsApps/pwsh.exe");
+        if !alias.is_file() {
+            return;
+        }
+        let profile = profiles::Profile {
+            name: "Store PowerShell".into(),
+            path: alias.to_string_lossy().into_owned(),
+            args: vec![],
+            env: Default::default(),
+            kind: "powershell".into(),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        build_command(
+            &profile,
+            &serde_json::json!({}),
+            None,
+            dir.path(),
+            dir.path(),
+        )
+        .unwrap();
     }
 
     #[cfg(windows)]

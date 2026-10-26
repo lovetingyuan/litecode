@@ -65,9 +65,7 @@ fn key(label: &str, id: &str) -> String {
     format!("{label}/{id}")
 }
 fn normalized(path: &str) -> String {
-    path.trim_start_matches("\\\\?\\")
-        .replace('\\', "/")
-        .to_lowercase()
+    crate::file_moves::visible(Path::new(path)).to_lowercase()
 }
 
 pub fn rg_path(app: &tauri::AppHandle) -> PathBuf {
@@ -141,6 +139,7 @@ fn split_globs(value: &str) -> Vec<&str> {
     result
 }
 
+#[cfg(test)]
 pub fn byte_position(text: &str, offset: usize, start_line: usize) -> (usize, usize) {
     let mut offset = offset.min(text.len());
     while !text.is_char_boundary(offset) {
@@ -608,6 +607,13 @@ pub fn search_cancel(window: WebviewWindow, state: State<'_, AppState>, request_
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalized_unc_paths_match_display_paths_and_remain_absolute() {
+        assert_eq!(normalized(r"\\?\UNC\server\share\中文 File.txt"), "//server/share/中文 file.txt");
+        assert_eq!(normalized(r"\\?\UNC\server\share\中文 File.txt"), normalized(r"\\server\share\中文 File.txt"));
+        assert_eq!(normalized(r"\\?\D:\中文 File.txt"), normalized(r"D:\中文 File.txt"));
+    }
 
     #[test]
     fn dense_results_are_lazy_bounded_and_keep_utf16_multiline_positions() {

@@ -7,6 +7,7 @@ import {
   confirmDocumentClose,
   editor,
   models,
+  editors,
   navigate,
   newDocument,
   openPath,
@@ -26,6 +27,7 @@ import type { SplitDirection } from "../editor/editorLayout";
 import { refreshTree, revealInTree } from "../components/Explorer";
 import { createSearchTab, activateSearchTab, focusSearch, undoReplacement, nextSearchResult, retryReplacement, recoverInterruptedReplacements } from "../search/search";
 import { changeLanguage } from "../editor/editorStatus";
+import { acceptInlineConflict, navigateInlineConflict } from "../editor/mergeConflictEditor";
 import { restartLanguages, stopLanguages, languageReport } from "../editor/languages";
 import { manageWorkspaceTrust } from "./workspaceTrust";
 import {
@@ -184,6 +186,24 @@ async function openSettings() {
   return id;
 }
 export const commands: Command[] = [
+  ...(["current", "incoming", "both"] as const).map((choice) => ({
+    id: `merge-conflict.accept.${choice}`,
+    label: `Merge Conflict: Accept ${choice === "current" ? "Current" : choice === "incoming" ? "Incoming" : "Both"} Change${choice === "both" ? "s" : ""}`,
+    run: (context?: EditorContext) => {
+      const target = editorTarget(context);
+      const instance = target ? editors.get(target.group.id) : undefined;
+      if (target && instance && instance.getModel() === models.get(target.doc.id)) { acceptInlineConflict(instance, choice); }
+    },
+  })),
+  ...(["next", "previous"] as const).map((direction) => ({
+    id: `merge-conflict.${direction}`,
+    label: `Merge Conflict: ${direction === "next" ? "Next" : "Previous"} Conflict`,
+    run: (context?: EditorContext) => {
+      const target = editorTarget(context);
+      const instance = target ? editors.get(target.group.id) : undefined;
+      if (target && instance && instance.getModel() === models.get(target.doc.id)) { navigateInlineConflict(instance, direction); }
+    },
+  })),
   {
     id: "workbench.action.terminal.toggleTerminal",
     label: "Terminal: Toggle Terminal",

@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useApp, setApp, notify } from "../store/store";
 import { monaco } from "../editor/monaco";
 import { editorOptions } from "../editor/settings";
+import { installMergeConflictEditor, navigateInlineConflict } from "../editor/mergeConflictEditor";
 import {
   models,
   editors,
@@ -32,7 +33,7 @@ export { FileIcon } from "./ui";
 import { createSearchEditor } from "../search/search";
 import { EditorTabMenu } from "./EditorTabMenu";
 import type { Group, Query, SearchMatch } from "../types/types";
-import { isGitIgnored } from "../utils/gitStatus";
+import { isGitConflicted, isGitIgnored } from "../utils/gitStatus";
 import { isMarkdownView, isTextView } from "../utils/media";
 import { MediaPreview } from "./MediaPreview";
 import { EditorBreadcrumbs } from "./EditorBreadcrumbs";
@@ -48,6 +49,7 @@ export function EditorGroup({ group }: { group: Group }) {
   const treeRoot = useApp((s) => s.treeRoot);
   const git = useApp((s) => s.gitState.git);
   const multipleGroups = useApp((s) => s.groups.length > 1);
+  const [mergeConflictCount, setMergeConflictCount] = useState(0);
   const splitDown = settings["workbench.editor.openSideBySideDirection"] === "down";
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -98,6 +100,7 @@ export function EditorGroup({ group }: { group: Group }) {
     instance.current = e;
     editors.set(group.id, e);
     const subscriptions = [
+      installMergeConflictEditor(e, setMergeConflictCount),
       e.onDidFocusEditorText(() => setApp({ activeGroup: group.id })),
       e.onDidBlurEditorWidget(() => {
         if (!document.activeElement?.closest(".editor-view-trigger, .media-menu")) {
@@ -280,7 +283,7 @@ export function EditorGroup({ group }: { group: Group }) {
                   title={tab.path ? pathTitle(tab.path) : tab.name}
                   tabIndex={group.active === id ? 0 : -1}
                   aria-selected={group.active === id}
-                  aria-label={`${tab.name}${tab.dirty ? ", unsaved" : ""}`}
+                  aria-label={`${tab.name}${tab.dirty ? ", unsaved" : ""}${isGitConflicted(tab.path, root, treeRoot, git) ? ", Git: Unmerged changes" : ""}`}
                   className={`editor-tab ${group.active === id ? "active" : ""} ${group.preview === id ? "preview" : ""} ${sticky ? "pinned" : ""}`}
                   draggable
                   onDragStart={(e) =>
@@ -334,6 +337,7 @@ export function EditorGroup({ group }: { group: Group }) {
                     {tab.name}
                   </span>
                   {tab.conflict && <Icon name="warning" />}
+                  {isGitConflicted(tab.path, root, treeRoot, git) && <span className="git-conflict-badge" title="Git: Unmerged changes">!</span>}
                   <button
                     className={`tab-close ${tab.dirty ? "dirty" : ""} ${sticky ? "tab-unpin" : ""}`}
                     title={`${sticky ? "Unpin" : "Close"} ${tab.name}`}
@@ -356,6 +360,11 @@ export function EditorGroup({ group }: { group: Group }) {
         </div>
         <EditorTabsScrollbar viewportRef={tabs} tabIds={group.tabs} />
         <div className="actions">
+          {mergeConflictCount > 0 && textView && <>
+            <IconButton icon="arrow-up" label="Previous Conflict" onClick={() => { if (instance.current) { navigateInlineConflict(instance.current, "previous"); } }} />
+            <IconButton icon="arrow-down" label="Next Conflict" onClick={() => { if (instance.current) { navigateInlineConflict(instance.current, "next"); } }} />
+            <span className="sr-only" role="status">{mergeConflictCount} merge conflicts remaining</span>
+          </>}
           <IconButton
             icon={splitDown ? "split-vertical" : "split-horizontal"}
             label={`Split Editor ${splitDown ? "Down" : "Right"} (Ctrl+\\)`}

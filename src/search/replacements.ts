@@ -1,6 +1,6 @@
 import { call, errorMessage } from "../core/bridge";
 import { ask } from "../components/dialog";
-import { useApp, notify, searchSession, primarySearchId } from "../store/store";
+import { useApp, setApp, notify, searchSession, primarySearchId } from "../store/store";
 import { checkpoint, models, normalize, relative, basename, patchDoc, restoreDocument, showDocument } from "../editor/documents";
 import { monaco } from "../editor/monaco";
 import type { SearchMatch, DiskDocument, Query, Mirror } from "../types/types";
@@ -16,6 +16,30 @@ const undoStack: Transaction[] = [];
 const redoStack: Transaction[] = [];
 let pendingApply: Transaction | null = null;
 let operations = Promise.resolve();
+type PlanningJob = { id: string; root: string | null; cancelled: boolean; registered: boolean; applying: boolean; yieldedAt: number };
+let planningJob: PlanningJob | null = null;
+const cancelled = Symbol("Replacement planning cancelled");
+
+export function cancelReplacementPlan() {
+  const job = planningJob;
+  if (!job || job.applying) { return; }
+  job.cancelled = true;
+  if (job.registered) {
+    void call("replacement_plan_cancel", { requestId: job.id }).catch(() => {});
+  }
+}
+
+function checkPlanning(job: PlanningJob) {
+  if (job.cancelled || useApp.getState().root !== job.root) { throw cancelled; }
+}
+
+async function yieldPlanning(job: PlanningJob) {
+  checkPlanning(job);
+  if (performance.now() - job.yieldedAt < 8) { return; }
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  job.yieldedAt = performance.now();
+  checkPlanning(job);
+}
 
 function serial<T>(action: () => Promise<T>): Promise<T> {
   const next = operations.catch(() => {}).then(action);
@@ -25,6 +49,7 @@ function serial<T>(action: () => Promise<T>): Promise<T> {
 
 useApp.subscribe((state, previous) => {
   if (state.root !== previous.root) {
+    cancelReplacementPlan();
     undoStack.length = 0;
     redoStack.length = 0;
     pendingApply = null;
@@ -83,25 +108,55 @@ export function replaceMatches(
   matches: SearchMatch[], replacement: string, preserve = false,
   query = searchSession(primarySearchId)!.query, preview = false,
 ) {
-  return serial(() => replace(matches, replacement, preserve, query, preview));
+  if (planningJob) { return Promise.resolve(["A replacement is already running"]); }
+  const job: PlanningJob = { id: crypto.randomUUID(), root: useApp.getState().root, cancelled: false, registered: false, applying: false, yieldedAt: -Infinity };
+  planningJob = job;
+  setApp({ replacementPhase: "planning" });
+  return serial(async () => {
+    try {
+      checkPlanning(job);
+      await call("replacement_plan_begin", { requestId: job.id });
+      job.registered = true;
+      checkPlanning(job);
+      return await replace(matches, replacement, preserve, query, preview, job);
+    } catch (error) {
+      if (error === cancelled || job.cancelled) { return null; }
+      const errors = [errorMessage(error)];
+      notify(errors.join("\n"));
+      return errors;
+    } finally {
+      // Release even if registration's response was lost or cancellation arrived
+      // before registration completed. No calculation starts before its ACK.
+      await call("replacement_plan_release", { requestId: job.id }).catch(() => {});
+      if (planningJob === job) {
+        planningJob = null;
+        setApp({ replacementPhase: null });
+      }
+    }
+  });
 }
-async function replace(matches: SearchMatch[], replacement: string, preserve: boolean, query: Query, preview: boolean) {
+async function replace(matches: SearchMatch[], replacement: string, preserve: boolean, query: Query, preview: boolean, job: PlanningJob) {
   if (!preview && (pendingApply || [...undoStack, ...redoStack].some((t) => t.direction))) {
     notify("A workspace replacement is unfinished. Use Search: Retry Interrupted Replacement or Search: Recover Interrupted Replacements.");
     return ["A replacement is unfinished"];
   }
-  const root = useApp.getState().root;
+  const root = job.root;
   const byFile = new Map<string, SearchMatch[]>();
-  matches.forEach((m) => {
+  for (let i = 0; i < matches.length; i++) {
+    if (i % 256 === 0) { await yieldPlanning(job); }
+    const m = matches[i];
     const key = m.documentId ?? normalize(m.path);
-    byFile.set(key, [...(byFile.get(key) ?? []), m]);
-  });
+    let list = byFile.get(key);
+    if (!list) { list = []; byFile.set(key, list); }
+    list.push(m);
+  }
   const buffers: BufferEdit[] = [];
   const errors: string[] = [];
   const diskEdits: DiskEdit[] = [];
   for (const list of byFile.values()) {
     let temporary: monaco.editor.ITextModel | undefined;
     try {
+      checkPlanning(job);
       const first = list[0];
       const doc = first.documentId
         ? useApp.getState().docs[first.documentId]
@@ -114,6 +169,7 @@ async function replace(matches: SearchMatch[], replacement: string, preserve: bo
       let disk: DiskDocument | undefined;
       if (!doc) {
         disk = await call<DiskDocument>("read_document", { path: first.path });
+        checkPlanning(job);
         temporary = monaco.editor.createModel(disk.text);
       }
       const m = doc ? models.get(doc.id)! : temporary!;
@@ -121,40 +177,53 @@ async function replace(matches: SearchMatch[], replacement: string, preserve: bo
         throw new Error(`${relative(first.path)} changed after searching. Search again.`);
       }
       const version = m.getVersionId();
+      const before = m.getValue();
       const planned = await call<
         { line: number; column: number; endLine: number; endColumn: number; text: string }[]
-      >("replacement_plan", { text: m.getValue(), query, replacement, preserveCase: preserve });
+      >("replacement_plan", { requestId: job.id, text: before, query, replacement, preserveCase: preserve });
+      checkPlanning(job);
       if (m.getVersionId() !== version) {
         throw new Error(
           `${doc?.name ?? first.path} changed while preparing replacements. Search again.`,
         );
       }
-      const edits = list.map((match) => {
+      const rangeKey = (p: { line: number; column: number; endLine: number; endColumn: number }) =>
+        `${p.line}:${p.column}:${p.endLine}:${p.endColumn}`;
+      const plans = new Map<string, typeof planned[number]>();
+      for (let i = 0; i < planned.length; i++) {
+        if (i % 256 === 0) { await yieldPlanning(job); }
+        const plan = planned[i];
+        plans.set(rangeKey(plan), plan);
+      }
+      const edits: { start: number; end: number; text: string }[] = [];
+      for (let i = 0; i < list.length; i++) {
+        if (i % 256 === 0) { await yieldPlanning(job); }
+        const match = list[i];
         const range = new monaco.Range(match.line, match.column, match.endLine, match.endColumn);
         if (m.getValueInRange(range) !== match.matched) {
           throw new Error(`${relative(match.path)} changed after searching. Search again.`);
         }
-        const plan = planned.find(
-          (p) =>
-            p.line === match.line &&
-            p.column === match.column &&
-            p.endLine === match.endLine &&
-            p.endColumn === match.endColumn,
-        );
+        const plan = plans.get(rangeKey(match));
         if (!plan) {
           throw new Error("Search and replacement ranges changed. Search again before replacing.");
         }
-        return { range, text: plan.text };
-      });
-      const before = m.getValue();
-      let after = before;
-      for (const edit of [...edits].sort(
-        (a, b) =>
-          m.getOffsetAt(b.range.getStartPosition()) - m.getOffsetAt(a.range.getStartPosition()),
-      )) {
-        const start = m.getOffsetAt(edit.range.getStartPosition());
-        const end = m.getOffsetAt(edit.range.getEndPosition());
-        after = after.slice(0, start) + edit.text + after.slice(end);
+        edits.push({ start: m.getOffsetAt(range.getStartPosition()), end: m.getOffsetAt(range.getEndPosition()), text: plan.text });
+      }
+      edits.sort((a, b) => a.start - b.start || a.end - b.end);
+      const pieces: string[] = [];
+      let offset = 0;
+      for (let i = 0; i < edits.length; i++) {
+        if (i % 256 === 0) { await yieldPlanning(job); }
+        const edit = edits[i];
+        if (edit.start < offset) { throw new Error("Replacement ranges overlap. Search again before replacing."); }
+        pieces.push(before.slice(offset, edit.start), edit.text);
+        offset = edit.end;
+      }
+      pieces.push(before.slice(offset));
+      const after = pieces.join("");
+      checkPlanning(job);
+      if (m.isDisposed() || m.getVersionId() !== version || (doc && useApp.getState().docs[doc.id] !== doc)) {
+        throw new Error(`${doc?.name ?? first.path} changed while preparing replacements. Search again.`);
       }
       if (preview) {
         window.dispatchEvent(
@@ -184,6 +253,7 @@ async function replace(matches: SearchMatch[], replacement: string, preserve: bo
         });
       }
     } catch (e) {
+      checkPlanning(job);
       errors.push(errorMessage(e));
     } finally {
       temporary?.dispose();
@@ -194,12 +264,15 @@ async function replace(matches: SearchMatch[], replacement: string, preserve: bo
     if (errors.length) { notify(errors.join("\n")); }
     return errors;
   }
+  await checkpoint();
+  checkPlanning(job);
+  checkRoot(root);
+  checkBuffers(buffers, true, false);
   const transaction: Transaction = { id: crypto.randomUUID(), root, buffers, direction: "apply", finishing: false };
+  job.applying = true;
+  setApp({ replacementPhase: "applying" });
   pendingApply = transaction; // Keep the identifier even when IPC loses its response.
   try {
-    await checkpoint();
-    checkRoot(root);
-    checkBuffers(buffers, true, false);
     const report = await call<Report>("replace_disk", {
       transactionId: transaction.id, expectedRoot: root, edits: diskEdits, buffers,
     });

@@ -1,4 +1,5 @@
 import "@codingame/monaco-vscode-api/vscode/vs/editor/contrib/find/browser/findController";
+import "@codingame/monaco-vscode-api/vscode/vs/editor/contrib/codelens/browser/codelensController";
 import "@codingame/monaco-vscode-api/vscode/vs/editor/contrib/multicursor/browser/multicursor";
 import "@codingame/monaco-vscode-api/vscode/vs/editor/contrib/clipboard/browser/clipboard";
 import "@codingame/monaco-vscode-api/vscode/vs/editor/contrib/comment/browser/comment";

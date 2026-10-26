@@ -6,7 +6,7 @@ vi.mock("./monaco", () => ({
   monaco: {
     languages: { getLanguages: () => [{ id: "plaintext" }], register: vi.fn() },
     Uri: { file: (path: string) => path, parse: (id: string) => id },
-    editor: { getModel: () => null, createModel: vi.fn(), setModelLanguage: vi.fn(), EndOfLineSequence: { LF: 0, CRLF: 1 } },
+    editor: { getModel: vi.fn(() => null), createModel: vi.fn(), setModelLanguage: vi.fn(), EndOfLineSequence: { LF: 0, CRLF: 1 } },
   },
   loadSyntax: vi.fn().mockResolvedValue(undefined),
   languageFor: vi.fn(() => "plaintext"),
@@ -65,11 +65,14 @@ import {
   refreshDocuments,
   renameDocuments,
   beginDocumentMove,
+  closeWindowWithRecovery,
   readConflictDiff,
   compareDisk,
   resolveConflict,
 } from "./documents";
 import { ask } from "../components/dialog";
+import { pasteInternalFiles } from "../explorer/documentFileOperations";
+import { createExplorerClipboard } from "../explorer/explorerClipboard";
 import { initialSearch, primarySearchId, setApp, useApp } from "../store/store";
 
 class Buffer {
@@ -1090,6 +1093,256 @@ describe("Media documents", () => {
   });
 });
 
+describe("Move safety", () => {
+  const registry = new Map<string, Monaco.editor.ITextModel>();
+  const move = { from: "C:/workspace/a.txt", to: "C:/workspace/sub/a.txt" };
+  const uriKey = (uri: unknown) => normalize(String(uri));
+  function add(path: string, text: string) {
+    const id = `move-${++sequence}`;
+    const buffer = attachDocument({
+      id, path, name: path.split("/").pop()!, language: "plaintext", encoding: "utf8",
+      eol: "LF", dirty: true, version: 1, revision: "old",
+    }, text, true);
+    return { id, buffer: buffer as unknown as Buffer };
+  }
+  beforeEach(() => {
+    registry.clear();
+    vi.mocked(monaco.editor.getModel).mockImplementation(uri => registry.get(uriKey(uri)) ?? null);
+    vi.mocked(monaco.editor.createModel).mockImplementation((text, _language, uri) => {
+      const buffer = Object.assign(new Buffer(text ?? ""), {
+        uri: { toString: () => String(uri) },
+        dispose: vi.fn(() => { if (registry.get(uriKey(uri)) === buffer) { registry.delete(uriKey(uri)); } }),
+      }) as unknown as Monaco.editor.ITextModel;
+      registry.set(uriKey(uri), buffer);
+      return buffer;
+    });
+    setApp({ root: "C:/workspace", history: [], groups: [] });
+  });
+  afterEach(() => {
+    vi.mocked(monaco.editor.getModel).mockReset().mockReturnValue(null);
+    vi.mocked(monaco.editor.createModel).mockReset();
+  });
+  it("rejects a destination occupied by a deleted dirty document before disk changes", async () => {
+    const source = add(move.from, "SOURCE UNSAVED IMPORTANT");
+    const target = add(move.to, "TARGET UNSAVED IMPORTANT");
+    patchDoc(target.id, { deleted: true });
+    await expect(beginDocumentMove([move])).rejects.toThrow(/already open/i);
+    await expect(renameDocuments([move])).rejects.toThrow(/already open/i);
+    expect(models.get(source.id)?.getValue()).toBe("SOURCE UNSAVED IMPORTANT");
+    expect(models.get(target.id)?.getValue()).toBe("TARGET UNSAVED IMPORTANT");
+    expect(models.get(source.id)).not.toBe(models.get(target.id));
+    expect(source.buffer.dispose).not.toHaveBeenCalled();
+    expect(useApp.getState().docs[source.id].path).toBe(move.from);
+    // A rejected preflight must release the barrier.
+    await save(source.id);
+    expect(writes()).toHaveLength(1);
+  });
+  it("preflights every directory descendant before rebinding any model", async () => {
+    const first = add("C:/workspace/folder/first.txt", "first source");
+    const second = add("C:/workspace/folder/deep/a.txt", "second source");
+    const target = add("C:/workspace/new/deep/a.txt", "deleted target");
+    patchDoc(target.id, { deleted: true });
+    const moves = [{ from: "C:/workspace/folder", to: "C:/workspace/new" }];
+    await expect(beginDocumentMove(moves)).rejects.toThrow(/already open/i);
+    await expect(renameDocuments(moves)).rejects.toThrow(/already open/i);
+    expect(models.get(first.id)).toBe(first.buffer);
+    expect(models.get(second.id)).toBe(second.buffer);
+    expect(target.buffer.getValue()).toBe("deleted target");
+  });
+  it("never attaches a different document to an occupied Monaco URI", () => {
+    add(move.to, "target");
+    expect(() => add(move.to, "source")).toThrow(/already open/i);
+  });
+  it("drains old saves and makes subsequent saves use the rebound path", async () => {
+    const { id } = add(move.from, "latest text");
+    const pending = deferred<string>();
+    vi.mocked(call).mockImplementation(command => command === "save_document"
+      ? pending.promise as never : Promise.resolve(undefined) as never);
+    const saving = save(id);
+    await vi.waitFor(() => expect(writes()).toHaveLength(1));
+    let entered = false;
+    const moving = beginDocumentMove([move]).then(release => { entered = true; return release; });
+    const nextSave = save(id);
+    await Promise.resolve();
+    expect(entered).toBe(false);
+    pending.resolve("saved");
+    await saving;
+    const release = await moving;
+    try { await renameDocuments([move]); } finally { release(); }
+    await nextSave;
+    expect(writes().map(write => write.path)).toEqual([move.from, move.to]);
+    expect(useApp.getState().docs[id]).toMatchObject({ path: move.to, dirty: false });
+    expect(models.get(id)?.getValue()).toBe("latest text");
+  });
+  it("waits for moving paths and confirms the latest recovery bytes before destroying", async () => {
+    const { id, buffer } = add(move.from, "earlier");
+    await checkpoint();
+    const release = await beginDocumentMove([move]);
+    buffer.edit("last important edit before closing");
+    const pending = deferred<void>();
+    vi.mocked(call).mockImplementation(command => command === "sync_documents"
+      ? pending.promise as never : Promise.resolve(undefined) as never);
+    const destroy = vi.fn().mockResolvedValue(undefined);
+    const closing = closeWindowWithRecovery(destroy);
+    const duplicate = closeWindowWithRecovery(destroy);
+    expect(closing).toBe(duplicate);
+    await checkpoint();
+    expect(destroy).not.toHaveBeenCalled();
+    await renameDocuments([move]);
+    release();
+    await vi.waitFor(() => expect(vi.mocked(call).mock.calls.filter(([cmd]) => cmd === "sync_documents")).toHaveLength(2));
+    const snapshot = vi.mocked(call).mock.calls.filter(([cmd]) => cmd === "sync_documents").slice(-1)[0][1]!;
+    expect(snapshot.documents).toContainEqual(expect.objectContaining({
+      id, path: move.to, text: "last important edit before closing", dirty: true,
+    }));
+    expect(destroy).not.toHaveBeenCalled();
+    pending.resolve();
+    await closing;
+    expect(destroy).toHaveBeenCalledOnce();
+  });
+  it("retains the window after a move failure and allows a fresh close attempt", async () => {
+    add(move.from, "important");
+    const release = await beginDocumentMove([move]);
+    const destroy = vi.fn().mockResolvedValue(undefined);
+    const closing = closeWindowWithRecovery(destroy);
+    const rejected = expect(closing).rejects.toThrow("disk move failed");
+    release(new Error("disk move failed"));
+    await rejected;
+    expect(destroy).not.toHaveBeenCalled();
+    await closeWindowWithRecovery(destroy);
+    expect(destroy).toHaveBeenCalledOnce();
+  });
+  it("retains the window when the final backup fails", async () => {
+    add(move.from, "important");
+    vi.mocked(call).mockRejectedValueOnce(new Error("backup failed"));
+    const destroy = vi.fn().mockResolvedValue(undefined);
+    await expect(closeWindowWithRecovery(destroy)).rejects.toThrow("backup failed");
+    expect(destroy).not.toHaveBeenCalled();
+    await closeWindowWithRecovery(destroy);
+    expect(destroy).toHaveBeenCalledOnce();
+  });
+  it("backs up again if edits or a new move arrive while the final snapshot is in flight", async () => {
+    const { id, buffer } = add(move.from, "earlier");
+    const pending = deferred<void>();
+    vi.mocked(call).mockImplementationOnce(() => pending.promise as never);
+    const destroy = vi.fn().mockResolvedValue(undefined);
+    const closing = closeWindowWithRecovery(destroy);
+    await vi.waitFor(() => expect(vi.mocked(call)).toHaveBeenCalledOnce());
+    const moving = beginDocumentMove([move]);
+    buffer.edit("latest edit");
+    pending.resolve();
+    const release = await moving;
+    expect(destroy).not.toHaveBeenCalled();
+    try { await renameDocuments([move]); } finally { release(); }
+    await closing;
+    const args = vi.mocked(call).mock.calls.filter(([cmd]) => cmd === "sync_documents").slice(-1)[0][1]!;
+    expect(args.documents).toContainEqual(expect.objectContaining({ id, path: move.to, text: "latest edit" }));
+    expect(destroy).toHaveBeenCalledOnce();
+  });
+  it("defers opening a destination until it belongs to the moved source", async () => {
+    const { id } = add(move.from, "source text");
+    const release = await beginDocumentMove([move]);
+    const opening = openPath(move.to);
+    await Promise.resolve();
+    expect(vi.mocked(call).mock.calls.some(([cmd]) => cmd === "inspect_file")).toBe(false);
+    try { await renameDocuments([move]); } finally { release(); }
+    expect(await opening).toBe(id);
+    expect(models.get(id)?.getValue()).toBe("source text");
+  });
+  it("discards reads started before a move instead of attaching stale source bytes", async () => {
+    const pending = deferred<DiskDocument>();
+    let exists = true;
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "inspect_file") {
+        if (!exists) { throw { code: "notFound", message: "moved away" }; }
+        return { kind: "text", size: 5 } as never;
+      }
+      if (command === "read_document") { return await pending.promise as never; }
+      return undefined as never;
+    });
+    const opening = openPath(move.from);
+    const rejected = expect(opening).rejects.toMatchObject({ code: "notFound" });
+    await vi.waitFor(() => expect(vi.mocked(call).mock.calls.some(([cmd]) => cmd === "read_document")).toBe(true));
+    const release = await beginDocumentMove([move]);
+    exists = false;
+    release();
+    pending.resolve({ path: move.from, text: "stale", revision: "old", encoding: "utf8", eol: "LF" });
+    await rejected;
+    expect(Object.values(useApp.getState().docs)).toHaveLength(0);
+    expect(registry.size).toBe(0);
+  });
+  it("preserves dirty text through a directory move and case-only rename", async () => {
+    const { id } = add("C:/workspace/folder/deep/a.txt", "important");
+    const moves = [{ from: "C:/workspace/folder/", to: "C:/workspace/NEW/" }];
+    const release = await beginDocumentMove(moves);
+    try { await renameDocuments(moves); } finally { release(); }
+    const recase = [{ from: "C:/workspace/NEW/deep/a.txt", to: "C:/workspace/NEW/deep/A.txt" }];
+    const releaseCase = await beginDocumentMove(recase);
+    try { await renameDocuments(recase); } finally { releaseCase(); }
+    expect(useApp.getState().docs[id]).toMatchObject({ path: recase[0].to, dirty: true });
+    expect(models.get(id)?.getValue()).toBe("important");
+    expect(registry.size).toBe(1);
+    await save(id);
+    expect(writes()[0].path).toBe(recase[0].to);
+  });
+  it("preflights the whole cut batch before sending any disk operations", async () => {
+    add(move.from, "source");
+    add(move.to, "target");
+    const other = { from: "C:/workspace/b.txt", to: "C:/workspace/sub/b.txt" };
+    await expect(pasteInternalFiles([other, move], true, new AbortController().signal)).rejects.toThrow(/already open/i);
+    expect(vi.mocked(call).mock.calls.some(([cmd]) => cmd === "file_operation")).toBe(false);
+  });
+  it("coordinates real cut saves, rebinds successful items and retries only failed sources", async () => {
+    const first = add(move.from, "first edits");
+    const second = add("C:/workspace/b.txt", "second edits");
+    const pending = deferred<string>();
+    let fail = true;
+    vi.mocked(call).mockImplementation(async (command, args) => {
+      if (command === "save_document") { return await pending.promise as never; }
+      if (command === "file_operation" && (args!.operation as { path: string }).path.endsWith("b.txt") && fail) {
+        throw new Error("busy");
+      }
+      return undefined as never;
+    });
+    const clipboard = createExplorerClipboard({
+      read: async () => ({ sequence: 1, paths: [] }), confirm: async () => true,
+      copyExternal: vi.fn(), pasteInternal: pasteInternalFiles,
+    });
+    await clipboard.remember([move.from, "C:/workspace/b.txt"], true);
+    const saving = save(first.id);
+    await vi.waitFor(() => expect(writes()).toHaveLength(1));
+    const signal = new AbortController().signal;
+    const pasting = clipboard.paste("C:/workspace", "C:/workspace/sub", signal);
+    await Promise.resolve();
+    expect(vi.mocked(call).mock.calls.some(([cmd]) => cmd === "file_operation")).toBe(false);
+    pending.resolve("saved");
+    await saving;
+    expect(await pasting).toMatchObject({ copied: [move], failed: [{ path: "C:/workspace/b.txt", message: "busy" }] });
+    expect(useApp.getState().docs[first.id].path).toBe(move.to);
+    expect(useApp.getState().docs[second.id].path).toBe("C:/workspace/b.txt");
+    fail = false;
+    await clipboard.paste("C:/workspace", "C:/workspace/sub", signal);
+    const operations = vi.mocked(call).mock.calls.filter(([cmd]) => cmd === "file_operation");
+    expect(operations.map(([, args]) => (args!.operation as { path: string }).path)).toEqual([move.from, "C:/workspace/b.txt", "C:/workspace/b.txt"]);
+    await save(second.id);
+    expect(writes().slice(-1)[0].path).toBe("C:/workspace/sub/b.txt");
+    expect(models.get(second.id)?.getValue()).toBe("second edits");
+  });
+  it("rebinds completed cuts even when cancellation arrives during disk I/O", async () => {
+    const { id } = add(move.from, "important");
+    const abort = new AbortController();
+    vi.mocked(call).mockImplementation(async command => {
+      if (command === "file_operation") { abort.abort(); }
+      return undefined as never;
+    });
+    const report = await pasteInternalFiles([move, { from: "C:/workspace/b.txt", to: "C:/workspace/sub/b.txt" }], true, abort.signal);
+    expect(report.copied).toEqual([move]);
+    expect(useApp.getState().docs[id].path).toBe(move.to);
+    expect(models.get(id)?.getValue()).toBe("important");
+    await checkpoint({ waitForMoves: true });
+  });
+});
+
 describe("Document move backups", () => {
   it("drains old backups and defers snapshots until paths have been rebound", async () => {
     const commandCalls = (name: string) => vi.mocked(call).mock.calls.filter(([command]) => command === name);
@@ -1099,7 +1352,7 @@ describe("Document move backups", () => {
     const backup = checkpoint();
     await vi.waitFor(() => expect(commandCalls("sync_documents")).toHaveLength(1));
     let started = false;
-    const moving = beginDocumentMove(["C:/workspace/folder"]).then(release => { started = true; return release; });
+    const moving = beginDocumentMove([{ from: "C:/workspace/folder", to: "C:/workspace/new" }]).then(release => { started = true; return release; });
     await checkpoint();
     expect(started).toBe(false);
     expect(commandCalls("sync_documents")).toHaveLength(1);

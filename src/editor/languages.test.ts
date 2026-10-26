@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { editor } from "monaco-editor";
 
 type ClientOptions = {
+  messageTransports: { reader: { listen: (callback: (message: unknown) => void) => unknown } };
   clientOptions: {
     documentSelector: string[];
     initializationOptions: Record<string, unknown>;
@@ -12,6 +13,9 @@ type ClientOptions = {
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
+  ask: vi.fn(),
+  messages: [] as unknown[],
+  callbacks: new Map<number, (message: unknown) => void>(),
   reference: vi.fn(),
   clients: [] as {
     options: ClientOptions;
@@ -25,7 +29,6 @@ const mocks = vi.hoisted(() => ({
   state: { root: "C:/a", settings: {}, docs: {} },
   models: new Map(),
 }));
-vi.mock("@tauri-apps/api/core", () => ({ Channel: class { } }));
 vi.mock("vscode-jsonrpc/browser", () => ({ AbstractMessageReader: class { fireClose() {} }, AbstractMessageWriter: class { } }));
 vi.mock("vscode", () => ({ Uri: { file: (path: string) => path }, workspace: { textDocuments: [] } }));
 vi.mock("monaco-languageclient", () => ({
@@ -36,7 +39,7 @@ vi.mock("monaco-languageclient", () => ({
     sendNotification = vi.fn().mockResolvedValue(undefined);
     onNotification(method: string, handler: (params: unknown) => Promise<void>) { this.handlers.set(method, handler); }
     constructor(public options: typeof mocks.clients[number]["options"]) { mocks.clients.push(this); }
-    async start() { this.running = true; }
+    async start() { this.options.messageTransports.reader.listen((message) => mocks.messages.push(message)); this.running = true; }
     async stop() { this.running = false; }
     isRunning() { return this.running; }
   }
@@ -44,7 +47,7 @@ vi.mock("monaco-languageclient", () => ({
 vi.mock("@codingame/monaco-vscode-files-service-override", () => ({ RegisteredFileSystemProvider: class { } }));
 vi.mock("@codingame/monaco-vscode-api/monaco", () => ({ createModelReference: mocks.reference }));
 vi.mock("../core/bridge", () => ({ call: mocks.call, desktop: true, errorMessage: String }));
-vi.mock("../core/workspaceTrust", () => ({ trustedCall: mocks.call, cancelWorkspaceTrustPrompt: vi.fn() }));
+vi.mock("../components/dialog", () => ({ ask: mocks.ask }));
 vi.mock("../store/store", () => ({ useApp: { getState: () => mocks.state }, setApp: vi.fn(), notify: vi.fn() }));
 vi.mock("./monaco", () => ({ monaco: {} }));
 vi.mock("./documents", () => ({ models: mocks.models, visiblePath: (path: string) => path }));
@@ -53,6 +56,13 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   vi.useFakeTimers();
+  mocks.callbacks.clear();
+  mocks.messages.length = 0;
+  let callbackId = 0;
+  vi.stubGlobal("window", { __TAURI_INTERNALS__: {
+    transformCallback: (callback: (message: unknown) => void) => { mocks.callbacks.set(++callbackId, callback); return callbackId; },
+    unregisterCallback: (id: number) => mocks.callbacks.delete(id),
+  } });
   mocks.state.root = "C:/a";
   mocks.clients.length = 0;
   mocks.models.clear();
@@ -63,6 +73,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 it.each([true, false])("formats JSONC with the model's insertSpaces=%s and line endings", async (insertSpaces) => {
@@ -167,4 +178,57 @@ it("does not start Vue without its TypeScript companion", async () => {
   await ensureLanguage("doc", "vue");
   expect(mocks.call.mock.calls.filter(([command]) => command === "lsp_start")).toHaveLength(1);
   expect(languageReport().failures.typescript).toContain("missing Vue plugin");
+});
+
+it("recreates the real Channel after a trust rejection and delivers messages with acknowledgements", async () => {
+  mocks.ask.mockResolvedValue("Trust Workspace");
+  const channels: { id: number }[] = [];
+  mocks.call.mockImplementation(async (command, args) => {
+    if (command !== "lsp_start") { return; }
+    channels.push(args.onEvent);
+    if (channels.length === 1) {
+      mocks.callbacks.get(args.onEvent.id)!({ index: 0, end: true });
+      throw { code: "workspaceTrust", message: "Restricted Mode" };
+    }
+    return { description: "trusted service", initializationOptions: {} };
+  });
+  const { ensureLanguage, languageReport } = await import("./languages");
+  await ensureLanguage("doc", "typescript");
+  expect(channels).toHaveLength(2);
+  expect(channels[0].id).not.toBe(channels[1].id);
+  expect(mocks.callbacks.has(channels[0].id)).toBe(false);
+  const deliver = mocks.callbacks.get(channels[1].id)!;
+  const messages = [{ jsonrpc: "2.0", id: 1, result: { capabilities: {} } },
+    { jsonrpc: "2.0", method: "textDocument/publishDiagnostics", params: { uri: "file:///C:/a/main.ts", diagnostics: [] } }];
+  messages.forEach((message, index) => deliver({ index, message: { kind: "message", sequence: index + 1, message } }));
+  expect(mocks.messages).toEqual(messages);
+  expect(mocks.call).toHaveBeenCalledWith("lsp_ack", { serverId: "typescript", sequence: 2 });
+  expect(languageReport().services).toEqual([{ id: "typescript", running: true, capabilities: undefined }]);
+});
+
+it("does not retry LSP startup when trust is denied", async () => {
+  mocks.ask.mockResolvedValue("Restricted Mode");
+  mocks.call.mockRejectedValue({ code: "workspaceTrust" });
+  const { ensureLanguage, languageReport } = await import("./languages");
+  await ensureLanguage("doc", "typescript");
+  expect(mocks.call.mock.calls.filter(([command]) => command === "lsp_start")).toHaveLength(1);
+  expect(mocks.clients).toHaveLength(0);
+  expect(languageReport().services).toHaveLength(0);
+  expect(mocks.call.mock.calls.some(([command]) => command === "set_workspace_trust")).toBe(false);
+});
+
+it("does not retry or register an old client when the workspace changes during the trust prompt", async () => {
+  let approve!: (choice: string) => void;
+  mocks.ask.mockReturnValue(new Promise<string>((resolve) => { approve = resolve; }));
+  mocks.call.mockRejectedValue({ code: "workspaceTrust" });
+  const { ensureLanguage, stopLanguages, languageReport } = await import("./languages");
+  const pending = ensureLanguage("doc", "typescript");
+  await vi.waitFor(() => expect(mocks.ask).toHaveBeenCalledOnce());
+  const stopped = stopLanguages();
+  mocks.state.root = "C:/b";
+  approve("Trust Workspace");
+  await Promise.all([pending, stopped]);
+  expect(mocks.clients).toHaveLength(0);
+  expect(languageReport().services).toHaveLength(0);
+  expect(mocks.call.mock.calls.filter(([command]) => command === "lsp_start")).toHaveLength(1);
 });

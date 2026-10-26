@@ -4,6 +4,7 @@ mod error;
 mod external_drop;
 mod file_clipboard;
 mod file_creation;
+mod file_delete;
 mod file_moves;
 mod files;
 #[cfg(windows)]
@@ -104,6 +105,7 @@ pub fn run() {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 let state = window.state::<state::AppState>();
                 state.terminals.close_window(window.label());
+                state.replacement_plans.close_window(window.label());
                 for (key, task) in state.searches.lock().unwrap().iter() {
                     if key.starts_with(&format!("{}/", window.label())) {
                         task.cancelled
@@ -173,6 +175,9 @@ pub fn run() {
             tools::install_tools,
             commands::language_document,
             replacement::replacement_plan,
+            replacement::replacement_plan_begin,
+            replacement::replacement_plan_cancel,
+            replacement::replacement_plan_release,
             transactions::replace_disk,
             transactions::replay_replacement,
             transactions::finish_replacement,

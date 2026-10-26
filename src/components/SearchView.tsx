@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useApp, notify, patchSearch, primarySearchId, searchSession } from "../store/store";
-import { activateSearchTab, cancelSearch, closeSearchTab, createSearchTab, openMatch, replaceMatches, runSearch } from "../search/search";
+import { activateSearchTab, cancelSearch, cancelReplacementPlan, closeSearchTab, createSearchTab, openMatch, replaceMatches, runSearch } from "../search/search";
 import { basename, relative, splitGroup } from "../editor/documents";
 import { Icon, IconButton } from "./ui";
 import { errorMessage, desktop } from "../core/bridge";
@@ -95,6 +95,7 @@ function SearchPanel({ id }: { id: string }) {
   const active = useApp((s) => s.activeSearchId === id);
   const multiple = useApp((s) => s.searchSessions.length > 1);
   const { query, results, searching, searchErrors: errors, limited } = session;
+  const replacementPhase = useApp((s) => s.replacementPhase);
   const root = useApp((s) => s.root);
   const history = useApp((s) => s.searchHistory);
   const [replace, setReplace] = useState(false);
@@ -178,12 +179,14 @@ function SearchPanel({ id }: { id: string }) {
     void runSearch(undefined, id);
   }
   function clearResults() {
+    if (id === primarySearchId) { cancelReplacementPlan(); }
     clearTimeout(pendingSearch.current);
     cancelSearch(id);
     patchSearch(id, { results: [], searchErrors: [], limited: false });
     resetSelection();
   }
   function update(patch: Partial<Query>) {
+    if (id === primarySearchId) { cancelReplacementPlan(); }
     clearTimeout(pendingSearch.current);
     cancelSearch(id);
     resetSelection();
@@ -217,7 +220,7 @@ function SearchPanel({ id }: { id: string }) {
     patchSearch(id, { results: results.filter((match) => !removed.has(match)) });
   }
   async function replaceRows(matches: SearchMatch[], preview = false) {
-    if (id !== primarySearchId) { return; }
+    if (id !== primarySearchId || useApp.getState().replacementPhase) { return; }
     if (
       !preview &&
       matches.length > 1 &&
@@ -231,8 +234,8 @@ function SearchPanel({ id }: { id: string }) {
     }
     if (useApp.getState().root !== root || searchSession(id)?.query !== query) { return; }
     try {
-      await replaceMatches(matches, replacement, preserve, query, preview);
-      if (!preview && useApp.getState().root === root && searchSession(id)?.query === query) {
+      const errors = await replaceMatches(matches, replacement, preserve, query, preview);
+      if (!preview && errors !== null && !errors?.length && useApp.getState().root === root && searchSession(id)?.query === query) {
         await runSearch(query, id);
       }
     } catch (e) {
@@ -253,6 +256,9 @@ function SearchPanel({ id }: { id: string }) {
       <div className="view-title">
         <span>Search</span>
         <div className="actions">
+          {id === primarySearchId && replacementPhase === "planning" && (
+            <IconButton icon="search-stop" label="Cancel Replacement Planning" onClick={cancelReplacementPlan} />
+          )}
           <IconButton
             icon={searching ? "search-stop" : "refresh"}
             label={searching ? "Cancel Search" : "Refresh Search"}
@@ -315,6 +321,7 @@ function SearchPanel({ id }: { id: string }) {
                     search();
                   }
                   if (e.key === "Escape") {
+                    if (id === primarySearchId) { cancelReplacementPlan(); }
                     clearTimeout(pendingSearch.current);
                     cancelSearch(id);
                   }
@@ -371,7 +378,7 @@ function SearchPanel({ id }: { id: string }) {
                 className="icon-button search-replace-all"
                 icon="replace-all"
                 label="Replace All"
-                disabled={!results.length}
+                disabled={!results.length || !!replacementPhase}
                 onClick={() => void replaceRows(results)}
               />
             </div>
@@ -434,7 +441,9 @@ function SearchPanel({ id }: { id: string }) {
         )}
       </div>
       <div className="search-summary" aria-live="polite">
-        {searching
+        {id === primarySearchId && replacementPhase
+          ? replacementPhase === "planning" ? "Planning replacements…" : "Applying replacements…"
+          : searching
           ? "Searching…"
           : query.text
             ? results.length
@@ -583,6 +592,7 @@ function SearchPanel({ id }: { id: string }) {
                       className="inline-action"
                       aria-label="Replace Match"
                       title="Replace Match"
+                      disabled={!!replacementPhase}
                       onClick={(e) => {
                         e.stopPropagation();
                         void replaceRows([row.match]);
@@ -672,10 +682,10 @@ function SearchPanel({ id }: { id: string }) {
                 )}
                 {replace && (
                   <>
-                    <button onClick={() => void replaceRows(matches, true)}>
+                    <button disabled={!!replacementPhase} onClick={() => void replaceRows(matches, true)}>
                       Preview Replacement
                     </button>
-                    <button onClick={() => void replaceRows(matches)}>Replace</button>
+                    <button disabled={!!replacementPhase} onClick={() => void replaceRows(matches)}>Replace</button>
                   </>
                 )}
                 <button onClick={() => removeRow(row)}>Remove Result</button>

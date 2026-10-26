@@ -16,8 +16,27 @@ use tauri::{Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 fn visible_path(path: &Path) -> String {
-    let s = path.to_string_lossy();
-    s.strip_prefix("\\\\?\\").unwrap_or(&s).to_string()
+    crate::tools::process_path(path).to_string_lossy().into_owned()
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn returned_paths_keep_unc_roots_and_agree_with_move_paths() {
+        for (input, expected) in [
+            (r"\\?\UNC\server\share\project 中文\a.txt", r"\\server\share\project 中文\a.txt"),
+            (r"\\?\D:\project 中文\a.txt", r"D:\project 中文\a.txt"),
+            (r"\\server\share\project 中文\a.txt", r"\\server\share\project 中文\a.txt"),
+            (r"D:\project 中文\a.txt", r"D:\project 中文\a.txt"),
+            ("/tmp/project/a.txt", "/tmp/project/a.txt"),
+        ] {
+            let visible = visible_path(Path::new(input));
+            assert_eq!(visible, expected);
+            assert_eq!(visible.replace('\\', "/"), crate::file_moves::visible(Path::new(input)));
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -52,6 +71,7 @@ pub fn remember(state: &AppState, path: &str) -> Result<()> {
 #[tauri::command]
 pub async fn bootstrap(window: WebviewWindow, state: State<'_, AppState>) -> Result<Bootstrap> {
     state.terminals.close_window(window.label());
+    state.replacement_plans.close_window(window.label());
     // A reloaded WebView cannot acknowledge its old Channels.
     for (key, task) in state.searches.lock().unwrap().iter() {
         if key.starts_with(&format!("{}/", window.label())) {
@@ -491,6 +511,16 @@ pub async fn file_operation(
     state: State<'_, AppState>,
     operation: FileOperation,
 ) -> Result<()> {
+    if operation.kind == "delete" {
+        return crate::file_delete::recycle(&state, window.label(), &operation.path, |source| {
+            trash::delete(source).map_err(|error| {
+                AppError::new(
+                    "recycle",
+                    format!("Could not move to Recycle Bin; nothing was permanently deleted: {error}"),
+                )
+            })
+        });
+    }
     let source = state.authorize(window.label(), &operation.path)?;
     let _disk = state.disk_lock.lock().unwrap();
     if state
@@ -514,12 +544,6 @@ pub async fn file_operation(
                 .open(source)?;
         }
         "newFolder" => fs::create_dir(source)?,
-        "delete" => trash::delete(&source).map_err(|e| {
-            AppError::new(
-                "recycle",
-                format!("Could not move to Recycle Bin; nothing was permanently deleted: {e}"),
-            )
-        })?,
         "rename" | "copy" => {
             let destination = operation
                 .destination

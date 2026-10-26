@@ -19,6 +19,7 @@ import { ensureLanguage, releaseLanguageDocument, formatModel, canFormat } from 
 import { organizeSettings, parseConfiguration, settingValue } from "../utils/settings";
 import { applyModelSettings, modelSettingKeys } from "./settings";
 import { layoutGroups, restoreLayout, splitLayout, type SplitDirection } from "./editorLayout";
+import type { FileMove } from "../explorer/explorerMove";
 
 export const models = new Map<string, monaco.editor.ITextModel>();
 export const editors = new Map<string, monaco.editor.IStandaloneCodeEditor>();
@@ -40,38 +41,84 @@ let backupTimer: ReturnType<typeof setTimeout>;
 let autoTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let checkpointQueue = Promise.resolve();
 let saveSequence = 0;
-let documentMove: { paths: string[]; done: Promise<void>; drainThrough: number } | null = null;
+let moveSequence = 0;
+let lastMoveFailure: { sequence: number; error: unknown } | undefined;
+let documentMove: { moves: FileMove[]; done: Promise<{ error?: unknown }>; drainThrough: number } | null = null;
+let windowClose: Promise<void> | undefined;
 
-export async function beginDocumentMove(paths: string[]) {
-  if (documentMove) {
+export async function beginDocumentMove(moves: FileMove[]) {
+  while (documentMove) {
     await documentMove.done;
   }
-  let release!: () => void;
-  const done = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const sequence = ++moveSequence;
+  let complete!: (result: { error?: unknown }) => void;
+  const done = new Promise<{ error?: unknown }>((resolve) => { complete = resolve; });
   const draining = [...saveQueues.values()];
-  documentMove = { paths, done, drainThrough: saveSequence };
-  // Finish saves already in flight; subsequent saves read the rebound path.
-  await Promise.allSettled(draining);
-  // Backups authorize document paths too. Drain old snapshots before disk moves,
-  // and defer new snapshots until every descendant has its rebound path.
-  await checkpointQueue.catch(() => {});
-  return () => {
+  const move = documentMove = { moves, done, drainThrough: saveSequence };
+  const release = (error?: unknown) => {
+    if (documentMove !== move) { return; }
+    if (error !== undefined) { lastMoveFailure = { sequence, error }; }
     documentMove = null;
-    release();
+    complete({ error });
     scheduleBackup();
   };
+  try {
+    // Existing saves and snapshots finish before disk changes. New saves and
+    // file opens wait for the final paths; periodic backups stay deferred.
+    await Promise.allSettled(draining);
+    await checkpointQueue.catch(() => {});
+    checkDocumentMoves(moves);
+    return release;
+  } catch (error) {
+    release(error);
+    throw error;
+  }
 }
 
 function isMoving(path: string) {
   return (
-    documentMove?.paths.some(
-      (source) =>
-        normalize(path) === normalize(source) ||
-        normalize(path).startsWith(normalize(source) + "/"),
+    documentMove?.moves.some(
+      ({ from, to }) => [from, to].some(source => withinPath(path, source)),
     ) ?? false
   );
+}
+function withinPath(path: string, parent: string) {
+  const base = normalize(parent).replace(/\/+$/, "");
+  return normalize(path) === base || normalize(path).startsWith(base + "/");
+}
+
+function movedDocumentPath(path: string, moves: FileMove[]) {
+  const move = moves.find(({ from }) => withinPath(path, from));
+  if (!move) { return null; }
+  const source = visiblePath(move.from).replace(/\\/g, "/").replace(/\/+$/, "");
+  const destination = visiblePath(move.to).replace(/\\/g, "/").replace(/\/+$/, "");
+  return destination + visiblePath(path).replace(/\\/g, "/").slice(source.length);
+}
+
+function occupiedDestination() {
+  return new Error("This destination is already open in another editor. Close that editor before moving files.");
+}
+
+function checkDocumentMoves(moves: FileMove[]) {
+  const docs = Object.values(useApp.getState().docs);
+  for (const { from, to } of moves) {
+    if (docs.some(doc => doc.path && withinPath(doc.path, to) && !withinPath(doc.path, from))) {
+      throw occupiedDestination();
+    }
+    const target = monaco.editor.getModel(monaco.Uri.file(visiblePath(to)));
+    if (target && !docs.some(doc => doc.path && withinPath(doc.path, from) && models.get(doc.id) === target)) {
+      throw occupiedDestination();
+    }
+  }
+  for (const doc of docs) {
+    const path = doc.path && movedDocumentPath(doc.path, moves);
+    if (!path) { continue; }
+    const target = monaco.editor.getModel(monaco.Uri.file(path));
+    if (target && target !== models.get(doc.id)) { throw occupiedDestination(); }
+    if (docs.some(other => other.id !== doc.id && other.path && normalize(other.path) === normalize(path))) {
+      throw occupiedDestination();
+    }
+  }
 }
 export const basename = (path: string) => path.replace(/\\/g, "/").split("/").pop() || path;
 export const normalize = (path: string) => visiblePath(path).replace(/\\/g, "/").toLowerCase();
@@ -172,10 +219,37 @@ export function session(): Session {
   };
 }
 
-export async function checkpoint() {
-  if (!desktop || documentMove) {
-    return;
+export async function checkpoint(options: { waitForMoves?: boolean } = {}) {
+  if (!desktop) { return; }
+  const firstMove = moveSequence;
+  for (;;) {
+    if (options.waitForMoves) {
+      // Never put a barrier-waiting job inside checkpointQueue: a move drains
+      // that queue before changing disk paths.
+      while (documentMove || saveQueues.size) {
+        if (documentMove) {
+          const result = await documentMove.done;
+          if (result.error !== undefined) { throw result.error; }
+        } else {
+          await Promise.allSettled(saveQueues.values());
+        }
+      }
+      if (lastMoveFailure && lastMoveFailure.sequence > firstMove) { throw lastMoveFailure.error; }
+    } else if (documentMove) {
+      return;
+    }
+    const moveVersion = moveSequence;
+    const saveVersion = saveSequence;
+    const snapshotDocs = useApp.getState().docs;
+    await syncDocumentSnapshot();
+    if (!options.waitForMoves || (!documentMove && !saveQueues.size &&
+      moveVersion === moveSequence && saveVersion === saveSequence && snapshotDocs === useApp.getState().docs)) {
+      return;
+    }
   }
+}
+
+async function syncDocumentSnapshot() {
   const docs: Mirror[] = Object.values(useApp.getState().docs).map((doc) => {
     const m = models.get(doc.id);
     return {
@@ -199,6 +273,10 @@ export async function checkpoint() {
     .then(() => call<void>("sync_documents", { documents: docs, session: currentSession }));
   await checkpointQueue;
 }
+
+export function closeWindowWithRecovery(destroy: () => Promise<void>) {
+  return windowClose ??= checkpoint({ waitForMoves: true }).then(destroy).finally(() => { windowClose = undefined; });
+}
 export function scheduleBackup() {
   clearTimeout(backupTimer);
   backupTimer = setTimeout(
@@ -212,7 +290,9 @@ export function attachDocument(doc: Doc, text: string, initiallyDirty = false) {
     monaco.languages.register({ id: doc.language });
   }
   const uri = doc.path ? monaco.Uri.file(visiblePath(doc.path)) : monaco.Uri.parse(doc.id);
-  const m = monaco.editor.getModel(uri) ?? monaco.editor.createModel(text, doc.language, uri);
+  const existing = monaco.editor.getModel(uri);
+  if (existing && existing !== models.get(doc.id)) { throw occupiedDestination(); }
+  const m = existing ?? monaco.editor.createModel(text, doc.language, uri);
   applyModelSettings(m, useApp.getState().settings);
   models.set(doc.id, m);
   if (!initiallyDirty) {
@@ -298,18 +378,28 @@ function attachPreviewDocument(doc: Doc) {
   scheduleBackup();
 }
 
-export async function openPath(
-  path: string,
-  options: {
-    pinned?: boolean;
-    group?: string;
-    line?: number;
-    column?: number;
-    background?: boolean;
-    preserveFocus?: boolean;
-    force?: boolean;
-  } = {},
-) {
+type OpenPathOptions = {
+  pinned?: boolean;
+  group?: string;
+  line?: number;
+  column?: number;
+  background?: boolean;
+  preserveFocus?: boolean;
+  force?: boolean;
+};
+
+export async function openPath(path: string, options: OpenPathOptions = {}): Promise<string> {
+  while (documentMove && isMoving(path)) { await documentMove.done; }
+  const sequence = moveSequence;
+  try {
+    return await openDocumentPath(path, options, sequence);
+  } catch (error) {
+    if (sequence !== moveSequence) { return openPath(path, options); }
+    throw error;
+  }
+}
+
+async function openDocumentPath(path: string, options: OpenPathOptions, sequence: number): Promise<string> {
   const existing = Object.values(useApp.getState().docs).find(
     (d) => d.path && normalize(d.path) === normalize(path),
   );
@@ -336,6 +426,9 @@ export async function openPath(
         throw e;
       }
     }
+    // The read may have started before a disk move. Never attach its stale bytes
+    // to a URI now owned by a moved document, even if the move already finished.
+    if (sequence !== moveSequence) { return openPath(path, options); }
     const duplicate = Object.values(useApp.getState().docs).find(
       (d) => d.path && normalize(d.path) === normalize(path),
     );
@@ -1242,20 +1335,16 @@ export async function renameDocumentPaths(from: string, to: string) {
   await renameDocuments([{ from, to }]);
 }
 
-export async function renameDocuments(moves: { from: string; to: string }[]) {
+export async function renameDocuments(moves: FileMove[]) {
+  checkDocumentMoves(moves);
   for (const doc of Object.values(useApp.getState().docs)) {
     if (!doc.path) {
       continue;
     }
-    const move = moves.find(
-      ({ from }) =>
-        normalize(doc.path!) === normalize(from) ||
-        normalize(doc.path!).startsWith(normalize(from) + "/"),
-    );
-    if (!move) {
+    const path = movedDocumentPath(doc.path, moves);
+    if (!path) {
       continue;
     }
-    const path = move.to + doc.path.slice(move.from.length);
     rebindDocument(doc.id, path);
   }
   await checkpoint();
@@ -1275,7 +1364,13 @@ function rebindDocument(id: string, path: string) {
     return;
   }
   const uri = monaco.Uri.file(visiblePath(path));
-  if (old.uri.toString() === uri.toString()) {
+  const target = monaco.editor.getModel(uri);
+  if (target && target !== old) { throw occupiedDestination(); }
+  if (target === old || old.uri.toString() === uri.toString()) {
+    patchDoc(id, { path, name: basename(path), deleted: false });
+    setApp((s) => ({
+      history: s.history.map((location) => (location.id === id ? { ...location, path } : location)),
+    }));
     return;
   }
   const views = [...editors.values()]

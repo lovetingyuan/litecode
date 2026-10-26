@@ -8,7 +8,7 @@ import { bootstrap, call, desktop, errorMessage } from "../core/bridge";
 import { initializeEditor, monaco } from "../editor/monaco";
 import { useApp, setApp, notify, patchSearch, primarySearchId } from "../store/store";
 import {
-  checkpoint,
+  closeWindowWithRecovery,
   restoreDocument,
   refreshDocuments,
   basename,
@@ -201,8 +201,7 @@ export default function App() {
       const onClose = await win.onCloseRequested(async (event) => {
         event.preventDefault();
         try {
-          await checkpoint();
-          await win.destroy();
+          await closeWindowWithRecovery(() => win.destroy());
         } catch (e) {
           notify(`Could not save recovery data. Window remains open: ${errorMessage(e)}`);
         }

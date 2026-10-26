@@ -29,14 +29,7 @@ pub struct MoveReport {
 }
 
 pub(crate) fn visible(path: &Path) -> String {
-    let text = path.to_string_lossy();
-    if let Some(unc) = text.strip_prefix("\\\\?\\UNC\\") {
-        format!("//{unc}").replace('\\', "/")
-    } else {
-        text.strip_prefix("\\\\?\\")
-            .unwrap_or(&text)
-            .replace('\\', "/")
-    }
+    crate::tools::process_path(path).to_string_lossy().replace('\\', "/")
 }
 
 pub(crate) fn key(path: &Path) -> String {

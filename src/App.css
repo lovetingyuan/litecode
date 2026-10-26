@@ -1076,6 +1076,9 @@ body.monaco-component {
   border-bottom: 1px solid #6c5616;
   font-size: 12px;
 }
+.git-conflict-badge {
+  color: #e4676b;
+}
 .conflict-banner > span:nth-child(2) {
   flex: 1;
 }

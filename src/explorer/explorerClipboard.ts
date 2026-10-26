@@ -1,3 +1,5 @@
+import type { FileMove } from "./explorerMove";
+
 export type FileClipboard = { sequence: number | null; paths: string[] };
 export type CopyReport = {
   copied: { from: string; to: string }[];
@@ -8,7 +10,7 @@ type ClipboardServices = {
   read: () => Promise<FileClipboard>;
   confirm: (paths: string[], directory: string, signal: AbortSignal) => Promise<boolean>;
   copyExternal: (sequence: number, root: string, directory: string) => Promise<CopyReport>;
-  pasteInternal: (source: string, destination: string, cut: boolean) => Promise<void>;
+  pasteInternal: (moves: FileMove[], cut: boolean, signal: AbortSignal) => Promise<CopyReport>;
 };
 
 export function pasteDirectory(path: string, directory: boolean) {
@@ -91,34 +93,16 @@ export function createExplorerClipboard(services: ClipboardServices) {
         internal = null;
         throw new Error("The clipboard changed; paste the files again");
       }
-      const report: CopyReport = { copied: [], failed: [] };
       const sources = paths.filter(
         (path) =>
           !paths.some(
             (parent) => parent !== path && path.startsWith(parent.replace(/\/$/, "") + "/"),
           ),
       );
-      for (const path of sources) {
-        if (signal.aborted) {
-          break;
-        }
-        const destination =
-          directory.replace(/\/$/, "") + "/" + path.replace(/\/$/, "").split("/").pop()!;
-        try {
-          await services.pasteInternal(path, destination, source.cut);
-          report.copied.push({ from: path, to: destination });
-        } catch (error) {
-          report.failed.push({
-            path,
-            message:
-              error instanceof Error
-                ? error.message
-                : typeof error === "object" && error && "message" in error
-                  ? String(error.message)
-                  : String(error),
-          });
-        }
-      }
+      const moves = sources.map(path => ({ from: path, to:
+        directory.replace(/\/$/, "") + "/" + path.replace(/\/$/, "").split("/").pop()!,
+      }));
+      const report = await services.pasteInternal(moves, source.cut, signal);
       // Keep failed cut sources available for retry; completed moves must not run again.
       if (source.cut && request === revision) {
         const completed = report.copied.map((item) => item.from);

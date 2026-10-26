@@ -55,6 +55,7 @@ pub struct SearchTask {
 
 #[derive(Default)]
 pub struct AppState {
+    pub replacement_plans: crate::replacement::PlanningTasks,
     pub tool_lock: tokio::sync::Mutex<()>,
     pub windows: Mutex<HashMap<String, WindowState>>,
     pub disk_lock: Mutex<()>,

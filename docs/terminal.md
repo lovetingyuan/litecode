@@ -63,3 +63,7 @@ node tools/verify-terminal-desktop.mjs
 ```
 
 该脚本创建独立的便携测试目录，使用真实 Tauri/WebView2、PTY 和本机 Shell，验证导航、分屏、目录继承、设置、组合输入、退出清理、窗口隔离，以及 8 会话／4 可见分区持续输出 60 秒。结果、进程内存采样和截图保存在 `.verification/terminal-*`。命令往返时间包含自动输入整条命令、Shell 执行和检测输出的开销，不能视为单次按键延迟。
+
+发布前完成 `npm run build:release`，再执行 `node tools/verify-release.mjs`（可追加已安装的 `litecode.exe` 路径）。脚本在独立便携目录中运行发布程序，不需要开发服务器，检查六种语言的实际高亮颜色、CSP 错误，以及终端的输入、输出和工作目录。有 Microsoft Store PowerShell 别名时优先用它验证，防止开发环境的 PATH 掩盖安装后的启动问题。截图与报告保存在 `.verification/release-*`。
+
+生产构建必须允许 Monaco 动态插入样式。`tauri.conf.json` 仅关闭 `style-src` 的自动 nonce 注入，以保留该指令已有的 `'unsafe-inline'`；脚本的 CSP 注入保持启用。Shell 启动时保留 Windows 应用执行别名原路径：这类文件可以由 `CreateProcessW` 执行，但 `canonicalize` 可能返回 Windows 错误 1920。

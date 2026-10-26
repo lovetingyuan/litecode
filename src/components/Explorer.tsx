@@ -48,6 +48,8 @@ import {
   type ExternalCopyPlan,
 } from "../explorer/externalDrop";
 import { explorerDragType } from "../explorer/explorerDrag";
+import { pasteInternalFiles } from "../explorer/documentFileOperations";
+import { gitConflictDecoration } from "../utils/gitStatus";
 
 export { refreshTree } from "../explorer/workspaceTree";
 export function revealInTree(path: string) {
@@ -102,7 +104,11 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     stickyFolders: true,
     icons: { set: "complete", colored: true },
     search: false,
-    renderRowDecoration: ({ row }) => row.kind === "directory" ? directoryDecoration(row.path) : null,
+    renderRowDecoration: ({ row }) => {
+      if (row.kind === "directory") { return directoryDecoration(row.path); }
+      const state = useApp.getState();
+      return state.root ? gitConflictDecoration(join(state.root, row.path), state.root, state.gitState.root, state.gitState.git) : null;
+    },
     unsafeCSS: `
       ${sidebarScrollbarCSS}
       [data-file-tree-sticky-overlay-content]{box-shadow:0 3px 3px -3px #000}
@@ -180,9 +186,11 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
           moveBusy.current = true;
           moveExecuting.current = true;
           const releaseTree = cache.hold([parent]);
-          let releaseDocuments: (() => void) | undefined;
+          let releaseDocuments: ((error?: unknown) => void) | undefined;
+          let moveError: unknown;
           try {
-            releaseDocuments = await beginDocumentMove([join(base, source)]);
+            const destination = join(base, [parent, ...name.split(/[\\/]/).filter(Boolean)].filter(Boolean).join("/"));
+            releaseDocuments = await beginDocumentMove([{ from: join(base, source), to: destination }]);
             if (!valid()) { throw new Error("Workspace changed. Please start renaming again."); }
             const result = await call<RenamedEntry>("rename_workspace_entry", { ...args, name });
             // Disk success must rebind open documents, even after a workspace switch.
@@ -206,8 +214,11 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
             model.focusPath(target);
             model.scrollToPath(target, { focus: true, offset: "nearest" });
             if (creation.current === request) { creation.current = null; }
+          } catch (error) {
+            moveError = error;
+            throw error;
           } finally {
-            releaseDocuments?.();
+            releaseDocuments?.(moveError);
             moveExecuting.current = false;
             try {
               await releaseTree();
@@ -327,14 +338,9 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
           targetDirectory,
         });
       },
-      pasteInternal: async (source, destination, cut) => {
+      pasteInternal: async (moves, cut, signal) => {
         moveExecuting.current = true;
-        await call("file_operation", {
-          operation: { kind: cut ? "rename" : "copy", path: source, destination },
-        });
-        if (cut) {
-          await renameDocumentPaths(source, destination);
-        }
+        return pasteInternalFiles(moves, cut, signal);
       },
     });
   }, []);
@@ -569,7 +575,8 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     const abort = new AbortController();
     moveAbort.current = abort;
     const focused = model.getFocusedPath();
-    let releaseDocuments: (() => void) | undefined;
+    let releaseDocuments: ((error?: unknown) => void) | undefined;
+    let moveError: unknown;
     let changedPaths: string[] | undefined;
     try {
       await operationQueue.current;
@@ -604,7 +611,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         return;
       }
       moveExecuting.current = true;
-      releaseDocuments = await beginDocumentMove(moves.map((move) => move.from));
+      releaseDocuments = await beginDocumentMove(moves);
       if (abort.signal.aborted) {
         return;
       }
@@ -628,16 +635,18 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         revealPending.current = false;
       }
       if (report.failed.length) {
+        moveError = new Error(report.failed.map(failure => failure.message).join("\n"));
         notify(
           `Moved ${report.moved.length} item(s). The remaining items were not moved.\n${report.failed.map((f) => `${relative(f.path, base)}: ${f.message}`).join("\n")}`,
         );
       }
     } catch (e) {
+      moveError = e;
       if (!abort.signal.aborted) {
         notify(errorMessage(e));
       }
     } finally {
-      releaseDocuments?.();
+      releaseDocuments?.(moveError);
       const executed = moveExecuting.current;
       moveExecuting.current = false;
       try {
@@ -734,9 +743,10 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   useEffect(() => {
     model.setGitStatus(
       root && gitState.root && normalize(gitState.root) === normalize(root)
-        ? gitState.git.map((g) => ({ ...g, status: g.status === "conflicted" ? "modified" : g.status }))
+        ? gitState.git.flatMap(({ path, status }) => status === "conflicted" ? [] : [{ path, status }])
         : [],
     );
+    model.setComposition(model.getComposition());
   }, [model, gitState, root]);
   useEffect(() => {
     const onReveal = (e: Event) => {

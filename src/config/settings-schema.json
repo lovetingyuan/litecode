@@ -679,6 +679,16 @@
       "default": true,
       "description": "差异查看器是否左右并排显示；关闭时在同一列显示差异。"
     },
+    "merge-conflict.codeLens.enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否在合并冲突块上方显示逐块接受操作。"
+    },
+    "merge-conflict.decorators.enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否高亮显示合并冲突的当前、传入和共同祖先区域。"
+    },
     "diffEditor.ignoreTrimWhitespace": {
       "type": "boolean",
       "default": true,

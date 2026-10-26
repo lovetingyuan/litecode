@@ -14,6 +14,7 @@ import { EditorViewMenu } from "./MediaStatus";
 import { FileIcon, Icon } from "./ui";
 import scrollbarCSS from "../styles/sidebar-scrollbar.css?raw";
 import "./EditorBreadcrumbs.css";
+import { gitConflictDecoration } from "../utils/gitStatus";
 
 export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
   const root = useApp((state) => state.root);
@@ -89,7 +90,11 @@ function BreadcrumbPicker({ target, groupId, close }: { target: string; groupId:
     icons: { set: "complete", colored: true },
     search: false, renaming: false, dragAndDrop: false,
     renderRowDecoration: ({ row }) => {
-      if (row.kind !== "directory") { return null; }
+      if (row.kind !== "directory") {
+        const state = useApp.getState();
+        const tree = adapter.current;
+        return state.root && tree ? gitConflictDecoration(join(state.root, tree.toWorkspacePath(row.path)), state.root, state.gitState.root, state.gitState.git) : null;
+      }
       const state = adapter.current?.state(row.path);
       if (state?.status === "loading") { return { text: "…", title: "Loading directory" }; }
       if (state?.status === "failed") { return { text: "!", title: `${state.error}. Collapse and expand to retry.` }; }
@@ -123,8 +128,9 @@ function BreadcrumbPicker({ target, groupId, close }: { target: string; groupId:
     model.setGitStatus(cache && git.root && normalize(git.root) === normalize(cache.root) && (cache.session === null || git.session === cache.session) && tree
       ? git.git.flatMap((entry) => {
         const localRoot = tree.toWorkspacePath("");
-        return entry.path.toLowerCase().startsWith(localRoot.toLowerCase()) ? [{ path: entry.path.slice(localRoot.length), status: entry.status === "conflicted" ? "modified" as const : entry.status }] : [];
+        return entry.status !== "conflicted" && entry.path.toLowerCase().startsWith(localRoot.toLowerCase()) ? [{ path: entry.path.slice(localRoot.length), status: entry.status }] : [];
       }) : []);
+    model.setComposition(model.getComposition());
   }, [model, cache, git, target]);
   function open(path: string | null, pinned: boolean) {
     const tree = adapter.current;

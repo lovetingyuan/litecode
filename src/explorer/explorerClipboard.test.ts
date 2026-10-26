@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createExplorerClipboard, pasteDirectory, type FileClipboard } from "./explorerClipboard";
+import type { FileMove } from "./explorerMove";
 
 function fixture() {
   let snapshot: FileClipboard = { sequence: 1, paths: ["C:/external/a.txt"] };
@@ -10,7 +11,7 @@ function fixture() {
       copied: [{ from: "C:/external/a.txt", to: "C:/project/a.txt" }],
       failed: [],
     })),
-    pasteInternal: vi.fn(async (_source: string, _destination: string, _cut: boolean) => {}),
+    pasteInternal: vi.fn(async (moves: FileMove[], _cut: boolean, _signal: AbortSignal) => ({ copied: moves, failed: [] as { path: string; message: string }[] })),
   };
   return {
     clipboard: createExplorerClipboard(services),
@@ -63,9 +64,9 @@ describe("Explorer file clipboard", () => {
     expect(services.confirm).not.toHaveBeenCalled();
     await clipboard.paste("C:/project", "C:/project/target", signal);
     expect(services.pasteInternal).toHaveBeenCalledWith(
-      "C:/project/original.txt",
-      "C:/project/target/original.txt",
+      [{ from: "C:/project/original.txt", to: "C:/project/target/original.txt" }],
       false,
+      signal,
     );
     change({ sequence: 2, paths: ["C:/external/new.txt"] });
     await clipboard.paste("C:/project", "C:/project/target", signal);
@@ -92,18 +93,24 @@ describe("Explorer file clipboard", () => {
       ["C:/project/folder/", "C:/project/folder/a.txt", "C:/project/b.txt", "C:/project/b.txt"],
       true,
     );
-    services.pasteInternal.mockRejectedValueOnce(new Error("busy"));
+    services.pasteInternal.mockResolvedValueOnce({
+      copied: [{ from: "C:/project/b.txt", to: "C:/project/target/b.txt" }],
+      failed: [{ path: "C:/project/folder/", message: "busy" }],
+    });
     const report = await clipboard.paste("C:/project", "C:/project/target", signal);
     expect(report?.copied).toEqual([{ from: "C:/project/b.txt", to: "C:/project/target/b.txt" }]);
     expect(report?.failed).toHaveLength(1);
-    expect(services.pasteInternal).toHaveBeenCalledTimes(2);
+    expect(services.pasteInternal).toHaveBeenCalledExactlyOnceWith([
+      { from: "C:/project/folder/", to: "C:/project/target/folder" },
+      { from: "C:/project/b.txt", to: "C:/project/target/b.txt" },
+    ], true, signal);
     expect(services.confirm).not.toHaveBeenCalled();
     await clipboard.paste("C:/project", "C:/project/target", signal);
-    expect(services.pasteInternal).toHaveBeenCalledTimes(3);
+    expect(services.pasteInternal).toHaveBeenCalledTimes(2);
     expect(services.pasteInternal).toHaveBeenLastCalledWith(
-      "C:/project/folder/",
-      "C:/project/target/folder",
+      [{ from: "C:/project/folder/", to: "C:/project/target/folder" }],
       true,
+      signal,
     );
   });
   it("keeps application copy working on platforms without native file clipboard support", async () => {
@@ -130,9 +137,9 @@ describe("Explorer file clipboard", () => {
     await remember;
     await paste;
     expect(services.pasteInternal).toHaveBeenCalledWith(
-      "C:/project/new.txt",
-      "C:/project/target/new.txt",
+      [{ from: "C:/project/new.txt", to: "C:/project/target/new.txt" }],
       false,
+      signal,
     );
     expect(services.copyExternal).not.toHaveBeenCalled();
   });

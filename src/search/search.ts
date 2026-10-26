@@ -184,7 +184,7 @@ export async function nextSearchResult(direction = 1) {
   await openMatch(results[navigationIndex]);
 }
 
-export { replaceMatches, undoReplacement, retryReplacement, recoverInterruptedReplacements } from "./replacements";
+export { replaceMatches, cancelReplacementPlan, undoReplacement, retryReplacement, recoverInterruptedReplacements } from "./replacements";
 
 export async function createSearchEditor(
   query = searchSession()!.query,
