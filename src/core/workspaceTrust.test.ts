@@ -107,3 +107,80 @@ it("revokes trust through the manage command and suppresses automatic prompts", 
   await expect(trustedCall("lsp_start")).rejects.toBe(denied);
   expect(mocks.ask).toHaveBeenCalledOnce();
 });
+
+const formatterDenied = { code: "formatterTrust", trustPath: "C:/loose", message: "Trust formatters" };
+
+it("authorizes loose-file formatting without granting workspace trust", async () => {
+  mocks.state.root = null;
+  const { trustedCall } = await import("./workspaceTrust");
+  mocks.ask.mockResolvedValue("Trust Formatters");
+  mocks.call.mockRejectedValueOnce(formatterDenied).mockResolvedValueOnce(undefined).mockResolvedValueOnce("formatted");
+  const args = { path: "C:/loose/a.html", text: "original", language: "html" };
+  expect(await trustedCall("format_document", args)).toBe("formatted");
+  expect(mocks.call.mock.calls).toEqual([
+    ["format_document", args],
+    ["trust_formatter", { path: args.path, expectedRoot: null, directory: "C:/loose" }],
+    ["format_document", args],
+  ]);
+});
+
+it("shares concurrent folder prompts and checks additional configuration sources", async () => {
+  mocks.state.root = null;
+  const { trustedCall } = await import("./workspaceTrust");
+  let approve!: (choice: string) => void;
+  mocks.ask.mockImplementationOnce(() => new Promise<string>(resolve => { approve = resolve; })).mockResolvedValue("Trust Formatters");
+  const trusted = new Set<string>();
+  mocks.call.mockImplementation(async (command, args) => {
+    if (command === "trust_formatter") { trusted.add(args.directory); return; }
+    for (const trustPath of ["C:/loose", "C:/configs"]) {
+      if (!trusted.has(trustPath)) { throw { ...formatterDenied, trustPath }; }
+    }
+    return "formatted";
+  });
+  const pending = Promise.all([1, 2].map(() => trustedCall("format_document", { path: "C:/loose/a.html" })));
+  await vi.waitFor(() => expect(mocks.ask).toHaveBeenCalledOnce());
+  expect(trusted.size).toBe(0);
+  approve("Trust Formatters");
+  expect(await pending).toEqual(["formatted", "formatted"]);
+  expect(mocks.ask).toHaveBeenCalledTimes(2);
+  expect(trusted).toEqual(new Set(["C:/loose", "C:/configs"]));
+});
+
+it.each([null, "C:/project"])("does not retry formatting when folder trust is refused (root=%s)", async root => {
+  mocks.state.root = root;
+  const { trustedCall } = await import("./workspaceTrust");
+  mocks.call.mockRejectedValue(formatterDenied);
+  mocks.ask.mockResolvedValue("Cancel");
+  await expect(trustedCall("format_document", { path: "C:/loose/a.html" })).rejects.toBe(formatterDenied);
+  expect(mocks.call).toHaveBeenCalledTimes(1);
+});
+
+it("abandons formatter approval after workspace change or prompt cancellation", async () => {
+  mocks.state.root = null;
+  const { trustedCall, cancelWorkspaceTrustPrompt } = await import("./workspaceTrust");
+  mocks.call.mockRejectedValue(formatterDenied);
+  mocks.ask.mockImplementation(async () => {
+    await Promise.resolve();
+    cancelWorkspaceTrustPrompt();
+    return "Trust Formatters";
+  });
+  await expect(trustedCall("format_document")).rejects.toBe(formatterDenied);
+  mocks.ask.mockImplementation(async () => {
+    mocks.state.root = "C:/other";
+    return "Trust Formatters";
+  });
+  await expect(trustedCall("format_document")).rejects.toBe(formatterDenied);
+  expect(mocks.call.mock.calls.every(([command]) => command === "format_document")).toBe(true);
+});
+
+it("does not loop on a repeated formatter denial or grant it to other commands", async () => {
+  const { trustedCall } = await import("./workspaceTrust");
+  mocks.ask.mockResolvedValue("Trust Formatters");
+  mocks.call.mockImplementation(async command => {
+    if (command !== "trust_formatter") { throw formatterDenied; }
+  });
+  await expect(trustedCall("format_document")).rejects.toBe(formatterDenied);
+  expect(mocks.ask).toHaveBeenCalledOnce();
+  await expect(trustedCall("terminal_create")).rejects.toBe(formatterDenied);
+  expect(mocks.ask).toHaveBeenCalledOnce();
+});

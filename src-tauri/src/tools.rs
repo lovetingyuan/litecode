@@ -1,3 +1,4 @@
+use crate::formatter_trust::{OXFMT_CONFIGS, PRETTIER_CONFIGS, find_config, require_source};
 use crate::{
     error::{AppError, Result},
     state::AppState,
@@ -281,6 +282,7 @@ pub async fn format_document(
     language: String,
 ) -> Result<String> {
     let workspace_root = state.require_workspace_trust(window.label())?;
+    let has_file = path.is_some();
     let path = if let Some(path) = path {
         process_path(&state.authorize(window.label(), &path)?)
     } else {
@@ -320,6 +322,14 @@ pub async fn format_document(
     let root = workspace_root
         .clone()
         .unwrap_or_else(|| path.parent().unwrap().into());
+    let mut sources = if has_file || workspace_root.is_some() {
+        vec![path.parent().unwrap().to_path_buf()]
+    } else {
+        vec![]
+    };
+    for source in &sources {
+        require_source(&state, window.label(), source, &workspace_root)?;
+    }
     let explicit = config["editor.defaultFormatter"].as_str();
     if explicit.is_some_and(|id| {
         ![
@@ -335,21 +345,9 @@ pub async fn format_document(
         ));
     }
     let prettier_script = root.join("node_modules/prettier/bin/prettier.cjs");
-    let prettier_config = [
-        ".prettierrc",
-        ".prettierrc.json",
-        ".prettierrc.js",
-        ".prettierrc.cjs",
-        "prettier.config.js",
-        "prettier.config.mjs",
-        ".prettierrc.yaml",
-    ]
-    .iter()
-    .any(|p| root.join(p).exists())
-        || fs::read(root.join("package.json"))
-            .ok()
-            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
-            .is_some_and(|v| v.get("prettier").is_some());
+    let prettier_config = find_config(&path, PRETTIER_CONFIGS, true)?;
+    // An explicit empty config prevents implicit discovery outside checked paths.
+    let mut empty_config = tempfile::Builder::new().suffix(".json").tempfile()?;
     let mut command;
     if language == "rust" {
         let executable = find_executable("rustfmt").ok_or_else(|| {
@@ -360,6 +358,19 @@ pub async fn format_document(
         })?;
         command = Command::new(executable);
         command.args(["--emit", "stdout"]);
+        if let Some(config) = find_config(&path, &[".rustfmt.toml", "rustfmt.toml"], false)? {
+            sources.push(config.clone());
+            command.arg("--config-path").arg(process_path(&config));
+        } else {
+            command.arg("--config-path").arg(empty_config.path());
+        }
+        if let Some(toolchain) = find_config(
+            &root.join("Untitled.rs"),
+            &["rust-toolchain", "rust-toolchain.toml"],
+            false,
+        )? {
+            sources.push(toolchain);
+        }
         let regex = regex::Regex::new(r#"edition\s*=\s*"(2015|2018|2021|2024)""#).unwrap();
         for directory in path.parent().unwrap().ancestors() {
             if let Ok(cargo) = fs::read_to_string(directory.join("Cargo.toml"))
@@ -371,9 +382,10 @@ pub async fn format_document(
         }
     } else if language == "html"
         || explicit == Some("esbenp.prettier-vscode")
-        || explicit.is_none() && (prettier_config || prettier_script.exists())
+        || explicit.is_none() && (prettier_config.is_some() || prettier_script.exists())
     {
         let script = if prettier_script.exists() {
+            sources.push(prettier_script.clone());
             prettier_script
         } else {
             state
@@ -391,6 +403,12 @@ pub async fn format_document(
             .arg(process_path(&script))
             .arg("--stdin-filepath")
             .arg(&path);
+        if let Some(config) = &prettier_config {
+            sources.push(config.clone());
+            command.arg("--config").arg(process_path(config));
+        } else {
+            command.arg("--no-config");
+        }
     } else {
         let local_script = root.join("node_modules/oxfmt/bin/oxfmt");
         let installed = state
@@ -401,10 +419,22 @@ pub async fn format_document(
             .map(PathBuf::from)
             .or_else(|| find_executable("oxfmt"))
         {
+            let executable = if config["oxfmt.path"].is_string() {
+                let executable = if executable.is_absolute() {
+                    executable
+                } else {
+                    root.join(executable)
+                };
+                sources.push(executable.clone());
+                process_path(&executable)
+            } else {
+                executable
+            };
             command = Command::new(executable);
         } else if local_script.is_file() || installed.is_file() {
             command = Command::new(node(&window, &state)?);
             command.arg(process_path(&if local_script.is_file() {
+                sources.push(local_script.clone());
                 local_script
             } else {
                 installed
@@ -416,6 +446,13 @@ pub async fn format_document(
             ));
         }
         command.arg("--stdin-filepath").arg(&path);
+        if let Some(config) = find_config(&path, OXFMT_CONFIGS, false)? {
+            sources.push(config.clone());
+            command.arg("--config").arg(process_path(&config));
+        } else {
+            std::io::Write::write_all(&mut empty_config, b"{}")?;
+            command.arg("--config").arg(empty_config.path());
+        }
     }
     command
         .current_dir(process_path(&root))
@@ -432,6 +469,9 @@ pub async fn format_document(
                 "workspace",
                 "The workspace changed before formatting started.",
             ));
+        }
+        for source in &sources {
+            require_source(&state, window.label(), source, &workspace_root)?;
         }
         command.spawn()?
     };

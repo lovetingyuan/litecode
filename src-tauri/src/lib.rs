@@ -7,6 +7,7 @@ mod file_creation;
 mod file_delete;
 mod file_moves;
 mod files;
+mod formatter_trust;
 #[cfg(windows)]
 mod instance;
 mod lsp;
@@ -172,6 +173,7 @@ pub fn run() {
             terminal::terminal_update_cwd,
             tools::tool_status,
             tools::format_document,
+            formatter_trust::trust_formatter,
             tools::install_tools,
             commands::language_document,
             replacement::replacement_plan,

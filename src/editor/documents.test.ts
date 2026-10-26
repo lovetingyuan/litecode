@@ -1507,6 +1507,18 @@ describe("Automatic saves", () => {
     expect(formatModel).toHaveBeenCalledTimes(1);
   });
 
+  it("saves the current buffer when formatter trust is refused", async () => {
+    const { id, buffer } = addDocument();
+    setApp({ settings: { "files.autoSave": "onFocusChange", "editor.formatOnSave": true } });
+    vi.mocked(canFormat).mockReturnValue(true);
+    vi.mocked(formatModel).mockRejectedValueOnce({ code: "formatterTrust", message: "Formatter trust declined" });
+    await autoSave("onFocusChange", id);
+    expect(writes()).toHaveLength(1);
+    expect(writes()[0].text).toBe(buffer.getValue());
+    expect(useApp.getState().docs[id].dirty).toBe(false);
+    expect(useApp.getState().notice).toContain("saving the current buffer");
+  });
+
   it.each(["off", "onWindowChange", "conflict", "untitled", "removed"] as const)(
     "rechecks %s after waiting for an existing save",
     async (change) => {

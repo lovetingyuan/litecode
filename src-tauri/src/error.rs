@@ -5,6 +5,8 @@ use serde::Serialize;
 pub struct AppError {
     pub code: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust_path: Option<String>,
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;
@@ -14,6 +16,7 @@ impl AppError {
         Self {
             code: code.into(),
             message: message.into(),
+            trust_path: None,
         }
     }
 }

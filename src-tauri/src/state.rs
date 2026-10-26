@@ -39,6 +39,7 @@ pub struct Mirror {
 #[derive(Default)]
 pub struct WindowState {
     pub root: Option<PathBuf>,
+    pub formatter_trust: HashSet<(Option<PathBuf>, PathBuf)>,
     pub grants: HashSet<PathBuf>,
     pub documents: HashMap<String, Mirror>,
     pub watcher: Option<RecommendedWatcher>,
@@ -174,7 +175,7 @@ impl AppState {
     ) -> Result<()> {
         let expected = canonical(Path::new(expected_root))?;
         let _disk = self.disk_lock.lock().unwrap();
-        let windows = self.windows.lock().unwrap();
+        let mut windows = self.windows.lock().unwrap();
         if windows.get(label).and_then(|w| w.root.as_ref()) != Some(&expected) {
             return Err(AppError::new(
                 "workspace",
@@ -191,8 +192,9 @@ impl AppState {
             &serde_json::to_vec(&roots)?,
         )?;
         if !trusted {
-            for (label, w) in windows.iter() {
+            for (label, w) in windows.iter_mut() {
                 if w.root.as_ref() == Some(&expected) {
+                    w.formatter_trust.clear();
                     self.terminals.close_window(label);
                 }
             }
