@@ -73,7 +73,7 @@ import {
   resolveConflict,
 } from "./documents";
 import { ask } from "../components/dialog";
-import { pasteInternalFiles } from "../explorer/documentFileOperations";
+import { deleteInternalFiles, pasteInternalFiles } from "../explorer/documentFileOperations";
 import { createExplorerClipboard } from "../explorer/explorerClipboard";
 import { initialSearch, primarySearchId, setApp, useApp } from "../store/store";
 
@@ -1140,6 +1140,186 @@ describe("Media documents", () => {
   });
 });
 
+describe("File deletion", () => {
+  const path = "C:/workspace/folder/a.txt";
+  const operations = () => vi.mocked(call).mock.calls.filter(([command]) => command === "file_operation");
+  beforeEach(() => {
+    setApp({ root: "C:/workspace", history: [], historyIndex: -1, dataDir: "C:/data" });
+    vi.mocked(ask).mockReset().mockResolvedValue("Move to Recycle Bin");
+  });
+
+  it("closes dirty fixed tabs, previews, media and shared splits only inside the deleted folder", async () => {
+    const { id, buffer } = addDocument({ path });
+    const dispose = vi.spyOn(buffer, "dispose");
+    const media = addDocument({ path: "C:/workspace/folder/image.png", kind: "image", dirty: false });
+    const sibling = addDocument({ path: "C:/workspace/folder-other/keep.txt", dirty: false });
+    setApp({ groups: [
+      { id: "one", tabs: [id, media.id, sibling.id], sticky: [id], active: id, preview: media.id, views: {} },
+      { id: "two", tabs: [id], active: id, preview: null, views: {} },
+    ], activeGroup: "two", history: [
+      { id, path, line: 1, column: 1 },
+      { id: sibling.id, path: "C:/workspace/folder-other/keep.txt", line: 1, column: 1 },
+    ], historyIndex: 1 });
+    const onDeleted = vi.fn();
+    await deleteInternalFiles(["c:\\WORKSPACE\\folder/"], onDeleted);
+    const state = useApp.getState();
+    expect(state.groups).toHaveLength(1);
+    expect(state.groups[0]).toMatchObject({ id: "one", tabs: [sibling.id], active: sibling.id, preview: null, sticky: [] });
+    expect(state.activeGroup).toBe("one");
+    expect(state.docs[id]).toBeUndefined();
+    expect(state.docs[media.id]).toBeUndefined();
+    expect(state.docs[sibling.id]).toBeDefined();
+    expect(models.has(id)).toBe(false);
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(releaseLanguageDocument).toHaveBeenCalledWith(id);
+    expect(state.history.map(location => location.id)).toEqual([sibling.id]);
+    expect(state.historyIndex).toBe(0);
+    expect(ask).toHaveBeenCalledOnce();
+    expect(vi.mocked(ask).mock.calls[0][1]).toContain("包含未保存修改");
+    expect(onDeleted).toHaveBeenCalledWith("c:\\WORKSPACE\\folder/");
+    await checkpoint();
+    const snapshot = vi.mocked(call).mock.calls.filter(([command]) => command === "sync_documents").slice(-1)[0][1]!;
+    expect((snapshot.documents as Doc[]).map(doc => doc.id)).toEqual([sibling.id]);
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("keeps the last group empty when its final file is deleted", async () => {
+    const { id } = addDocument({ path, dirty: false });
+    setApp({ groups: [{ id: "one", tabs: [id], active: id, preview: id, views: {} }], activeGroup: "one" });
+    await deleteInternalFiles([path], vi.fn());
+    expect(useApp.getState().groups).toHaveLength(1);
+    expect(useApp.getState().groups[0]).toMatchObject({ tabs: [], active: null, preview: null });
+    expect(vi.mocked(ask).mock.calls[0][1]).not.toContain("包含未保存修改");
+  });
+
+  it("closes a live comparison before releasing its deleted source", async () => {
+    const { id, buffer } = addDocument({ path });
+    const diff: Doc = { ...useApp.getState().docs[id], id: "delete-diff", path: null, dirty: false,
+      gitDiff: { workspace: "C:/workspace", repository: "C:/workspace", path: "folder/a.txt", oldPath: null, staged: false, conflicted: false, sourceId: id } };
+    const dispose = vi.spyOn(buffer, "dispose");
+    setApp(s => ({ docs: { ...s.docs, [diff.id]: diff }, groups: [
+      { id: "one", tabs: [id, diff.id], active: diff.id, preview: null, views: {} },
+    ], activeGroup: "one" }));
+    await deleteInternalFiles([path], vi.fn());
+    expect(useApp.getState().docs).toEqual({});
+    expect(useApp.getState().groups[0].tabs).toEqual([]);
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it.each([null, "Cancel"])("keeps files and editors when confirmation returns %s", async answer => {
+    const { id, buffer } = addDocument({ path });
+    vi.mocked(ask).mockResolvedValue(answer);
+    const onDeleted = vi.fn();
+    await deleteInternalFiles([path], onDeleted);
+    expect(operations()).toHaveLength(0);
+    expect(onDeleted).not.toHaveBeenCalled();
+    expect(useApp.getState().docs[id].dirty).toBe(true);
+    expect(models.get(id)).toBe(buffer);
+    await save(id);
+    expect(writes()).toHaveLength(1);
+  });
+
+  it("closes only successful deletions when a later item fails and releases saves", async () => {
+    const first = addDocument({ path });
+    const second = addDocument({ path: "C:/workspace/b.txt" });
+    const third = addDocument({ path: "C:/workspace/c.txt" });
+    vi.mocked(call).mockImplementation(async (command, args) => {
+      if (command === "file_operation" && (args!.operation as { path: string }).path.endsWith("b.txt")) { throw new Error("Recycle failed"); }
+      return (command === "save_document" ? "saved" : undefined) as never;
+    });
+    const onDeleted = vi.fn();
+    await expect(deleteInternalFiles([path, "C:/workspace/b.txt", "C:/workspace/c.txt"], onDeleted)).rejects.toThrow("Recycle failed");
+    expect(useApp.getState().docs[first.id]).toBeUndefined();
+    expect(models.get(second.id)).toBe(second.buffer);
+    expect(models.get(third.id)).toBe(third.buffer);
+    expect(operations()).toHaveLength(2);
+    expect(onDeleted).toHaveBeenCalledExactlyOnceWith(path);
+    await save(second.id);
+    expect(writes()).toHaveLength(1);
+  });
+
+  it("drains an earlier save, blocks later saves and clears automatic-save timers", async () => {
+    const { id, buffer } = addDocument({ path });
+    const pendingSave = deferred<string>();
+    const pendingDelete = deferred<void>();
+    vi.mocked(call).mockImplementation(async command => {
+      if (command === "save_document") { return await pendingSave.promise as never; }
+      if (command === "file_operation") { return await pendingDelete.promise as never; }
+      return undefined as never;
+    });
+    const saving = save(id);
+    await vi.waitFor(() => expect(writes()).toHaveLength(1));
+    const deleting = deleteInternalFiles([path], vi.fn());
+    await Promise.resolve();
+    expect(operations()).toHaveLength(0);
+    pendingSave.resolve("saved");
+    await saving;
+    await vi.waitFor(() => expect(operations()).toHaveLength(1));
+    setApp({ settings: { "files.autoSave": "afterDelay", "files.autoSaveDelay": 100 } });
+    buffer.edit("important latest edit");
+    const queued = save(id);
+    await vi.advanceTimersByTimeAsync(101);
+    expect(writes()).toHaveLength(1);
+    pendingDelete.resolve();
+    await deleting;
+    await queued;
+    await vi.runAllTimersAsync();
+    expect(writes()).toHaveLength(1);
+    expect(useApp.getState().docs[id]).toBeUndefined();
+  });
+
+  it("retains external-deletion buffers, blocks autosave and clears deletion after restoration", async () => {
+    const { id, buffer } = addDocument({ path });
+    setApp({ groups: [{ id: "one", tabs: [id], active: id, preview: null, views: {} }], activeGroup: "one" });
+    let missing = true;
+    vi.mocked(call).mockImplementation(async command => {
+      if (command === "inspect_file") {
+        if (missing) { throw { code: "notFound", message: "Gone" }; }
+        return { kind: "text", size: 8, stamp: "restored" } as never;
+      }
+      if (command === "read_document") { return { text: "recreated", revision: "restored", encoding: "utf8", eol: "LF" } as never; }
+      return undefined as never;
+    });
+    await refreshDocuments([path]);
+    expect(useApp.getState().docs[id]).toMatchObject({ deleted: true, conflict: true, dirty: true });
+    expect(useApp.getState().groups[0].tabs).toEqual([id]);
+    expect(buffer.getValue()).toBe("edited");
+    await autoSave("onFocusChange", id);
+    expect(writes()).toHaveLength(0);
+    missing = false;
+    await refreshDocuments([path]);
+    expect(useApp.getState().docs[id]).toMatchObject({ deleted: false, conflict: true, dirty: true });
+    expect(buffer.getValue()).toBe("edited");
+  });
+
+  it.each([false, true])("clears deletion and its conflict when the original disk revision returns (dirty: %s)", async dirty => {
+    const { id, buffer } = addDocument({ path, dirty, deleted: true, conflict: true });
+    vi.mocked(call).mockImplementation(async command => {
+      if (command === "inspect_file") { return { kind: "text", size: 8, stamp: "restored" } as never; }
+      if (command === "read_document") { return { text: "original", revision: "old-revision", encoding: "utf8", eol: "LF" } as never; }
+      return undefined as never;
+    });
+    await refreshDocuments([path]);
+    expect(useApp.getState().docs[id]).toMatchObject({ deleted: false, conflict: false, dirty });
+    expect(buffer.getValue()).toBe("edited");
+  });
+
+  it("clears deletion after saving the preserved buffer under another name", async () => {
+    const { id, buffer } = addDocument({ path, deleted: true, conflict: true });
+    Object.assign(buffer, { uri: { toString: () => path } });
+    vi.mocked(monaco.editor.createModel).mockReturnValueOnce(new Buffer("edited") as unknown as Monaco.editor.ITextModel);
+    const destination = "C:/workspace/recovered.txt";
+    vi.mocked(call).mockImplementation(async command => {
+      if (command === "pick_path") { return destination as never; }
+      if (command === "read_document") { throw { code: "notFound", message: "New file" }; }
+      return (command === "save_document" ? "recovered" : undefined) as never;
+    });
+    await save(id, true);
+    expect(useApp.getState().docs[id]).toMatchObject({ path: destination, deleted: false, conflict: false, dirty: false });
+    expect(writes()[0]).toMatchObject({ path: destination, text: "edited" });
+  });
+});
+
 describe("Move safety", () => {
   const registry = new Map<string, Monaco.editor.ITextModel>();
   const move = { from: "C:/workspace/a.txt", to: "C:/workspace/sub/a.txt" };
@@ -1352,7 +1532,7 @@ describe("Move safety", () => {
       return undefined as never;
     });
     const clipboard = createExplorerClipboard({
-      read: async () => ({ sequence: 1, paths: [] }), confirm: async () => true,
+      read: async () => ({ sequence: 1, paths: [] }),
       copyExternal: vi.fn(), pasteInternal: pasteInternalFiles,
     });
     await clipboard.remember([move.from, "C:/workspace/b.txt"], true);
@@ -1387,6 +1567,15 @@ describe("Move safety", () => {
     expect(useApp.getState().docs[id].path).toBe(move.to);
     expect(models.get(id)?.getValue()).toBe("important");
     await checkpoint({ waitForMoves: true });
+  });
+  it("reports the actual copy destination and leaves the open source document bound", async () => {
+    const { id } = add(move.from, "unsaved source edits");
+    const destination = "C:/workspace/sub/a copy.txt";
+    vi.mocked(call).mockResolvedValueOnce(destination);
+    const report = await pasteInternalFiles([move], false, new AbortController().signal);
+    expect(report).toEqual({ copied: [{ from: move.from, to: destination }], failed: [] });
+    expect(useApp.getState().docs[id].path).toBe(move.from);
+    expect(models.get(id)?.getValue()).toBe("unsaved source edits");
   });
 });
 

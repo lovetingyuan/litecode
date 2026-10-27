@@ -30,11 +30,13 @@ export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
     <div className="breadcrumbs">
       {enabled && <nav className="breadcrumbs-path" aria-label="File breadcrumbs">
         {segments.map((segment, index) => {
-          const content = <>{index === segments.length - 1 && <FileIcon language={doc.language} />}{segment.label}</>;
+          const deleted = !!doc.deleted && index === segments.length - 1;
+          const content = <>{index === segments.length - 1 && <FileIcon language={doc.language} />}<span className={deleted ? "deleted-file-name" : undefined}>{segment.label}</span></>;
+          const title = `${pathTitle(segment.path)}${deleted ? "\n文件已从磁盘删除" : ""}`;
           const path = segment.workspacePath;
           return (
             <span key={segment.path}>
-              {path === undefined ? <span className="breadcrumb-label" title={pathTitle(segment.path)}>{content}</span> : (
+              {path === undefined ? <span className="breadcrumb-label" title={title}>{content}</span> : (
                 <Popover.Root
                   open={selected === path && activeGroup === group.id}
                   onOpenChange={(open, details) => {
@@ -44,8 +46,8 @@ export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
                   }}
                 >
                   <Popover.Trigger
-                    title={pathTitle(segment.path)}
-                    aria-label={`Browse siblings of ${segment.label}`}
+                    title={title}
+                    aria-label={`Browse siblings of ${segment.label}${deleted ? ", 文件已从磁盘删除" : ""}`}
                     onKeyDown={(event) => {
                       if (event.key === "ArrowDown") {
                         event.preventDefault();

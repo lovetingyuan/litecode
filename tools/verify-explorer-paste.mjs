@@ -36,7 +36,7 @@ for (const directory of [
 }
 await writeFile(path.join(external, "a.txt"), "native a");
 await writeFile(path.join(external, "b.txt"), "native b");
-await writeFile(path.join(external, "gone.txt"), "source disappears during confirmation");
+await writeFile(path.join(external, "gone.txt"), "source disappears before paste");
 await writeFile(path.join(external, "中文 文件夹/deep.txt"), "unicode directory");
 await writeFile(path.join(root, "internal.txt"), "internal source");
 await writeFile(path.join(root, "target/anchor.txt"), "anchor");
@@ -113,6 +113,7 @@ async function setClipboard(request) {
 const setFiles = (...files) =>
   setClipboard({ kind: "files", paths: files.map((file) => path.join(external, file)) });
 let app, browser, page;
+let appErrors = "";
 const errors = [];
 async function missing(file) {
   await assert.rejects(access(file));
@@ -132,11 +133,13 @@ try {
     windowsHide: true,
     env: {
       ...process.env,
+      WEBVIEW2_USER_DATA_FOLDER: path.join(run, "webview"),
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --no-proxy-server`,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
   app.stderr.on("data", (chunk) => {
+    appErrors += String(chunk);
     if (String(chunk).includes("panicked")) {
       errors.push(String(chunk));
     }
@@ -149,7 +152,7 @@ try {
     ))
   ) {
     if (app.exitCode !== null) {
-      throw new Error(`Fixture app exited with ${app.exitCode}`);
+      throw new Error(`Fixture app exited with ${app.exitCode}: ${appErrors}`);
     }
     if (Date.now() - started > 60000) {
       throw new Error("WebView2 debugging did not start");
@@ -162,19 +165,20 @@ try {
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(String(error)));
   const tree = page.locator("file-tree-container");
-  const row = (item) => tree.locator(`[data-item-path="${item}"]`).first();
+  const row = (item) => tree.locator(`[data-item-path="${item}"]:visible`).first();
   const dialog = page.getByRole("dialog");
   const selected = () =>
     tree
-      .locator('[aria-selected="true"]')
+      .locator('[aria-selected="true"]:not([data-file-tree-sticky-row])')
       .evaluateAll((rows) => rows.map((row) => row.dataset.itemPath).sort());
+  async function checkSelected(paths) {
+    for (const item of paths) {
+      await tree.locator(`[data-item-path="${item}"][aria-selected="true"]:visible`).first().waitFor();
+    }
+    assert.deepEqual(await selected(), [...paths].sort());
+  }
   async function pasteKey() {
     await page.keyboard.press("Control+v");
-    await dialog.waitFor();
-  }
-  async function confirm() {
-    await dialog.getByRole("button", { name: "Copy", exact: true }).click();
-    await dialog.waitFor({ state: "hidden" });
   }
   async function switchWorkspace(directory) {
     await invoke("open_workspace", { path: directory, newWindow: false });
@@ -197,27 +201,22 @@ try {
   await setFiles("a.txt");
   await row("target/").click();
   await pasteKey();
-  assert.match(await dialog.innerText(), /Copy 'a.txt'/);
-  assert.match(await dialog.getByLabel("Items to copy").innerText(), /a.txt/);
-  await missing(path.join(root, "target/a.txt"));
-  await page.screenshot({ path: path.join(run, "copy-confirmation.png") });
-  await page.keyboard.press("Escape");
-  await dialog.waitFor({ state: "hidden" });
-  await missing(path.join(root, "target/a.txt"));
-  checks.push("Ctrl+V shows copy confirmation; Escape makes no disk changes");
+  await row("target/a.txt").waitFor();
+  await checkSelected(["target/a.txt"]);
+  await checkDisk(path.join(root, "target/a.txt"), "native a");
+  assert.equal(await dialog.count(), 0);
+  checks.push("Ctrl+V copies immediately without confirmation");
 
   await row("target/").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Paste", exact: true }).click();
-  await dialog.waitFor();
-  await confirm();
-  await row("target/a.txt").waitFor();
-  await checkDisk(path.join(root, "target/a.txt"), "native a");
-  assert.deepEqual(await selected(), ["target/a.txt"]);
+  await row("target/a copy.txt").waitFor();
+  await checkSelected(["target/a copy.txt"]);
+  await checkDisk(path.join(root, "target/a copy.txt"), "native a");
   await row("target/a.txt").click();
   await pasteKey();
-  await confirm();
-  await row("target/a copy.txt").waitFor();
-  await checkDisk(path.join(root, "target/a copy.txt"), "native a");
+  await row("target/a copy 2.txt").waitFor();
+  await checkSelected(["target/a copy 2.txt"]);
+  await checkDisk(path.join(root, "target/a copy 2.txt"), "native a");
   await checkDisk(path.join(external, "a.txt"), "native a");
   checks.push(
     "Right-click paste copies native files; file targets use their parent; repeated paste increments names",
@@ -226,13 +225,10 @@ try {
   await setFiles("a.txt", "b.txt", "中文 文件夹");
   await page.locator(".section-heading").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Paste", exact: true }).click();
-  await dialog.waitFor();
-  assert.match(await dialog.innerText(), /3 files and folders/);
-  await confirm();
   await row("中文 文件夹/").waitFor();
+  await checkSelected(["a.txt", "b.txt", "中文 文件夹/"]);
   await checkDisk(path.join(root, "中文 文件夹/deep.txt"), "unicode directory");
   await access(path.join(root, "中文 文件夹/empty"));
-  assert.deepEqual(await selected(), ["a.txt", "b.txt", "中文 文件夹/"].sort());
   checks.push(
     "Root context menu copies multi-selection, Unicode directories, and empty subdirectories and selects new rows",
   );
@@ -242,15 +238,14 @@ try {
     .locator(".section-heading")
     .getByRole("button", { name: "PROJECT", exact: true })
     .press("Control+v");
-  await dialog.waitFor();
-  await confirm();
   await row("b copy.txt").waitFor();
+  await checkSelected(["b copy.txt"]);
   await row("target/").click();
   const treeBounds = await tree.boundingBox();
   await page.mouse.click(treeBounds.x + 50, treeBounds.y + treeBounds.height - 15);
   await pasteKey();
-  await confirm();
   await row("b copy 2.txt").waitFor();
+  await checkSelected(["b copy 2.txt"]);
   await missing(path.join(root, "target/b.txt"));
   checks.push(
     "Keyboard paste on the workspace heading and blank tree space targets root despite an old focused folder",
@@ -270,13 +265,39 @@ try {
   await page.keyboard.press("Control+c");
   await row("alternate/").click();
   await pasteKey();
-  await confirm();
   await row("alternate/internal.txt").waitFor();
+  await checkSelected(["alternate/internal.txt"]);
   await checkDisk(path.join(root, "alternate/internal.txt"), "internal source");
   await checkDisk(path.join(root, "internal.txt"), "internal source");
   checks.push(
-    "Rename inputs retain native text paste; internal file copy also requires confirmation",
+    "Rename inputs retain native text paste; internal file copy runs immediately",
   );
+
+  await row("alternate/").click();
+  await pasteKey();
+  await row("alternate/internal copy.txt").waitFor();
+  await checkSelected(["alternate/internal copy.txt"]);
+  await row("internal.txt").click();
+  await pasteKey();
+  await row("internal copy.txt").waitFor();
+  await checkSelected(["internal copy.txt"]);
+  await row("internal copy.txt").click();
+  await page.keyboard.press("Control+c");
+  await pasteKey();
+  await row("internal copy 2.txt").waitFor();
+  await checkSelected(["internal copy 2.txt"]);
+  await checkDisk(path.join(root, "internal copy 2.txt"), "internal source");
+  assert.equal(await dialog.count(), 0);
+  checks.push("Internal copies resolve cross-directory and same-directory conflicts and select the actual new path");
+
+  await row("中文 文件夹/").click();
+  await page.keyboard.press("Control+c");
+  await page.locator(".section-heading").getByRole("button", { name: "PROJECT", exact: true }).press("Control+v");
+  await row("中文 文件夹 copy/").waitFor();
+  await checkSelected(["中文 文件夹 copy/"]);
+  await checkDisk(path.join(root, "中文 文件夹 copy/deep.txt"), "unicode directory");
+  await access(path.join(root, "中文 文件夹 copy/empty"));
+  checks.push("Internal directory copies preserve Unicode names, contents, and empty descendants");
 
   await setClipboard({ kind: "text", text: "clipboard changed" });
   await row("target/").click();
@@ -289,6 +310,7 @@ try {
   await row("target/").click();
   await page.keyboard.press("Control+v");
   await row("target/internal.txt").waitFor();
+  await checkSelected(["target/internal.txt"]);
   await missing(path.join(root, "internal.txt"));
   await checkDisk(path.join(root, "target/internal.txt"), "internal source");
   checks.push(
@@ -296,35 +318,31 @@ try {
   );
 
   await setFiles("b.txt");
-  await row("alternate/").click();
-  await pasteKey();
+  const stale = await invoke("read_file_clipboard");
   await setFiles("a.txt");
-  await confirm();
-  await page.getByText("The clipboard changed; paste the files again", { exact: false }).waitFor();
+  await assert.rejects(invoke("paste_file_clipboard", {
+    expectedSequence: stale.sequence, expectedRoot: root, targetDirectory: path.join(root, "alternate"),
+  }));
   await missing(path.join(root, "alternate/b.txt"));
   await missing(path.join(root, "alternate/a.txt"));
-  checks.push("Changing the native clipboard during confirmation rejects the stale request");
+  checks.push("Changing the native clipboard rejects stale copy requests");
 
   await setFiles("b.txt", "gone.txt");
   await row("alternate/").click();
-  await pasteKey();
   await unlink(path.join(external, "gone.txt"));
-  await confirm();
+  await pasteKey();
   await row("alternate/b.txt").waitFor();
+  await checkSelected(["alternate/b.txt"]);
   await checkDisk(path.join(root, "alternate/b.txt"), "native b");
   await missing(path.join(root, "alternate/gone.txt"));
   await page.getByText("Pasted 1 item(s).", { exact: false }).waitFor();
-  assert.deepEqual(await selected(), ["alternate/b.txt"]);
   checks.push(
     "A vanished source reports partial failure and selects only successfully copied files",
   );
 
   await setFiles("a.txt");
-  await row("alternate/").click();
-  await pasteKey();
   const emptyRoot = path.join(root, "empty");
   await switchWorkspace(emptyRoot);
-  await dialog.waitFor({ state: "hidden" });
   await missing(path.join(root, "alternate/a.txt"));
   await page
     .locator(".section-heading")
@@ -334,12 +352,11 @@ try {
   const bounds = await tree.boundingBox();
   await page.mouse.click(bounds.x + 50, bounds.y + 50, { button: "right" });
   await page.getByRole("menuitem", { name: "Paste", exact: true }).click();
-  await dialog.waitFor();
-  await confirm();
   await row("a.txt").waitFor();
+  await checkSelected(["a.txt"]);
   await checkDisk(path.join(emptyRoot, "a.txt"), "native a");
   checks.push(
-    "Workspace changes cancel pending confirmation; empty-tree context menu targets its workspace root",
+    "Empty-tree context menu targets its workspace root after a workspace change",
   );
 
   const snapshot = await invoke("read_file_clipboard");

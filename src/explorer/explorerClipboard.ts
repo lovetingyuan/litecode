@@ -8,7 +8,6 @@ export type CopyReport = {
 type InternalClipboard = FileClipboard & { cut: boolean };
 type ClipboardServices = {
   read: () => Promise<FileClipboard>;
-  confirm: (paths: string[], directory: string, signal: AbortSignal) => Promise<boolean>;
   copyExternal: (sequence: number, root: string, directory: string) => Promise<CopyReport>;
   pasteInternal: (moves: FileMove[], cut: boolean, signal: AbortSignal) => Promise<CopyReport>;
 };
@@ -70,13 +69,6 @@ export function createExplorerClipboard(services: ClipboardServices) {
       const source = internal ?? { ...snapshot, cut: false };
       const paths = [...new Set(source.paths)];
       if (!paths.length) {
-        return null;
-      }
-      // Copy confirmation belongs to the disk operation, not to Ctrl+C.
-      if (!source.cut && !(await services.confirm(paths, directory, signal))) {
-        return null;
-      }
-      if (signal.aborted || request !== revision) {
         return null;
       }
       if (!internal) {

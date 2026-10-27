@@ -526,7 +526,7 @@ pub async fn file_operation(
     window: WebviewWindow,
     state: State<'_, AppState>,
     operation: FileOperation,
-) -> Result<()> {
+) -> Result<Option<String>> {
     if operation.kind == "delete" {
         return crate::file_delete::recycle(&state, window.label(), &operation.path, |source| {
             trash::delete(source).map_err(|error| {
@@ -537,7 +537,8 @@ pub async fn file_operation(
                     ),
                 )
             })
-        });
+        })
+        .map(|_| None);
     }
     let source = state.authorize(window.label(), &operation.path)?;
     let _disk = state.disk_lock.lock().unwrap();
@@ -566,6 +567,21 @@ pub async fn file_operation(
             let destination = operation
                 .destination
                 .ok_or_else(|| AppError::new("path", "Missing destination"))?;
+            if operation.kind == "copy" {
+                let requested = Path::new(&destination);
+                let parent = requested
+                    .parent()
+                    .ok_or_else(|| AppError::new("path", "Invalid destination"))?;
+                let name = requested
+                    .file_name()
+                    .ok_or_else(|| AppError::new("path", "Invalid destination name"))?;
+                let parent = state.authorize(window.label(), &parent.to_string_lossy())?;
+                let destination = crate::file_clipboard::copy_available(
+                    Path::new(&operation.path),
+                    &parent.join(name),
+                )?;
+                return Ok(Some(crate::file_moves::visible(&destination)));
+            }
             let destination = state.authorize(window.label(), &destination)?;
             if destination.exists() {
                 return Err(AppError::new("exists", "Destination already exists"));
@@ -576,36 +592,11 @@ pub async fn file_operation(
                     "Cannot move or copy a directory into itself",
                 ));
             }
-            if operation.kind == "rename" {
-                fs::rename(&source, &destination)?;
-            } else if source.is_dir() {
-                // Validate the entire copy first; do not traverse symlinks outside the granted root.
-                let mut entries = vec![];
-                for entry in walkdir::WalkDir::new(&source).follow_links(false) {
-                    let entry = entry.map_err(|e| AppError::new("copy", e.to_string()))?;
-                    if entry.file_type().is_symlink() {
-                        return Err(AppError::new(
-                            "copy",
-                            "Copying symbolic links is not supported; source was preserved.",
-                        ));
-                    }
-                    entries.push((entry.path().to_path_buf(), entry.file_type().is_dir()));
-                }
-                for (p, directory) in entries {
-                    let target = destination.join(p.strip_prefix(&source).unwrap());
-                    if directory {
-                        fs::create_dir(&target)?;
-                    } else {
-                        fs::copy(p, target)?;
-                    }
-                }
-            } else {
-                fs::copy(source, destination)?;
-            }
+            fs::rename(&source, &destination)?;
         }
         _ => return Err(AppError::new("operation", "Unsupported file operation")),
     }
-    Ok(())
+    Ok(None)
 }
 
 #[tauri::command]

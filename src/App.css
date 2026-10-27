@@ -159,6 +159,10 @@
 .editor-tab-label.ignored {
   color: var(--git-ignored-foreground);
 }
+.deleted-file-name {
+  color: #8c8c8c;
+  text-decoration: line-through;
+}
 .editor-tab.pinned .tab-close {
   visibility: visible;
 }

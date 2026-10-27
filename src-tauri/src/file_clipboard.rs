@@ -159,12 +159,7 @@ fn increment_name(name: &str, directory: bool) -> String {
     format!("{stem} copy{suffix}")
 }
 
-fn available_target(
-    target: &Path,
-    name: &str,
-    directory: bool,
-    reserved: &mut HashSet<String>,
-) -> Result<PathBuf> {
+fn available_target(target: &Path, name: &str, directory: bool) -> Result<PathBuf> {
     let mut name = name.to_owned();
     loop {
         let path = target.join(&name);
@@ -173,11 +168,32 @@ fn available_target(
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
             Err(error) => return Err(error.into()),
         };
-        if !exists && reserved.insert(key(&path)) {
+        if !exists {
             return Ok(path);
         }
         name = increment_name(&name, directory);
     }
+}
+
+// Callers hold the disk lock across choosing a name and exclusively creating it.
+pub(crate) fn copy_available(source: &Path, requested: &Path) -> Result<PathBuf> {
+    let directory = check_source(source)?.is_dir();
+    let target = requested
+        .parent()
+        .ok_or_else(|| AppError::new("path", "Invalid destination"))?;
+    if directory && within(target, source) {
+        return Err(AppError::new(
+            "path",
+            "Cannot copy a directory into itself or one of its descendants",
+        ));
+    }
+    let name = requested
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| AppError::new("path", "Invalid destination name"))?;
+    let destination = available_target(target, name, directory)?;
+    copy_item(source, &destination, directory)?;
+    Ok(destination)
 }
 
 fn copy_file(source: &Path, target: &Path) -> Result<()> {
@@ -275,8 +291,7 @@ fn copy_sources(sources: &[String], target: &Path) -> CopyReport {
         .filter(|(_, directory)| *directory)
         .map(|(path, _)| key(path))
         .collect();
-    let mut reserved = HashSet::new();
-    for &(source, directory) in &candidates {
+    for &(source, _) in &candidates {
         if source
             .ancestors()
             .skip(1)
@@ -285,19 +300,11 @@ fn copy_sources(sources: &[String], target: &Path) -> CopyReport {
             continue;
         }
         let result = (|| {
-            if directory && within(target, source) {
-                return Err(AppError::new(
-                    "path",
-                    "Cannot copy a directory into itself or one of its descendants",
-                ));
-            }
             let name = source
                 .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or_else(|| AppError::new("path", "Invalid source name"))?;
-            let destination = available_target(target, name, directory, &mut reserved)?;
-            copy_item(source, &destination, directory)?;
-            Ok(destination)
+            copy_available(source, &target.join(name))
         })();
         match result {
             Ok(destination) => report.copied.push(FileMove {
@@ -408,6 +415,74 @@ mod tests {
         assert_eq!(increment_name("a copy.txt", false), "a copy 2.txt");
         assert_eq!(increment_name("a copy 9.txt", false), "a copy 10.txt");
         assert_eq!(increment_name("a copy 0.txt", false), "a copy.txt");
+        assert_eq!(increment_name("中文 文件.txt", false), "中文 文件 copy.txt");
+    }
+
+    #[test]
+    fn copies_in_place_and_returns_the_actual_available_destination() {
+        let (_temp, _, target) = fixture();
+        let file = target.join("a.txt");
+        fs::write(&file, "original").unwrap();
+        let first = copy_available(&file, &file).unwrap();
+        assert_eq!(first, target.join("a copy.txt"));
+        assert_eq!(
+            copy_available(&file, &file).unwrap(),
+            target.join("a copy 2.txt")
+        );
+        assert_eq!(
+            copy_available(&first, &first).unwrap(),
+            target.join("a copy 3.txt")
+        );
+        assert_eq!(fs::read_to_string(&file).unwrap(), "original");
+        fs::create_dir_all(target.join("folder.ext/empty")).unwrap();
+        fs::write(target.join("folder.ext/a.txt"), "nested").unwrap();
+        let folder = target.join("folder.ext");
+        assert_eq!(
+            copy_available(&folder, &folder).unwrap(),
+            target.join("folder.ext copy")
+        );
+        assert!(target.join("folder.ext copy/empty").is_dir());
+        assert_eq!(
+            fs::read_to_string(target.join("folder.ext copy/a.txt")).unwrap(),
+            "nested"
+        );
+    }
+
+    #[test]
+    fn resolves_file_directory_collisions_without_merging_or_overwriting() {
+        let (_temp, source, target) = fixture();
+        fs::write(source.join("item.txt"), "new file").unwrap();
+        fs::create_dir_all(target.join("item.txt/keep")).unwrap();
+        fs::create_dir_all(source.join("folder.ext/empty")).unwrap();
+        fs::write(target.join("folder.ext"), "existing file").unwrap();
+        let report = copy_sources(
+            &paths(&[source.join("item.txt"), source.join("folder.ext")]),
+            &target,
+        );
+        assert!(report.failed.is_empty());
+        assert_eq!(
+            fs::read_to_string(target.join("item copy.txt")).unwrap(),
+            "new file"
+        );
+        assert!(target.join("item.txt/keep").is_dir());
+        assert!(target.join("folder.ext copy/empty").is_dir());
+        assert_eq!(
+            fs::read_to_string(target.join("folder.ext")).unwrap(),
+            "existing file"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolves_case_insensitive_collisions() {
+        let (_temp, source, target) = fixture();
+        fs::write(source.join("a.txt"), "new").unwrap();
+        fs::write(target.join("A.TXT"), "old").unwrap();
+        assert_eq!(
+            copy_available(&source.join("a.txt"), &target.join("a.txt")).unwrap(),
+            target.join("a copy.txt")
+        );
+        assert_eq!(fs::read_to_string(target.join("A.TXT")).unwrap(), "old");
     }
 
     #[test]

@@ -6,7 +6,6 @@ function fixture() {
   let snapshot: FileClipboard = { sequence: 1, paths: ["C:/external/a.txt"] };
   const services = {
     read: vi.fn(async () => snapshot),
-    confirm: vi.fn(async () => true),
     copyExternal: vi.fn(async () => ({
       copied: [{ from: "C:/external/a.txt", to: "C:/project/a.txt" }],
       failed: [],
@@ -24,29 +23,18 @@ function fixture() {
 }
 
 describe("Explorer file clipboard", () => {
-  it("confirms native files before copying and sends no renderer-supplied sources", async () => {
+  it("copies native files immediately and sends no renderer-supplied sources", async () => {
     const { clipboard, services, signal } = fixture();
     await clipboard.paste("C:/project", "C:/project/target", signal);
-    expect(services.confirm).toHaveBeenCalledWith(
-      ["C:/external/a.txt"],
-      "C:/project/target",
-      signal,
-    );
     expect(services.copyExternal).toHaveBeenCalledWith(1, "C:/project", "C:/project/target");
-    expect(services.confirm.mock.invocationCallOrder[0]).toBeLessThan(
-      services.copyExternal.mock.invocationCallOrder[0],
-    );
     expect(services.pasteInternal).not.toHaveBeenCalled();
   });
-  it("does not copy when confirmation is cancelled or the workspace request is aborted", async () => {
-    const { clipboard, services, signal } = fixture();
-    services.confirm.mockResolvedValue(false);
-    expect(await clipboard.paste("C:/project", "C:/project", signal)).toBeNull();
-    services.confirm.mockResolvedValue(true);
+  it("does not copy when the workspace request is aborted while reading the clipboard", async () => {
+    const { clipboard, services } = fixture();
     const abort = new AbortController();
-    services.confirm.mockImplementation(async () => {
+    services.read.mockImplementation(async () => {
       abort.abort();
-      return true;
+      return { sequence: 1, paths: ["C:/external/a.txt"] };
     });
     expect(await clipboard.paste("C:/project", "C:/project", abort.signal)).toBeNull();
     expect(services.copyExternal).not.toHaveBeenCalled();
@@ -56,12 +44,12 @@ describe("Explorer file clipboard", () => {
     const { clipboard, services, signal, change } = fixture();
     change({ sequence: 2, paths: [] });
     expect(await clipboard.paste("C:/project", "C:/project", signal)).toBeNull();
-    expect(services.confirm).not.toHaveBeenCalled();
+    expect(services.copyExternal).not.toHaveBeenCalled();
+    expect(services.pasteInternal).not.toHaveBeenCalled();
   });
   it("uses internal copy only until the native clipboard changes", async () => {
     const { clipboard, services, signal, change } = fixture();
     await clipboard.remember(["C:/project/original.txt"], false);
-    expect(services.confirm).not.toHaveBeenCalled();
     await clipboard.paste("C:/project", "C:/project/target", signal);
     expect(services.pasteInternal).toHaveBeenCalledWith(
       [{ from: "C:/project/original.txt", to: "C:/project/target/original.txt" }],
@@ -75,13 +63,11 @@ describe("Explorer file clipboard", () => {
     expect(await clipboard.paste("C:/project", "C:/project/target", signal)).toBeNull();
     expect(services.pasteInternal).toHaveBeenCalledTimes(1);
   });
-  it("rejects internal clipboard changes while copy confirmation is open", async () => {
-    const { clipboard, services, signal, change } = fixture();
+  it("rejects internal clipboard changes before disk operations", async () => {
+    const { clipboard, services, signal } = fixture();
     await clipboard.remember(["C:/project/original.txt"], false);
-    services.confirm.mockImplementation(async () => {
-      change({ sequence: 2, paths: [] });
-      return true;
-    });
+    services.read.mockResolvedValueOnce({ sequence: 1, paths: [] })
+      .mockResolvedValueOnce({ sequence: 2, paths: [] });
     await expect(clipboard.paste("C:/project", "C:/project", signal)).rejects.toThrow(
       "clipboard changed",
     );
@@ -104,7 +90,6 @@ describe("Explorer file clipboard", () => {
       { from: "C:/project/folder/", to: "C:/project/target/folder" },
       { from: "C:/project/b.txt", to: "C:/project/target/b.txt" },
     ], true, signal);
-    expect(services.confirm).not.toHaveBeenCalled();
     await clipboard.paste("C:/project", "C:/project/target", signal);
     expect(services.pasteInternal).toHaveBeenCalledTimes(2);
     expect(services.pasteInternal).toHaveBeenLastCalledWith(
@@ -132,7 +117,6 @@ describe("Explorer file clipboard", () => {
     );
     const remember = clipboard.remember(["C:/project/new.txt"], false);
     const paste = clipboard.paste("C:/project", "C:/project/target", signal);
-    expect(services.confirm).not.toHaveBeenCalled();
     finish({ sequence: 1, paths: ["C:/external/a.txt"] });
     await remember;
     await paste;

@@ -274,6 +274,48 @@ fn paths_and_repository_scope_are_authorized() {
 }
 
 #[test]
+fn creating_from_non_current_local_and_remote_refs_preserves_the_start_and_tracking() {
+    let (_temp, root) = fixture();
+    fs::write(root.join("file.txt"), "base").unwrap();
+    stage(&root, &["file.txt"]);
+    commit(&root, "base");
+    let repo = Repository::open(&root).unwrap();
+    let base = repo.head().unwrap().target().unwrap();
+    run_git(&root, &["branch", "feature/base"], None).unwrap();
+    fs::write(root.join("file.txt"), "newer").unwrap();
+    stage(&root, &["file.txt"]);
+    commit(&root, "newer HEAD");
+    execute(&root, Operation::CreateBranch {
+        name: "local-child".into(), start: Some("refs/heads/feature/base".into()),
+    }).unwrap();
+    assert_eq!(repo.head().unwrap().target(), Some(base));
+    assert_eq!(info(&root).unwrap().branch.as_deref(), Some("local-child"));
+    assert_eq!(fs::read_to_string(root.join("file.txt")).unwrap(), "base");
+
+    let remote = tempfile::tempdir().unwrap();
+    run_git(remote.path(), &["init", "--bare"], None).unwrap();
+    run_git(&root, &["remote", "add", "origin", remote.path().to_str().unwrap()], None).unwrap();
+    run_git(&root, &["push", "origin", "HEAD:refs/heads/feature/base"], None).unwrap();
+    execute(&root, Operation::Switch { branch: "main".into() }).unwrap();
+    execute(&root, Operation::CreateBranch {
+        name: "remote-child".into(), start: Some("refs/remotes/origin/feature/base".into()),
+    }).unwrap();
+    let current = info(&root).unwrap();
+    assert_eq!(current.branch.as_deref(), Some("remote-child"));
+    assert_eq!(repo.head().unwrap().target(), Some(base));
+    assert_eq!(current.upstream.as_deref(), Some("origin/feature/base"));
+    assert_eq!((current.ahead, current.behind), (Some(0), Some(0)));
+    assert!(execute(&root, Operation::CreateBranch {
+        name: "main".into(), start: Some("refs/remotes/origin/feature/base".into()),
+    }).is_err());
+    assert_eq!(info(&root).unwrap().branch.as_deref(), Some("remote-child"));
+    run_git(&root, &["commit", "--allow-empty", "-m", "unmerged child"], None).unwrap();
+    execute(&root, Operation::Switch { branch: "main".into() }).unwrap();
+    assert!(execute(&root, Operation::DeleteBranch { branch: "remote-child".into() }).is_err());
+    assert!(repo.find_branch("remote-child", BranchType::Local).is_ok());
+}
+
+#[test]
 fn local_branch_operations_and_worktrees_are_reported() {
     let (_temp, root) = fixture();
     fs::write(root.join("file.txt"), "base").unwrap();

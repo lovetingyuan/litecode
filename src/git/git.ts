@@ -186,8 +186,18 @@ export async function runGitOperation(
     return false;
   }
   const context = gitContext(repository);
+  const branchOperation = ["switch", "createBranch", "deleteBranch"].includes(request.kind);
+  const validBranchContext = () => {
+    const state = useApp.getState();
+    const selected = selectedRepository();
+    return state.gitState.session === context.session && selected?.path === repository && !selected.operation;
+  };
+  if (branchOperation && !validBranchContext()) {
+    return false;
+  }
   let started = false;
-  setApp((s) => ({ gitBusy: { ...s.gitBusy, [repository]: request.kind } }));
+  const busy = request.kind === "pull" && request.rebase ? "pullRebase" : request.kind;
+  setApp((s) => ({ gitBusy: { ...s.gitBusy, [repository]: busy } }));
   try {
     const changesWorktree = [
       "pull",
@@ -259,7 +269,7 @@ export async function runGitOperation(
     ) {
       return false;
     }
-    if (useApp.getState().root !== context.expectedRoot) {
+    if (useApp.getState().root !== context.expectedRoot || (branchOperation && !validBranchContext())) {
       return false;
     }
     const versions = new Map(

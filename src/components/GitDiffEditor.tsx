@@ -3,6 +3,7 @@ import { monaco, loadSyntax } from "../editor/monaco";
 import { diffOptions, editorOptions } from "../editor/settings";
 import { editors, diffEditors, models, autoSave } from "../editor/documents";
 import { installMergeConflictEditor } from "../editor/mergeConflictEditor";
+import { createGitDiffModels } from "../editor/gitDiffModels";
 import { useApp, setApp, notify } from "../store/store";
 import { attachGitSource, readGitDiff, openGitSource } from "../git/git";
 import { errorMessage } from "../core/bridge";
@@ -18,6 +19,7 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
   const [content, setContent] = useState<GitDiffContent | null>(null);
   const [error, setError] = useState("");
   const [inline, setInline] = useState(false);
+  const inlineState = useRef(false);
   const [loading, setLoading] = useState(true);
   const diff = doc.gitDiff!;
   const { workspace, repository, path, oldPath, staged, conflicted } = diff;
@@ -77,104 +79,124 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
   ]);
 
   useEffect(() => {
-    if (!host.current || !content || content.summary || error) {
+    const container = host.current;
+    if (!container || !content || content.summary || error) {
       return;
     }
-    const original = monaco.editor.createModel(content.before, doc.language);
-    const source = useApp.getState().docs[doc.id]?.gitDiff?.sourceId;
-    const shared = content.source && source ? models.get(source) : undefined;
-    const modified =
-      shared ?? monaco.editor.createModel(content.after, doc.language);
-    const editor = monaco.editor.createDiffEditor(host.current, {
-      ...editorOptions(useApp.getState().settings),
-      ...diffOptions(useApp.getState().settings),
-      automaticLayout: true,
-      theme: "dark-modern",
-      originalEditable: false,
-      readOnly: !shared,
-      renderSideBySide: true,
-      renderSideBySideInlineBreakpoint: 0,
-      originalAriaLabel: staged
-        ? "HEAD version"
-        : conflicted
-          ? "Local version before conflict"
-          : "Index version",
-      modifiedAriaLabel: staged ? "Index version" : "Working tree version",
-    });
-    const viewModel = editor.createViewModel({ original, modified });
-    editor.setModel(viewModel);
-    instance.current = editor;
-    diffEditors.set(group.id, { editor, viewModel });
-    const code = editor.getModifiedEditor();
-    editors.set(group.id, code);
-    const merge = installMergeConflictEditor(code, () => {});
-    const focused = code.onDidFocusEditorText(() =>
-      setApp({ activeGroup: group.id }),
-    );
-    const blurred = code.onDidBlurEditorWidget(() => {
-      if (source) {
-        void autoSave("onFocusChange", source);
-      }
-    });
-    const cursor = code.onDidChangeCursorSelection((event) => {
-      if (useApp.getState().activeGroup === group.id) {
-        setApp({
-          cursor: {
-            line: event.selection.positionLineNumber,
-            column: event.selection.positionColumn,
-            selected: modified.getValueLengthInRange(event.selection),
-          },
-        });
-      }
-    });
-    const view = useApp.getState().groups.find((g) => g.id === group.id)?.views[
-      doc.id
-    ];
-    if (view) {
-      editor.restoreViewState(view as monaco.editor.IDiffEditorViewState);
-    } else {
-      const updated = editor.onDidUpdateDiff(() => {
-        if (!editor.getLineChanges()) {
+    let cancelled = false;
+    let dispose: (() => void) | undefined;
+    void (async () => {
+      let pair: Awaited<ReturnType<typeof createGitDiffModels>> | undefined;
+      try {
+        const source = useApp.getState().docs[doc.id]?.gitDiff?.sourceId;
+        const shared = content.source && source ? models.get(source) : undefined;
+        pair = await createGitDiffModels(content, doc.language, shared);
+        if (cancelled || shared?.isDisposed()) {
+          pair.dispose();
           return;
         }
-        editor.revealFirstDiff();
-        updated.dispose();
-      });
-    }
-    void loadSyntax(doc.language);
+        const { original, modified, dispose: disposeModels } = pair;
+        const editor = monaco.editor.createDiffEditor(container, {
+          ...editorOptions(useApp.getState().settings),
+          ...diffOptions(useApp.getState().settings),
+          automaticLayout: true,
+          theme: "dark-modern",
+          originalEditable: false,
+          readOnly: !shared,
+          renderSideBySide: !inlineState.current,
+          renderSideBySideInlineBreakpoint: 0,
+          originalAriaLabel: staged
+            ? "HEAD version"
+            : conflicted
+              ? "Local version before conflict"
+              : "Index version",
+          modifiedAriaLabel: staged ? "Index version" : "Working tree version",
+        });
+        const code = editor.getModifiedEditor();
+        let viewModel: monaco.editor.IDiffEditorViewModel | undefined;
+        const subscriptions: monaco.IDisposable[] = [];
+        dispose = () => {
+          if (instance.current === editor) {
+            const view = editor.saveViewState();
+            setApp((s) => ({
+              groups: s.groups.map((g) =>
+                g.id === group.id && g.tabs.includes(doc.id)
+                  ? { ...g, views: { ...g.views, [doc.id]: view } }
+                  : g,
+              ),
+            }));
+            instance.current = null;
+          }
+          if (editors.get(group.id) === code) {
+            editors.delete(group.id);
+          }
+          if (diffEditors.get(group.id)?.editor === editor) {
+            diffEditors.delete(group.id);
+          }
+          subscriptions.forEach((s) => s.dispose());
+          // Cancel diff workers before releasing either retained text model.
+          editor.setModel(null);
+          viewModel?.dispose();
+          editor.dispose();
+          disposeModels();
+        };
+        viewModel = editor.createViewModel({ original, modified });
+        editor.setModel(viewModel);
+        instance.current = editor;
+        diffEditors.set(group.id, { editor, viewModel });
+        editors.set(group.id, code);
+        subscriptions.push(installMergeConflictEditor(code, () => {}));
+        subscriptions.push(code.onDidFocusEditorText(() => setApp({ activeGroup: group.id })));
+        subscriptions.push(code.onDidBlurEditorWidget(() => {
+          if (source) {
+            void autoSave("onFocusChange", source);
+          }
+        }));
+        subscriptions.push(code.onDidChangeCursorSelection((event) => {
+          if (useApp.getState().activeGroup === group.id) {
+            setApp({
+              cursor: {
+                line: event.selection.positionLineNumber,
+                column: event.selection.positionColumn,
+                selected: modified.getValueLengthInRange(event.selection),
+              },
+            });
+          }
+        }));
+        const view = useApp.getState().groups.find((g) => g.id === group.id)?.views[doc.id];
+        if (view) {
+          editor.restoreViewState(view as monaco.editor.IDiffEditorViewState);
+        } else {
+          const updated = editor.onDidUpdateDiff(() => {
+            if (!editor.getLineChanges()) {
+              return;
+            }
+            editor.revealFirstDiff();
+            updated.dispose();
+          });
+          subscriptions.push(updated);
+        }
+        void loadSyntax(doc.language);
+      } catch (error) {
+        if (dispose) {
+          dispose();
+          dispose = undefined;
+        } else {
+          pair?.dispose();
+        }
+        if (!cancelled) {
+          setError(errorMessage(error));
+        }
+      }
+    })();
     return () => {
-      const view = editor.saveViewState();
-      setApp((s) => ({
-        groups: s.groups.map((g) =>
-          g.id === group.id && g.tabs.includes(doc.id)
-            ? { ...g, views: { ...g.views, [doc.id]: view } }
-            : g,
-        ),
-      }));
-      if (editors.get(group.id) === code) {
-        editors.delete(group.id);
-      }
-      if (diffEditors.get(group.id)?.editor === editor) {
-        diffEditors.delete(group.id);
-      }
-      instance.current = null;
-      merge.dispose();
-      focused.dispose();
-      blurred.dispose();
-      cursor.dispose();
-      // Monaco defers disposal of implicit view models; own this one so worker
-      // computations are cancelled before either text model is released.
-      editor.setModel(null);
-      viewModel.dispose();
-      editor.dispose();
-      original.dispose();
-      if (!shared) {
-        modified.dispose();
-      }
+      cancelled = true;
+      dispose?.();
     };
   }, [doc.id, doc.language, content, error, group.id, staged, conflicted]);
 
   useEffect(() => {
+    inlineState.current = inline;
     instance.current?.updateOptions({
       ...editorOptions(settings),
       ...diffOptions(settings),

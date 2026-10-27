@@ -2,17 +2,6 @@
   min-height: 0;
   overflow: hidden;
 }
-.git-repository-select {
-  margin: 4px 10px 8px;
-  width: calc(100% - 20px);
-  min-height: 28px;
-  background: var(--input-background, #313131);
-  border: 1px solid var(--border, #3c3c3c);
-  color: inherit;
-  padding: 3px 5px;
-  font-size: 12px;
-  border-radius: 2px;
-}
 .git-tabs {
   display: flex;
   flex-shrink: 0;
@@ -36,9 +25,10 @@
   font-size: 12px;
 }
 .git-branch-heading strong {
-  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 500;
 }
 .git-branch-heading > span:last-child {
@@ -69,13 +59,31 @@
   opacity: 0.45;
 }
 .git-view .btn-primary {
-  background: #0078d4;
-  border-color: #0078d4;
+  background: var(--color-primary, #0078d4);
+  border-color: var(--color-primary, #0078d4);
   color: #fff;
-  height: 30px;
 }
 .git-view .btn-primary:hover:not(:disabled) {
-  background: #1687db;
+  background: color-mix(in srgb, var(--color-primary, #0078d4) 85%, white);
+}
+.git-sync-actions .btn {
+  display: inline-grid;
+}
+.git-sync-actions .btn > span {
+  grid-area: 1 / 1;
+}
+.git-sync-actions .btn[aria-busy="true"] {
+  opacity: 1;
+}
+.git-sync-actions .btn[aria-busy="true"] .git-sync-label {
+  visibility: hidden;
+}
+.git-sync-actions .spinner {
+  width: 12px;
+  height: 12px;
+  place-self: center;
+  border-color: currentColor;
+  border-right-color: transparent;
 }
 .git-panel-content {
   overflow: auto;
@@ -84,7 +92,7 @@
   padding-bottom: 18px;
 }
 .git-commit-form {
-  padding: 5px 10px 12px;
+  margin-top: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -102,10 +110,29 @@
   font: inherit;
   font-size: 12px;
 }
-.git-commit-form textarea:focus,
-.git-repository-select:focus {
+.git-commit-form textarea:focus {
   outline: 1px solid #0078d4;
   outline-offset: -1px;
+}
+.git-commit-dialog {
+  max-height: 90vh;
+  overflow: auto;
+}
+.git-commit-dialog .git-commit-hint {
+  color: #ccc;
+  font-size: 12px;
+}
+.git-commit-dialog .modal-actions {
+  margin-top: 8px;
+}
+.git-commit-dialog .modal-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.git-commit-dialog button:disabled {
+  opacity: 0.45;
 }
 .git-empty {
   padding: 25px 14px;
@@ -225,7 +252,6 @@
 .git-status-\! {
   color: #f48771;
 }
-.git-operation-status,
 .git-operation-banner {
   display: flex;
   gap: 8px;
@@ -257,6 +283,28 @@
   user-select: text;
   font-size: 11px;
 }
+.git-remote-address {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.git-remote-address strong {
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-remote-address code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-remote-address .btn {
+  flex-shrink: 0;
+}
 .git-info h3 {
   font-size: 12px;
   font-weight: 600;
@@ -281,6 +329,31 @@
   text-align: left;
   min-width: 0;
   padding: 4px;
+}
+.git-branch-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.git-branch-row:hover .git-branch-actions,
+.git-branch-row:focus-within .git-branch-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.git-branch-actions .icon-button {
+  width: 24px;
+  height: 24px;
+}
+.git-branch-row button:focus-visible {
+  outline: 1px solid var(--focus-border, #007fd4);
+  outline-offset: -1px;
+}
+.git-branch-row > button:first-child > .codicon,
+.git-branch-row small {
+  flex-shrink: 0;
 }
 .git-branch-row > button:first-child:hover:not(:disabled) {
   background: #2a2d2e;

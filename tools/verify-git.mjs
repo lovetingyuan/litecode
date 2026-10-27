@@ -4,11 +4,15 @@ import { mkdir, copyFile, writeFile, readFile } from "node:fs/promises";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import { chromium } from "playwright";
+import { verifyGitBranches } from "./verify-git-branches.mjs";
+import { verifyGitDiff } from "./verify-git-diff.mjs";
 
 // Real native UI and Git. --repo creates an isolated worktree; its main checkout is read-only.
 const source = process.argv.includes("--repo")
   ? path.resolve(process.argv[process.argv.indexOf("--repo") + 1])
   : null;
+const branchesOnly = process.argv.includes("--branches-only");
+assert.ok(!branchesOnly || !source, "Branch checks require an independent temporary repository");
 const run = path.resolve(".verification", `git-${Date.now()}`);
 const app = path.join(run, "app"),
   data = path.join(app, "data"),
@@ -20,11 +24,13 @@ const gitEnv = {
   GIT_AUTHOR_EMAIL: "test@example.invalid",
   GIT_COMMITTER_NAME: "LiteCode Test",
   GIT_COMMITTER_EMAIL: "test@example.invalid",
-  GIT_CONFIG_COUNT: "2",
+  GIT_CONFIG_COUNT: "3",
   GIT_CONFIG_KEY_0: "commit.gpgsign",
   GIT_CONFIG_VALUE_0: "false",
   GIT_CONFIG_KEY_1: "core.hooksPath",
   GIT_CONFIG_VALUE_1: path.join(run, "hooks"),
+  GIT_CONFIG_KEY_2: "core.fsmonitor",
+  GIT_CONFIG_VALUE_2: "false",
 };
 await mkdir(data, { recursive: true });
 await mkdir(path.join(run, "hooks"));
@@ -33,9 +39,10 @@ function git(cwd, ...args) {
     cwd,
     encoding: "utf8",
     windowsHide: true,
+    timeout: 300_000,
     env: gitEnv,
   });
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
   return result.stdout.trim();
 }
 const before = source
@@ -61,6 +68,10 @@ git(root, "add", "--", file);
 await writeFile(path.join(root, file), "working\n");
 await mkdir(path.dirname(path.join(root, nested)), { recursive: true });
 await writeFile(path.join(root, nested), "untracked\n");
+if (branchesOnly) {
+  git(root, "add", "--all");
+  git(root, "commit", "-m", "test: second branch fixture commit");
+}
 await copyFile(
   "src-tauri/target/debug/litecode.exe",
   path.join(app, "LiteCode.exe"),
@@ -116,8 +127,8 @@ child.stderr.on("data", (data) => {
 });
 const errors = [],
   checks = [];
-async function waitPage(predicate, argument) {
-  const deadline = Date.now() + 25000;
+async function waitPage(predicate, argument, timeout = 25000) {
+  const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     if (await page.evaluate(predicate, argument)) {
       return;
@@ -128,7 +139,7 @@ async function waitPage(predicate, argument) {
     `Native UI condition timed out: ${String(predicate).slice(0, 180)}`,
   );
 }
-try {
+async function verify() {
   const endpoint = `http://127.0.0.1:${port}`,
     deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
@@ -146,6 +157,7 @@ try {
   }
   browser = await chromium.connectOverCDP(endpoint);
   page = browser.contexts()[0].pages()[0];
+  await page.setViewportSize({ width: 1280, height: 820 });
   await browser
     .contexts()[0]
     .addInitScript(() => performance.setResourceTimingBufferSize(10000));
@@ -165,13 +177,13 @@ try {
   });
   await page.evaluate(() => performance.setResourceTimingBufferSize(10000));
   await waitPage(
-    () => !!document.querySelector('[aria-label="Git Repository"]'),
+    () => !!document.querySelector('.git-view .git-sync-actions'),
   );
   await page
     .getByRole("button", { name: "Source Control (Ctrl+Shift+G)", exact: true })
     .click();
   if (
-    !(await page.getByRole("textbox", { name: "Commit Message" }).isVisible())
+    !(await page.getByRole("region", { name: "Source Control", exact: true }).isVisible())
   ) {
     await page
       .getByRole("button", {
@@ -197,13 +209,24 @@ try {
     (r) => r.path.toLowerCase() === root.replace(/\\/g, "/").toLowerCase(),
   );
   assert.ok(repository, JSON.stringify(initial));
-  assert.ok(
-    repository.changes.some(
-      (c) => c.path === file && c.indexStatus && c.worktreeStatus,
-    ),
-  );
+  if (!branchesOnly) {
+    assert.ok(
+      repository.changes.some(
+        (c) => c.path === file && c.indexStatus && c.worktreeStatus,
+      ),
+    );
+  }
   const section = (title) =>
     page.getByRole("region", { name: title, exact: true });
+  if (branchesOnly) {
+    await page.getByRole("tab", { name: "Repository", exact: true }).click();
+    await waitPage(() => !document.querySelector('[aria-label="Create Branch"]')?.disabled);
+    const resources = await page.evaluate(() => ({
+      store: performance.getEntriesByType("resource").find((r) => new URL(r.name).pathname === "/src/store/store.ts")?.name,
+    }));
+    checks.push(await verifyGitBranches({ page, root, branch, git, run, waitPage, resources, repository, invoke }));
+    return;
+  }
   await section("Staged Changes")
     .getByRole("option", { name: file, exact: true })
     .click();
@@ -260,6 +283,128 @@ try {
       const g = s.groups.find((g) => g.id === s.activeGroup);
       return { docs: s.docs, groups: s.groups, active: g.active };
     }, resources.store);
+  await verifyGitDiff({ page, resources, action, inspect, section, file, waitPage, checks, run });
+  if (process.argv.includes("--diff-only")) {
+    return;
+  }
+  const toolbar = page.locator(".git-sync-actions");
+  const commitTrigger = toolbar.getByRole("button", { name: "Commit", exact: true, includeHidden: true });
+  const commitDialog = page.getByRole("dialog", { name: "Commit Changes", exact: true });
+  const commitMessage = commitDialog.getByRole("textbox", { name: "Commit Message", exact: true });
+  const confirmCommit = commitDialog.getByRole("button", { name: "Commit", exact: true });
+  assert.deepEqual(await toolbar.getByRole("button").allTextContents(), [
+    "Fetch", "Pull", "Pull (Rebase)", "Push", "Commit",
+  ]);
+  assert.equal(await commitTrigger.isEnabled(), true);
+  assert.equal(await commitTrigger.evaluate((button) => getComputedStyle(button).backgroundColor), "rgb(0, 127, 212)");
+  assert.equal(await page.getByRole("textbox", { name: "Commit Message" }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Open Remote", exact: true }).count(), 0);
+  await page.getByRole("tab", { name: "Repository", exact: true }).click();
+  const remoteRows = page.locator(".git-remote-address");
+  const longRemote = `https://github.com/litecode-test/${"long-repository-name-".repeat(12)}repo.git`;
+  if (!source) {
+    await page.getByText("No remotes configured.", { exact: true }).waitFor();
+    assert.equal(await remoteRows.count(), 0);
+    git(root, "remote", "add", "origin", "git@github.com:litecode-test/browser-check.git");
+    git(root, "remote", "add", "upstream", "https://github.com/litecode-test/fetch-check.git");
+    git(root, "remote", "set-url", "--push", "upstream", "ssh://git@github.com/litecode-test/push-check.git");
+    git(root, "remote", "add", "local", root);
+    git(root, "remote", "add", "long", longRemote);
+    await page.getByRole("button", { name: "Refresh Source Control", exact: true }).click();
+    await page.getByRole("button", { name: "Open long fetch URL", exact: true }).waitFor();
+    assert.equal(await remoteRows.count(), 5);
+    assert.equal(await page.getByRole("button", { name: "Open origin push URL", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Open local fetch URL", exact: true }).isEnabled(), false);
+  }
+  // Capture only the browser launch; all Git operations continue through real IPC.
+  await page.evaluate(() => {
+    const original = window.fetch;
+    window.__gitBrowserCheck = { original, urls: [] };
+    window.fetch = (input, options) => {
+      const url = new URL(typeof input === "string" ? input : input.url, location.href);
+      if (url.hostname === "ipc.localhost" && decodeURIComponent(url.pathname) === "/plugin:opener|open_url") {
+        window.__gitBrowserCheck.urls.push(JSON.parse(options.body).url);
+        return Promise.resolve(new Response("null", {
+          headers: { "Content-Type": "application/json", "Tauri-Response": "ok" },
+        }));
+      }
+      return original(input, options);
+    };
+  });
+  const openRemote = source
+    ? remoteRows.getByRole("button").filter({ visible: true }).and(page.locator(":enabled")).first()
+    : page.getByRole("button", { name: "Open origin fetch URL", exact: true });
+  await openRemote.click();
+  await waitPage(() => window.__gitBrowserCheck.urls.length === 1);
+  await action("store", "setApp", { gitBusy: { [repository.path]: "fetch" } });
+  assert.equal(await commitTrigger.isEnabled(), false);
+  await openRemote.click();
+  await waitPage(() => window.__gitBrowserCheck.urls.length === 2);
+  await action("store", "setApp", { gitBusy: {} });
+  if (!source) {
+    await page.getByRole("button", { name: "Open upstream fetch URL", exact: true }).click();
+    await waitPage(() => window.__gitBrowserCheck.urls.length === 3);
+    await page.getByRole("button", { name: "Open upstream push URL", exact: true }).click();
+    await waitPage(() => window.__gitBrowserCheck.urls.length === 4);
+    const longButton = page.getByRole("button", { name: "Open long fetch URL", exact: true });
+    await longButton.focus();
+    await page.keyboard.press("Enter");
+    await waitPage(() => window.__gitBrowserCheck.urls.length === 5);
+    const sidebarSeparator = page.getByRole("separator", { name: "Primary side bar width", exact: true });
+    await sidebarSeparator.focus();
+    for (let step = 0; step < 11; step++) {
+      await page.keyboard.press("ArrowLeft");
+    }
+    await waitPage(() => document.querySelector(".git-view").getBoundingClientRect().width <= 241);
+    const layout = await remoteRows.evaluateAll((rows) => rows.map((row) => {
+      const code = row.querySelector("code");
+      const name = row.querySelector("strong").getBoundingClientRect();
+      const address = code.getBoundingClientRect();
+      const button = row.querySelector("button").getBoundingClientRect();
+      const bounds = row.getBoundingClientRect();
+      return {
+        truncated: code.scrollWidth > code.clientWidth,
+        fullAddress: code.title === code.textContent,
+        singleLine: bounds.height <= button.height + 1,
+        fits: button.right <= bounds.right + 1 && address.right <= button.left && name.right <= address.left,
+      };
+    }));
+    assert.ok(layout.every((row) => row.fits), "Address buttons must stay visible to the right without overlap");
+    assert.ok(layout.every((row) => row.singleLine && row.fullAddress), "Remote names, addresses and buttons must share one line with full address tooltips");
+    assert.ok(layout.some((row) => row.truncated), "Long remote addresses must truncate");
+    await page.screenshot({ path: path.join(run, "00-remotes-narrow.png") });
+    await sidebarSeparator.focus();
+    for (let step = 0; step < 11; step++) {
+      await page.keyboard.press("ArrowRight");
+    }
+    await waitPage(() => document.querySelector(".git-view").getBoundingClientRect().width >= 349);
+    await page.screenshot({ path: path.join(run, "00-remotes.png") });
+  }
+  const opened = await page.evaluate(() => {
+    const check = window.__gitBrowserCheck;
+    window.fetch = check.original;
+    delete window.__gitBrowserCheck;
+    return check.urls;
+  });
+  assert.equal(opened.length, source ? 2 : 5);
+  assert.equal(opened[0], opened[1]);
+  assert.match(opened[0], /^https?:\/\//);
+  if (!source) {
+    assert.equal(opened[0], "https://github.com/litecode-test/browser-check");
+    assert.deepEqual(opened.slice(2), [
+      "https://github.com/litecode-test/fetch-check",
+      "https://github.com/litecode-test/push-check",
+      longRemote.slice(0, -4),
+    ]);
+    for (const name of ["upstream", "local", "long"]) {
+      git(root, "remote", "remove", name);
+    }
+  }
+  checks.push("Toolbar order, per-address browser opener IPC, distinct fetch/push targets, unsupported URLs, keyboard and narrow-sidebar layout");
+  if (process.argv.includes("--remotes-only")) {
+    return;
+  }
+  await page.getByRole("tab", { name: "Changes", exact: true }).click();
   let state = await inspect();
   let comparison = state.docs[state.active];
   await waitPage(async (url) => {
@@ -364,14 +509,90 @@ try {
     },
     { root, file: nested },
   );
-  assert.equal(
-    await page.getByRole("button", { name: "Commit", exact: true }).isEnabled(),
-    false,
-  );
-  await page
-    .getByRole("textbox", { name: "Commit Message", exact: true })
-    .fill("test: Git UI commit\n\nOnly staged changes");
-  await page.getByRole("button", { name: "Commit", exact: true }).click();
+  const headBeforeCommit = git(root, "rev-parse", "HEAD");
+  await commitTrigger.click();
+  await waitPage(() => document.activeElement?.getAttribute("aria-label") === "Commit Message");
+  assert.equal(await confirmCommit.isEnabled(), false);
+  await commitMessage.fill("   ");
+  await commitMessage.press("Control+Enter");
+  assert.equal(git(root, "rev-parse", "HEAD"), headBeforeCommit);
+  await commitMessage.fill("test: Git UI commit");
+  await commitMessage.press("End");
+  await commitMessage.press("Enter");
+  await commitMessage.press("Enter");
+  await commitMessage.pressSequentially("Only staged changes");
+  const draft = "test: Git UI commit\n\nOnly staged changes";
+  assert.equal(await commitMessage.inputValue(), draft);
+  await commitDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await waitPage(() => document.activeElement?.textContent === "Commit");
+  await commitTrigger.click();
+  assert.equal(await commitMessage.inputValue(), draft);
+  await page.keyboard.press("Escape");
+  await commitDialog.waitFor({ state: "hidden" });
+  await commitTrigger.click();
+  assert.equal(await commitMessage.inputValue(), draft);
+  await page.locator(".modal-backdrop").click({ position: { x: 2, y: 2 } });
+  await commitDialog.waitFor({ state: "hidden" });
+  await commitTrigger.click();
+  assert.equal(await commitMessage.inputValue(), draft);
+  // Inject only a status snapshot; no conflicted files or index data are written.
+  await page.evaluate(async ({ url, repository }) => {
+    const { setApp } = await import(url);
+    setApp((state) => ({
+      gitState: {
+        ...state.gitState,
+        repositories: state.gitState.repositories.map((entry) => entry.path !== repository ? entry : {
+          ...entry,
+          changes: [...entry.changes, { ...entry.changes[0], path: "conflicted.txt", conflicted: true }],
+        }),
+      },
+    }));
+  }, { url: resources.store, repository: repository.path });
+  assert.equal(await confirmCommit.isEnabled(), false);
+  assert.equal(await commitTrigger.isEnabled(), false);
+  await commitMessage.press("Control+Enter");
+  assert.equal(git(root, "rev-parse", "HEAD"), headBeforeCommit);
+  await action("git", "refreshGitPanel");
+  await waitPage(() => !!document.querySelector(".git-commit-dialog button.primary:not(:disabled)"));
+  await page.screenshot({ path: path.join(run, "02-commit-dialog.png") });
+
+  // A failed hook and a slow commit exercise retry, keyboard guards and dismissal.
+  await page.evaluate(() => {
+    const original = window.fetch;
+    window.__gitCommitCheck = { original, calls: 0, failNext: true, release: null };
+    window.fetch = (input, options) => {
+      const url = new URL(typeof input === "string" ? input : input.url, location.href);
+      const check = window.__gitCommitCheck;
+      if (url.hostname === "ipc.localhost" && url.pathname === "/git_operate" &&
+          JSON.parse(options.body).request.kind === "commit") {
+        check.calls++;
+        if (check.failNext) {
+          check.failNext = false;
+          return Promise.resolve(new Response(JSON.stringify("Verification: commit hook rejected"), {
+            headers: { "Content-Type": "application/json", "Tauri-Response": "error" },
+          }));
+        }
+        return new Promise((resolve, reject) => {
+          check.release = () => original(input, options).then(resolve, reject);
+        });
+      }
+      return original(input, options);
+    };
+  });
+  await confirmCommit.click();
+  await waitPage(() => !!document.querySelector(".git-commit-dialog button.primary:not(:disabled)"));
+  assert.equal(await commitMessage.inputValue(), draft);
+  assert.equal(git(root, "rev-parse", "HEAD"), headBeforeCommit);
+  await commitMessage.press("Control+Enter");
+  await waitPage(() => !!window.__gitCommitCheck.release);
+  await page.keyboard.press("Escape");
+  await page.locator(".modal-backdrop").click({ position: { x: 2, y: 2 } });
+  assert.equal(await commitDialog.isVisible(), true);
+  assert.equal(await commitDialog.getByRole("button", { name: "Cancel", exact: true }).isEnabled(), false);
+  assert.equal(await commitMessage.isEnabled(), false);
+  await page.keyboard.press("Control+Enter");
+  assert.equal(await page.evaluate(() => window.__gitCommitCheck.calls), 2);
+  await page.evaluate(() => window.__gitCommitCheck.release());
   await waitPage(
     async (url) =>
       !(await import(url)).useApp.getState().gitBusy[
@@ -381,14 +602,21 @@ try {
       ],
     resources.store,
   );
-  await waitPage(
-    () => document.querySelector('[aria-label="Commit Message"]').value === "",
-  );
+  await commitDialog.waitFor({ state: "hidden" });
+  await page.evaluate(() => {
+    window.fetch = window.__gitCommitCheck.original;
+    delete window.__gitCommitCheck;
+  });
+  assert.equal(await page.evaluate(async ({ url, repository }) =>
+    (await import(url)).useApp.getState().gitMessages[repository],
+    { url: resources.store, repository: repository.path }), "");
+  assert.equal(await commitTrigger.isEnabled(), false);
+  await toolbar.screenshot({ path: path.join(run, "02-commit-disabled.png") });
   assert.match(git(root, "log", "-1", "--format=%B"), /Git UI commit/);
   assert.equal(git(root, "show", `HEAD:${file}`), "staged");
   assert.match(git(root, "diff", "--", file), /edited through shared model/);
   checks.push(
-    "List/tree, file staging, required message, multiline commit and index-only commit",
+    "List/tree, staging, commit dialog focus/drafts, empty-message guards, failure/retry, busy guards, multiline index-only commit and no-stage guard",
   );
   await section("Changes")
     .getByRole("option", { name: file, exact: true })
@@ -402,6 +630,7 @@ try {
   await waitPage(() =>
     document.querySelector(".git-empty")?.textContent?.includes("No changes."),
   );
+  assert.equal(await commitTrigger.isEnabled(), false);
   assert.equal(
     (await readFile(path.join(root, file), "utf8")).replace(/\r/g, ""),
     "staged\n",
@@ -442,6 +671,9 @@ try {
   checks.push(
     "Discard preserves index, create/switch/safe-delete branch and repository metadata",
   );
+  if (!source) {
+    checks.push(await verifyGitBranches({ page, root, branch, git, run, waitPage, resources, repository, invoke }));
+  }
   await page.getByRole("tab", { name: "Changes", exact: true }).click();
   const recycleFile = "litecode-git-recycle.txt";
   await writeFile(path.join(root, recycleFile), "safe to recycle\n");
@@ -485,22 +717,35 @@ try {
     nestedRoot,
   );
   const nestedValue = nestedRoot.replace(/\\/g, "/");
-  await page
-    .getByRole("combobox", { name: "Git Repository" })
-    .selectOption(nestedValue);
-  await section("Untracked Files")
+  await writeFile(path.join(root, "litecode-commit-draft.txt"), "draft fixture\n");
+  git(root, "add", "--", "litecode-commit-draft.txt");
+  git(nestedRoot, "add", "--", "nested.txt");
+  await action("git", "refreshGitPanel");
+  await commitTrigger.click();
+  await commitMessage.fill("Parent repository draft");
+  await action("store", "setApp", { gitRepository: nestedValue });
+  await commitDialog.waitFor({ state: "hidden" });
+  await commitTrigger.click();
+  assert.equal(await commitMessage.inputValue(), "");
+  await commitMessage.fill("Nested repository draft");
+  await commitDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await section("Staged Changes")
     .getByRole("option", { name: "nested.txt", exact: true })
     .click();
   await page.locator(".git-diff-host .monaco-diff-editor").waitFor();
   await page
     .getByRole("combobox", { name: "Git Repository" })
     .selectOption(repository.path);
+  await commitTrigger.click();
+  assert.equal(await commitMessage.inputValue(), "Parent repository draft");
   await action(
     "commands",
     "openFolder",
     false,
     path.join(root, "litecode-git-test"),
   );
+  await commitDialog.waitFor({ state: "hidden" });
+  checks.push("Conflicts block keyboard submission; repository/workspace changes close dialogs and isolate drafts");
   await page.getByRole("tab", { name: "Changes", exact: true }).click();
   const outside = "litecode-outside-workspace.txt";
   await writeFile(path.join(root, outside), "outside the opened subfolder\n");
@@ -646,6 +891,9 @@ try {
       "hotsou main opened read-only with actual GitHub remote, tracking metadata and successful Fetch",
     );
   }
+}
+try {
+  await verify();
   assert.deepEqual(errors, []);
   passed = true;
   await writeFile(

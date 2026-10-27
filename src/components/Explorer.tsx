@@ -48,7 +48,7 @@ import {
   type ExternalCopyPlan,
 } from "../explorer/externalDrop";
 import { explorerDragType } from "../explorer/explorerDrag";
-import { pasteInternalFiles } from "../explorer/documentFileOperations";
+import { deleteInternalFiles, pasteInternalFiles } from "../explorer/documentFileOperations";
 import { gitConflictDecoration } from "../utils/gitStatus";
 
 export { refreshTree } from "../explorer/workspaceTree";
@@ -323,13 +323,6 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         desktop
           ? call<FileClipboard>("read_file_clipboard")
           : Promise.resolve({ sequence: null, paths: [] }),
-      confirm: async (paths, directory, signal) =>
-        (await ask(
-          `Copy ${paths.length === 1 ? `'${basename(paths[0])}'` : `the following ${paths.length} files and folders`} into '${basename(directory)}'?`,
-          pathTitle(directory),
-          ["Copy", "Cancel"],
-          { items: paths.map(pathTitle), itemsLabel: "Items to copy", signal },
-        )) === "Copy",
       copyExternal: async (expectedSequence, expectedRoot, targetDirectory) => {
         moveExecuting.current = true;
         return call<CopyReport>("paste_file_clipboard", {
@@ -950,22 +943,11 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         return;
       }
       if (kind === "delete") {
-        if (
-          (await ask("Move to Recycle Bin?", paths.join("\n"), [
-            "Move to Recycle Bin",
-            "Cancel",
-          ])) !== "Move to Recycle Bin"
-        ) {
-          return;
-        }
         const filtered = paths.filter(
           (p) =>
             !paths.some((parent) => parent !== p && p.startsWith(parent.replace(/\/$/, "") + "/")),
         );
-        for (const path of filtered) {
-          await call("file_operation", { operation: { kind: "delete", path: join(root, path) } });
-          changedPaths.push(path);
-        }
+        await deleteInternalFiles(filtered.map(path => join(root, path)), path => changedPaths.push(relative(path, root)));
       }
       if (kind === "paste") {
         await paste(path);

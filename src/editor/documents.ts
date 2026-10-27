@@ -44,10 +44,18 @@ let checkpointQueue = Promise.resolve();
 let saveSequence = 0;
 let moveSequence = 0;
 let lastMoveFailure: { sequence: number; error: unknown } | undefined;
-let documentMove: { moves: FileMove[]; done: Promise<{ error?: unknown }>; drainThrough: number } | null = null;
+let documentMove: { paths: readonly string[]; done: Promise<{ error?: unknown }>; drainThrough: number } | null = null;
 let windowClose: Promise<void> | undefined;
 
 export async function beginDocumentMove(moves: FileMove[]) {
+  return beginDocumentChange(moves.flatMap(({ from, to }) => [from, to]), () => checkDocumentMoves(moves));
+}
+
+export async function beginDocumentDelete(paths: readonly string[]) {
+  return beginDocumentChange(paths);
+}
+
+async function beginDocumentChange(paths: readonly string[], validate = () => {}) {
   while (documentMove) {
     await documentMove.done;
   }
@@ -55,7 +63,7 @@ export async function beginDocumentMove(moves: FileMove[]) {
   let complete!: (result: { error?: unknown }) => void;
   const done = new Promise<{ error?: unknown }>((resolve) => { complete = resolve; });
   const draining = [...saveQueues.values()];
-  const move = documentMove = { moves, done, drainThrough: saveSequence };
+  const move = documentMove = { paths, done, drainThrough: saveSequence };
   const release = (error?: unknown) => {
     if (documentMove !== move) { return; }
     if (error !== undefined) { lastMoveFailure = { sequence, error }; }
@@ -68,7 +76,7 @@ export async function beginDocumentMove(moves: FileMove[]) {
     // file opens wait for the final paths; periodic backups stay deferred.
     await Promise.allSettled(draining);
     await checkpointQueue.catch(() => {});
-    checkDocumentMoves(moves);
+    validate();
     return release;
   } catch (error) {
     release(error);
@@ -78,14 +86,18 @@ export async function beginDocumentMove(moves: FileMove[]) {
 
 function isMoving(path: string) {
   return (
-    documentMove?.moves.some(
-      ({ from, to }) => [from, to].some(source => withinPath(path, source)),
-    ) ?? false
+    documentMove?.paths.some(source => withinPath(path, source)) ?? false
   );
 }
 function withinPath(path: string, parent: string) {
   const base = normalize(parent).replace(/\/+$/, "");
   return normalize(path) === base || normalize(path).startsWith(base + "/");
+}
+
+export function documentsAtPaths(paths: readonly string[]) {
+  const docs = Object.values(useApp.getState().docs);
+  const ids = new Set(docs.filter(doc => doc.path && paths.some(path => withinPath(doc.path!, path))).map(doc => doc.id));
+  return docs.filter(doc => ids.has(doc.id) || (doc.gitDiff?.sourceId && ids.has(doc.gitDiff.sourceId)));
 }
 
 function movedDocumentPath(path: string, moves: FileMove[]) {
@@ -921,6 +933,30 @@ export async function closeDocument(
   if (!otherView && !(await confirmDocumentClose(id))) {
     return false;
   }
+  removeDocumentFromGroup(id, groupId);
+  return true;
+}
+
+// Deletion has already been confirmed and committed on disk. Close every view
+// without a save prompt that could recreate the file or cancel the cleanup.
+export function closeDeletedDocuments(paths: readonly string[]) {
+  const docs = documentsAtPaths(paths).sort((a, b) => Number(!!b.gitDiff) - Number(!!a.gitDiff));
+  const ids = new Set(docs.map(doc => doc.id));
+  for (const doc of docs) {
+    for (const group of useApp.getState().groups) {
+      if (group.tabs.includes(doc.id)) { removeDocumentFromGroup(doc.id, group.id); }
+    }
+    if (useApp.getState().docs[doc.id]) { disposeDocument(doc.id); }
+  }
+  setApp(s => {
+    const keep = (location: Location) => !ids.has(location.id) && !(location.path && paths.some(path => withinPath(location.path!, path)));
+    return { history: s.history.filter(keep), historyIndex: s.history.slice(0, s.historyIndex + 1).filter(keep).length - 1 };
+  });
+  scheduleBackup();
+}
+
+function removeDocumentFromGroup(id: string, groupId: string) {
+  const s = useApp.getState();
   saveEditorViews();
   setApp((s) => {
     let groups = s.groups.map((g) => {
@@ -954,7 +990,6 @@ export async function closeDocument(
     requestAnimationFrame(() => focusDocument());
   }
   scheduleBackup();
-  return true;
 }
 
 export type CloseTabsMode = "others" | "right" | "saved" | "all";
@@ -1255,7 +1290,7 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
       }
       if (info.kind !== "text" && info.kind !== "svg") {
         if (current.dirty) {
-          patchDoc(doc.id, { conflict: true });
+          patchDoc(doc.id, { conflict: true, deleted: false });
           continue;
         }
         detachModel(doc.id);
@@ -1278,11 +1313,11 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
         continue;
       }
       if (disk.revision === latest.revision) {
-        patchDoc(doc.id, { kind: info.kind, fileInfo: info, deleted: false });
+        patchDoc(doc.id, { kind: info.kind, fileInfo: info, deleted: false, ...(latest.deleted ? { conflict: false } : {}) });
         continue;
       }
       if (latest.dirty) {
-        patchDoc(doc.id, { conflict: true });
+        patchDoc(doc.id, { conflict: true, deleted: false });
         continue;
       }
       const m = models.get(doc.id);
@@ -1311,7 +1346,7 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
         patchDoc(doc.id, { deleted: true, conflict: isTextDocument(latest) });
       } else if (["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
         if (latest.dirty) {
-          patchDoc(doc.id, { conflict: true });
+          patchDoc(doc.id, { conflict: true, deleted: false });
         } else {
           detachModel(doc.id);
           patchDoc(doc.id, { kind: "binary", imageSize: undefined });

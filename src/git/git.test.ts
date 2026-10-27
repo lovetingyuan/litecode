@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Doc } from "../types/types";
+import type { Doc, GitOperation } from "../types/types";
 
 vi.mock("../core/bridge", () => ({
   call: vi.fn(),
@@ -26,6 +26,7 @@ vi.mock("../explorer/workspaceTree", () => ({
 import { trustedCall } from "../core/workspaceTrust";
 import { ask } from "../components/dialog";
 import { patchDoc, save } from "../editor/documents";
+import { refreshGit } from "../explorer/workspaceGit";
 import { setApp, useApp } from "../store/store";
 import { runGitOperation } from "./git";
 
@@ -53,13 +54,106 @@ beforeEach(() => {
       root: "C:/repo",
       session: 1,
       branch: "main",
+      repositories: [{ path: "C:/repo", name: "repo", branch: "main", detached: false, operation: null, changes: [] }],
       git: [],
       warnings: [],
     },
   });
   vi.mocked(ask).mockResolvedValue("Cancel");
 });
+describe("Git remote operation feedback", () => {
+  it.each([
+    { request: { kind: "fetch", remote: "origin" }, busy: "fetch" },
+    { request: { kind: "pull", rebase: false }, busy: "pull" },
+    { request: { kind: "pull", rebase: true }, busy: "pullRebase" },
+    { request: { kind: "push" }, busy: "push" },
+  ] satisfies { request: GitOperation; busy: string }[])(
+    "keeps $busy busy through execution and refresh without changing the request",
+    async ({ request, busy }) => {
+      setApp({ docs: {}, gitBusy: { "C:/other": "push" } });
+      let finish!: () => void;
+      let finishRefresh!: () => void;
+      vi.mocked(trustedCall).mockImplementation(
+        () => new Promise((resolve) => { finish = () => resolve(""); }),
+      );
+      vi.mocked(refreshGit).mockImplementation(
+        () => new Promise((resolve) => { finishRefresh = () => resolve(); }),
+      );
+      const pending = runGitOperation("C:/repo", request);
+      expect(useApp.getState().gitBusy).toEqual({
+        "C:/repo": busy,
+        "C:/other": "push",
+      });
+      expect(trustedCall).toHaveBeenCalledWith("git_operate", expect.objectContaining({ request }));
+      expect(await runGitOperation("C:/repo", request)).toBe(false);
+      expect(trustedCall).toHaveBeenCalledTimes(1);
+      finish();
+      await vi.waitFor(() => expect(refreshGit).toHaveBeenCalled());
+      expect(useApp.getState().gitBusy["C:/repo"]).toBe(busy);
+      finishRefresh();
+      expect(await pending).toBe(true);
+      expect(useApp.getState().gitBusy).toEqual({ "C:/other": "push" });
+      expect(useApp.getState().notice).toBeNull();
+    },
+  );
+  it("notifies once on failure, clears busy state and permits retry", async () => {
+    setApp({ docs: {} });
+    const notices: string[] = [];
+    const unsubscribe = useApp.subscribe((state, previous) => {
+      if (state.notice && state.notice !== previous.notice) {
+        notices.push(state.notice);
+      }
+    });
+    try {
+      vi.mocked(trustedCall).mockRejectedValueOnce(new Error("Fetch failed: offline"));
+      const request = { kind: "fetch", remote: "origin" } as const;
+      expect(await runGitOperation("C:/repo", request)).toBe(false);
+      expect(notices).toEqual(["Fetch failed: offline"]);
+      expect(useApp.getState().gitBusy).toEqual({});
+      vi.mocked(trustedCall).mockResolvedValueOnce("");
+      expect(await runGitOperation("C:/repo", request)).toBe(true);
+      expect(trustedCall).toHaveBeenCalledTimes(2);
+      expect(useApp.getState().gitBusy).toEqual({});
+      expect(notices).toEqual(["Fetch failed: offline"]);
+    } finally {
+      unsubscribe();
+    }
+  });
+});
 describe("Git operation protections", () => {
+  it("requires confirmation before deleting and permits cancellation", async () => {
+    setApp({ docs: {} });
+    expect(await runGitOperation("C:/repo", { kind: "deleteBranch", branch: "other" })).toBe(false);
+    expect(ask).toHaveBeenCalledWith("Delete branch?", expect.stringContaining("other"), ["Delete Branch", "Cancel"]);
+    expect(trustedCall).not.toHaveBeenCalled();
+    vi.mocked(ask).mockResolvedValue("Delete Branch");
+    expect(await runGitOperation("C:/repo", { kind: "deleteBranch", branch: "other" })).toBe(true);
+    expect(trustedCall).toHaveBeenCalledWith("git_operate", expect.objectContaining({
+      request: { kind: "deleteBranch", branch: "other" },
+    }));
+  });
+  it.each(["repository", "session", "operation"])(
+    "stops deletion if %s changes during confirmation", async (change) => {
+      setApp({ docs: {} });
+      vi.mocked(ask).mockImplementation(async () => {
+        const state = useApp.getState();
+        if (change === "repository") {setApp({
+          gitRepository: "C:/other",
+          gitState: { ...state.gitState, repositories: [
+            ...state.gitState.repositories!,
+            { path: "C:/other", name: "other", branch: "main", detached: false, operation: null, changes: [] },
+          ] },
+        });}
+        if (change === "session") {setApp({ gitState: { ...state.gitState, session: 2 } });}
+        if (change === "operation") {setApp({ gitState: {
+          ...state.gitState, repositories: [{ ...state.gitState.repositories![0], operation: "merge" }],
+        } });}
+        return "Delete Branch";
+      });
+      expect(await runGitOperation("C:/repo", { kind: "deleteBranch", branch: "other" })).toBe(false);
+      expect(trustedCall).not.toHaveBeenCalled();
+    },
+  );
   it("does not stage disk bytes after the user cancels the save prompt", async () => {
     expect(
       await runGitOperation("C:/repo", { kind: "stage", paths: ["file.txt"] }),

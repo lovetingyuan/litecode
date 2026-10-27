@@ -283,10 +283,10 @@ export function EditorGroup({ group }: { group: Group }) {
               <EditorTabMenu key={id} group={group} documentId={id}>
                 <div
                   role="tab"
-                  title={tab.path ? pathTitle(tab.path) : tab.name}
+                  title={`${tab.path ? pathTitle(tab.path) : tab.name}${tab.deleted ? "\n文件已从磁盘删除" : ""}`}
                   tabIndex={group.active === id ? 0 : -1}
                   aria-selected={group.active === id}
-                  aria-label={`${tab.name}${tab.dirty ? ", unsaved" : ""}${isGitConflicted(tab.path, root, treeRoot, git) ? ", Git: Unmerged changes" : ""}`}
+                  aria-label={`${tab.name}${tab.dirty ? ", unsaved" : ""}${tab.deleted ? ", 文件已从磁盘删除" : ""}${isGitConflicted(tab.path, root, treeRoot, git) ? ", Git: Unmerged changes" : ""}`}
                   className={`editor-tab ${group.active === id ? "active" : ""} ${group.preview === id ? "preview" : ""} ${sticky ? "pinned" : ""}`}
                   draggable
                   onDragStart={(e) =>
@@ -335,11 +335,11 @@ export function EditorGroup({ group }: { group: Group }) {
                 >
                   <FileIcon language={tab.language} />
                   <span
-                    className={`editor-tab-label${isGitIgnored(tab.path, root, treeRoot, git) ? " ignored" : ""}`}
+                    className={`editor-tab-label${isGitIgnored(tab.path, root, treeRoot, git) ? " ignored" : ""}${tab.deleted ? " deleted-file-name" : ""}`}
                   >
                     {tab.name}
                   </span>
-                  {tab.conflict && <Icon name="warning" />}
+                  {tab.conflict && !tab.deleted && <Icon name="warning" />}
                   {isGitConflicted(tab.path, root, treeRoot, git) && <span className="git-conflict-badge" title="Git: Unmerged changes">!</span>}
                   <button
                     className={`tab-close ${tab.dirty ? "dirty" : ""} ${sticky ? "tab-unpin" : ""}`}
@@ -403,13 +403,11 @@ export function EditorGroup({ group }: { group: Group }) {
         </div>
       </div>
       {doc && !doc.gitDiff && <EditorBreadcrumbs doc={doc} group={group} />}
-      {doc?.conflict && models.has(doc.id) && (
+      {doc?.conflict && !doc.deleted && models.has(doc.id) && (
         <div className="conflict-banner">
           <Icon name="warning" />
           <span>
-            {doc.deleted
-              ? "This file was deleted from disk. Your buffer is preserved."
-              : "The file changed on disk. Your edits are preserved."}
+            The file changed on disk. Your edits are preserved.
           </span>
           <button onClick={() => void compareDisk(doc.id).catch((e) => notify(errorMessage(e)))}>
             Compare

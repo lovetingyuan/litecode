@@ -7,12 +7,21 @@ import {
 } from "react";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import { themeToTreeStyles, type GitStatusEntry } from "@pierre/trees";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useApp, setApp, notify } from "../store/store";
 import { basename, scheduleBackup } from "../editor/documents";
 import { errorMessage } from "../core/bridge";
 import { openFolder } from "../core/commands";
-import { input } from "./dialog";
 import { Icon, IconButton, FileIcon } from "./ui";
+import { GitCommitDialog } from "./GitCommitDialog";
+import { remoteWebUrl } from "../git/remotes";
+import {
+  branchDifference,
+  branchSwitchTarget,
+  copyBranchName,
+  createBranch,
+  switchBranch,
+} from "../git/branches";
 import {
   changePaths,
   openGitDiff,
@@ -45,6 +54,37 @@ const groups: [ChangeGroup, string][] = [
 ];
 const report = (error: unknown) => notify(errorMessage(error));
 
+function GitRemoteAddress({ remote, kind, address }: {
+  remote: string;
+  kind: "Fetch" | "Push";
+  address: string | null;
+}) {
+  if (!address) {
+    return null;
+  }
+  const url = remoteWebUrl(address);
+  return (
+    <div className="git-remote-address">
+      <strong title={remote}>{remote}</strong>
+      <code title={address} aria-label={`${kind} URL`}>{address}</code>
+      <button
+        type="button"
+        className="btn btn-xs"
+        aria-label={`Open ${remote} ${kind.toLowerCase()} URL`}
+        disabled={!url}
+        title={url ?? "No supported web address for this remote URL."}
+        onClick={() => {
+          if (url) {
+            void openUrl(url).catch(report);
+          }
+        }}
+      >
+        Open
+      </button>
+    </div>
+  );
+}
+
 export function GitView() {
   const root = useApp((s) => s.root);
   const git = useApp((s) => s.gitState);
@@ -57,12 +97,15 @@ export function GitView() {
   const busy = useApp((s) =>
     repository ? s.gitBusy[repository.path] : undefined,
   );
-  const message = useApp((s) =>
-    repository ? (s.gitMessages[repository.path] ?? "") : "",
-  );
-  const [info, setInfo] = useState<GitInfo | null>(null);
-  const [infoError, setInfoError] = useState("");
+  const [details, setDetails] = useState<{
+    path: string; root: string | null; snapshot: typeof git; info: GitInfo;
+  } | null>(null);
+  const info = details && details.path === repositoryPath && details.root === root && details.snapshot.session === git.session
+    ? details.info : null;
+  const currentInfo = details?.snapshot === git && !busy ? info : null;
   const [refreshing, setRefreshing] = useState(false);
+  const [branchPending, setBranchPending] = useState(false);
+  const branchWorking = useRef(false);
   const paths = repository?.changes;
   const grouped = useMemo(() => groupChanges(paths ?? []), [paths]);
   useEffect(() => {
@@ -71,27 +114,25 @@ export function GitView() {
     }
   }, [repositoryPath, selected]);
   useEffect(() => {
-    if (!active || !repositoryPath) {
+    if (!active || !repositoryPath || busy) {
       return;
     }
     let cancelled = false;
-    setInfo(null);
-    setInfoError("");
     void readGitInfo(repositoryPath)
       .then((result) => {
         if (!cancelled) {
-          setInfo(result);
+          setDetails({ path: repositoryPath, root, snapshot: git, info: result });
         }
       })
       .catch((e) => {
         if (!cancelled) {
-          setInfoError(errorMessage(e));
+          report(e);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [active, repositoryPath, git, busy]);
+  }, [active, repositoryPath, root, git, busy]);
 
   async function refresh() {
     setRefreshing(true);
@@ -101,16 +142,6 @@ export function GitView() {
       report(error);
     } finally {
       setRefreshing(false);
-    }
-  }
-  async function commit() {
-    if (!repository || !message.trim() || !grouped.staged.length || busy) {
-      return;
-    }
-    if (await runGitOperation(repository.path, { kind: "commit", message })) {
-      setApp((s) => ({
-        gitMessages: { ...s.gitMessages, [repository.path]: "" },
-      }));
     }
   }
   async function choose(
@@ -150,7 +181,7 @@ export function GitView() {
     });
   }
   async function sync(kind: "fetch" | "pull" | "pullRebase" | "push") {
-    if (!repository || !info || busy) {
+    if (!repository || !info || !currentInfo || busy) {
       return;
     }
     let request: GitOperation;
@@ -199,26 +230,30 @@ export function GitView() {
     }
     await runGitOperation(repository.path, request);
   }
-  async function createBranch(start?: string) {
-    if (!repository) {
+  async function branchAction(action: () => Promise<unknown>) {
+    if (branchWorking.current) {
       return;
     }
-    const name = await input(
-      "New branch name",
-      start?.replace(/^refs\/remotes\/[^/]+\//, "") ?? "",
-    );
-    if (name) {
-      await runGitOperation(repository.path, {
-        kind: "createBranch",
-        name,
-        ...(start ? { start } : {}),
-      });
+    branchWorking.current = true;
+    setBranchPending(true);
+    try {
+      await action();
+    } catch (error) {
+      report(error);
+    } finally {
+      branchWorking.current = false;
+      setBranchPending(false);
     }
   }
+  const branchDisabled = !!busy || branchPending || !currentInfo || !!info?.operation || !!repository?.operation;
+  const chooseBranch = (branches: GitInfo["branches"]) => choose(
+    "Select Local Tracking Branch",
+    branches.map((b) => ({ id: b.name, label: b.name, description: b.upstream ?? undefined })),
+  );
   return (
     <section className="view search-view git-view" aria-label="Source Control">
       <div className="view-title">
-        <span>SOURCE CONTROL</span>
+        <span>Source Control</span>
         <div className="actions">
           <IconButton
             icon="refresh"
@@ -260,23 +295,6 @@ export function GitView() {
         </div>
       ) : (
         <>
-          <select
-            className="git-repository-select"
-            aria-label="Git Repository"
-            value={repository.path}
-            title={repository.path}
-            onChange={(e) => {
-              setInfo(null);
-              setApp({ gitRepository: e.target.value });
-              scheduleBackup();
-            }}
-          >
-            {(git.repositories ?? []).map((r) => (
-              <option key={r.path} value={r.path}>
-                {r.name} — {r.path}
-              </option>
-            ))}
-          </select>
           <div
             className="tabs tabs-border git-tabs"
             role="tablist"
@@ -320,65 +338,67 @@ export function GitView() {
               </button>
             ))}
           </div>
-          <div className="git-branch-heading" title={repository.path}>
+          <div className="git-branch-heading" title={repository.branch ?? repository.path}>
             <Icon name="git-branch" />
             <strong>
               {repository.branch ?? "No commits yet"}
               {repository.detached ? " (detached)" : ""}
             </strong>
-            <span>
-              {info?.ahead !== null && info?.ahead !== undefined
-                ? `↑${info.ahead} ↓${info.behind}`
-                : ""}
-            </span>
+            <span>{branchDifference(currentInfo, repository)}</span>
           </div>
           <div className="git-sync-actions" aria-label="Git remote actions">
             <button
               className="btn btn-xs"
-              disabled={!!busy || !info}
+              aria-label="Fetch"
+              aria-busy={busy === "fetch"}
+              disabled={!!busy || !currentInfo}
               onClick={() => void sync("fetch").catch(report)}
             >
-              Fetch
+              <span className="git-sync-label">Fetch</span>
+              {busy === "fetch" && <span className="spinner" aria-hidden="true" />}
             </button>
             <button
               className="btn btn-xs"
+              aria-label="Pull"
+              aria-busy={busy === "pull"}
               disabled={
-                !!busy || !info || repository.detached || !!repository.operation
+                !!busy || !currentInfo || repository.detached || !!repository.operation
               }
               onClick={() => void sync("pull").catch(report)}
             >
-              Pull
+              <span className="git-sync-label">Pull</span>
+              {busy === "pull" && <span className="spinner" aria-hidden="true" />}
             </button>
             <button
               className="btn btn-xs"
+              aria-label="Pull (Rebase)"
+              aria-busy={busy === "pullRebase"}
               disabled={
-                !!busy || !info || repository.detached || !!repository.operation
+                !!busy || !currentInfo || repository.detached || !!repository.operation
               }
               onClick={() => void sync("pullRebase").catch(report)}
             >
-              Pull (Rebase)
+              <span className="git-sync-label">Pull (Rebase)</span>
+              {busy === "pullRebase" && <span className="spinner" aria-hidden="true" />}
             </button>
             <button
               className="btn btn-xs"
+              aria-label="Push"
+              aria-busy={busy === "push"}
               disabled={
-                !!busy || !info || repository.detached || !!repository.operation
+                !!busy || !currentInfo || repository.detached || !!repository.operation
               }
               onClick={() => void sync("push").catch(report)}
             >
-              Push
+              <span className="git-sync-label">Push</span>
+              {busy === "push" && <span className="spinner" aria-hidden="true" />}
             </button>
+            <GitCommitDialog
+              key={`${root}:${repository.path}`}
+              repository={repository}
+              workspace={root}
+            />
           </div>
-          {busy && (
-            <div className="git-operation-status" role="status">
-              <span className="spinner" />
-              Git: {busy}…
-            </div>
-          )}
-          {infoError && (
-            <p className="inline-error" role="alert">
-              {infoError}
-            </p>
-          )}
           {repository.operation && (
             <div className="git-operation-banner">
               <span>{repository.operation} in progress</span>
@@ -417,42 +437,6 @@ export function GitView() {
               aria-labelledby="git-tab-changes"
               className="git-panel-content"
             >
-              <div className="git-commit-form">
-                <textarea
-                  aria-label="Commit Message"
-                  placeholder={`Message (Ctrl+Enter to commit${repository.branch ? ` on ${repository.branch}` : ""})`}
-                  value={message}
-                  disabled={!!busy}
-                  rows={3}
-                  onChange={(e) =>
-                    setApp((s) => ({
-                      gitMessages: {
-                        ...s.gitMessages,
-                        [repository.path]: e.target.value,
-                      },
-                    }))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.ctrlKey && e.key === "Enter") {
-                      e.preventDefault();
-                      void commit().catch(report);
-                    }
-                  }}
-                />
-                <button
-                  className="btn btn-sm btn-primary"
-                  disabled={
-                    !!busy ||
-                    !message.trim() ||
-                    !grouped.staged.length ||
-                    !!grouped.conflicts.length
-                  }
-                  onClick={() => void commit().catch(report)}
-                >
-                  <Icon name="check" />
-                  Commit
-                </button>
-              </div>
               {groups.map(
                 ([kind, title]) =>
                   grouped[kind].length > 0 && (
@@ -481,45 +465,16 @@ export function GitView() {
               aria-labelledby="git-tab-info"
               className="git-panel-content git-info"
             >
-              <div className="git-info-field">
-                <span>Repository</span>
-                <code>{repository.path}</code>
-              </div>
-              <div className="git-info-field">
-                <span>Current branch</span>
-                <code>
-                  {info?.branch ?? repository.branch ?? "Unborn HEAD"}
-                </code>
-              </div>
-              <div className="git-info-field">
-                <span>Upstream</span>
-                <code>{info?.upstream ?? "Not set"}</code>
-              </div>
-              <div className="git-info-field">
-                <span>Remote difference</span>
-                <span>
-                  {info?.ahead === null || !info
-                    ? "Unavailable without an upstream"
-                    : `${info.ahead} ahead · ${info.behind} behind`}
-                </span>
-              </div>
-              <div className="git-info-field">
-                <span>Last fetch</span>
-                <span>
-                  {info?.lastFetch
-                    ? new Date(info.lastFetch * 1000).toLocaleString()
-                    : "Not fetched"}
-                </span>
-              </div>
               <h3>Remotes</h3>
               {info?.remotes.length === 0 && (
                 <p className="muted">No remotes configured.</p>
               )}
               {info?.remotes.map((r) => (
                 <div key={r.name} className="git-info-field">
-                  <strong>{r.name}</strong>
-                  <code title="Fetch URL">{r.fetch}</code>
-                  {r.push !== r.fetch && <code title="Push URL">{r.push}</code>}
+                  <GitRemoteAddress remote={r.name} kind="Fetch" address={r.fetch} />
+                  {r.push !== r.fetch && (
+                    <GitRemoteAddress remote={r.name} kind="Push" address={r.push} />
+                  )}
                 </div>
               ))}
               <div className="git-section-heading">
@@ -527,30 +482,21 @@ export function GitView() {
                 <IconButton
                   icon="add"
                   label="Create Branch"
-                  disabled={!!busy || !!repository.operation}
-                  onClick={() => void createBranch().catch(report)}
+                  disabled={branchDisabled}
+                  onClick={() => void branchAction(() => createBranch(repository.path))}
                 />
               </div>
-              {info?.branches.map((b) => (
-                <div key={`${b.remote}:${b.name}`} className="git-branch-row">
+              {!info && <p className="muted" role="status">Loading branches…</p>}
+              {info?.branches.map((b) => {
+                const target = branchSwitchTarget(b, info.branches);
+                const switchDisabled = branchDisabled || target.kind === "blocked";
+                const switchToBranch = () => branchAction(() => switchBranch(repository.path, b, chooseBranch));
+                return <div key={`${b.remote}:${b.name}`} className="git-branch-row">
                   <button
-                    title={b.upstream ?? b.name}
-                    disabled={
-                      !!busy ||
-                      !!repository.operation ||
-                      b.current ||
-                      b.worktree
-                    }
-                    onClick={() =>
-                      void (
-                        b.remote
-                          ? createBranch(`refs/remotes/${b.name}`)
-                          : runGitOperation(repository.path, {
-                              kind: "switch",
-                              branch: b.name,
-                            })
-                      ).catch(report)
-                    }
+                    title={b.name}
+                    aria-label={b.name}
+                    disabled={switchDisabled}
+                    onClick={() => void switchToBranch()}
                   >
                     <Icon
                       name={
@@ -560,26 +506,34 @@ export function GitView() {
                     <span>{b.name}</span>
                     {b.worktree && <small>worktree</small>}
                   </button>
-                  {!b.remote && (
+                  <div className="git-branch-actions">
                     <IconButton
-                      icon="trash"
-                      label={`Delete Branch ${b.name}`}
-                      disabled={
-                        !!busy ||
-                        !!repository.operation ||
-                        b.current ||
-                        b.worktree
-                      }
-                      onClick={() =>
-                        void runGitOperation(repository.path, {
-                          kind: "deleteBranch",
-                          branch: b.name,
-                        }).catch(report)
-                      }
+                      icon="add"
+                      label={`Create Branch from ${b.name}`}
+                      disabled={branchDisabled}
+                      onClick={() => void branchAction(() => createBranch(repository.path, b))}
                     />
-                  )}
-                </div>
-              ))}
+                    <IconButton
+                      icon="copy"
+                      label={`Copy Branch Name ${b.name}`}
+                      onClick={() => void copyBranchName(b).catch(report)}
+                    />
+                    {!b.remote && (
+                      <IconButton
+                        icon="trash"
+                        label={`Delete Branch ${b.name}`}
+                        disabled={branchDisabled || b.current || b.worktree}
+                        onClick={() =>
+                          void branchAction(() => runGitOperation(repository.path, {
+                            kind: "deleteBranch",
+                            branch: b.name,
+                          }))
+                        }
+                      />
+                    )}
+                  </div>
+                </div>;
+              })}
             </div>
           )}
         </>
