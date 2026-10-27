@@ -484,6 +484,7 @@ export function GitView() {
                   <button
                     title={b.name}
                     aria-label={b.name}
+                    aria-current={b.current ? "true" : undefined}
                     disabled={switchDisabled}
                     onClick={() => void switchToBranch()}
                   >
@@ -492,7 +493,7 @@ export function GitView() {
                         b.remote ? "cloud" : b.current ? "check" : "git-branch"
                       }
                     />
-                    <span className={b.current ? "text-primary font-bold" : undefined}>{b.name}</span>
+                    <span>{b.name}</span>
                     {b.worktree && <small>worktree</small>}
                   </button>
                   <div className="git-branch-actions">

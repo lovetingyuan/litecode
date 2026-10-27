@@ -393,6 +393,13 @@
 .git-branch-row button:disabled {
   opacity: 0.65;
 }
+.git-branch-row > button[aria-current="true"] {
+  opacity: 1;
+}
+.git-branch-row > button[aria-current="true"] > span:nth-child(2) {
+  color: var(--color-primary);
+  font-weight: 700;
+}
 .git-tree-group {
   flex: 1;
   display: flex;
