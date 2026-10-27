@@ -11,6 +11,12 @@ The Changes and Repository tabs share the normal sidebar and editor groups.
 - Changes are grouped into merge conflicts, staged changes, working tree changes,
   and untracked files. Flat and path-tree layouts are virtualized. Files can
   appear in both staged and working tree groups.
+- Drag the horizontal dividers between groups to adjust their heights. Each
+  group scrolls independently in both flat and tree layouts. Focus a divider
+  and use Up/Down for 10px adjustments, or double-click to balance its adjacent
+  groups. Collapsing a group frees its space; expanding restores its proportion.
+  Initial heights follow file counts. Manual proportions last until the panel
+  is reopened or the repository changes; they are not saved in the session.
 - Click to preview a comparison; double-click to keep the tab open. Comparisons
   support normal tab pinning, moving, splitting and session restoration.
 - Staged comparisons show HEAD versus the index and are read-only. Working tree
@@ -106,6 +112,8 @@ at 240px, with ellipses and full-text tooltips. Evidence is in
 
 Run frontend tests and checks with `npm test`, `npm run lint`, and `npm run build`.
 Run native tests with `cargo test --lib` in `src-tauri`.
+With Vite running, `node tools/verify-git-panes.mjs` checks group dividers,
+collapse/expansion, independent scrolling, virtualization and transient sizing.
 
 With the debug executable built and Vite running on port 1420:
 

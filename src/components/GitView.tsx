@@ -1,10 +1,13 @@
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
+import { Allotment, type AllotmentHandle } from "allotment";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import { themeToTreeStyles, type GitStatusEntry } from "@pierre/trees";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -14,6 +17,8 @@ import { errorMessage } from "../core/bridge";
 import { openFolder } from "../core/commands";
 import { Icon, IconButton, FileIcon } from "./ui";
 import { GitCommitDialog } from "./GitCommitDialog";
+import { PaneLayout } from "./EditorGrid";
+import { addPaneWeights, changePaneSizes, resizedPaneWeights, type PaneWeights } from "../git/panes";
 import { remoteWebUrl } from "../git/remotes";
 import {
   branchDifference,
@@ -106,8 +111,6 @@ export function GitView() {
   const [refreshing, setRefreshing] = useState(false);
   const [branchPending, setBranchPending] = useState(false);
   const branchWorking = useRef(false);
-  const paths = repository?.changes;
-  const grouped = useMemo(() => groupChanges(paths ?? []), [paths]);
   useEffect(() => {
     if (repositoryPath && selected !== repositoryPath) {
       setApp({ gitRepository: repositoryPath });
@@ -437,26 +440,12 @@ export function GitView() {
               aria-labelledby="git-tab-changes"
               className="git-panel-content"
             >
-              {groups.map(
-                ([kind, title]) =>
-                  grouped[kind].length > 0 && (
-                    <GitChangeSection
-                      key={`${repository.path}:${kind}:${layout}`}
-                      repository={repository}
-                      kind={kind}
-                      title={title}
-                      changes={grouped[kind]}
-                      tree={layout === "tree"}
-                      busy={!!busy}
-                    />
-                  ),
-              )}
-              {repository.changes.length === 0 && (
-                <div className="git-empty">
-                  <Icon name="check" />
-                  <p>No changes.</p>
-                </div>
-              )}
+              <GitChangePanes
+                key={repository.path}
+                repository={repository}
+                tree={layout === "tree"}
+                busy={!!busy}
+              />
             </div>
           ) : (
             <div
@@ -550,6 +539,77 @@ export function GitView() {
   );
 }
 
+function GitChangePanes({ repository, tree, busy }: {
+  repository: GitRepository;
+  tree: boolean;
+  busy: boolean;
+}) {
+  const grouped = useMemo(() => groupChanges(repository.changes), [repository.changes]);
+  const host = useRef<HTMLDivElement>(null);
+  const layout = useRef<AllotmentHandle>(null);
+  const weights = useRef<PaneWeights>({});
+  const sizes = useRef<number[]>([]);
+  const [height, setHeight] = useState(0);
+  const [collapsed, setCollapsed] = useState<Partial<Record<ChangeGroup, boolean>>>({});
+  const [actions, setActions] = useState<Partial<Record<ChangeGroup, boolean>>>({});
+  const onActionsChange = useCallback((kind: ChangeGroup, visible: boolean) => {
+    setActions((previous) => previous[kind] === visible ? previous : { ...previous, [kind]: visible });
+  }, []);
+  const panes = useMemo(() => groups.filter(([kind]) => grouped[kind].length > 0).map(([kind, title]) => ({
+    kind,
+    title,
+    count: grouped[kind].length,
+    expanded: !collapsed[kind],
+    minimum: collapsed[kind] ? 28 : tree && actions[kind] ? 82 : 54,
+  })), [grouped, collapsed, tree, actions]);
+  const minimum = panes.reduce((sum, pane) => sum + pane.minimum, 0);
+  useLayoutEffect(() => {
+    const element = host.current;
+    if (!element) {
+      return;
+    }
+    const observer = new ResizeObserver(() => setHeight(element.clientHeight));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    weights.current = addPaneWeights(panes, weights.current);
+    layout.current?.resize(changePaneSizes(panes, weights.current, height));
+  }, [panes, height]);
+  return (
+    <div ref={host} className="git-change-panes" style={{ "--git-panes-min-height": `${minimum}px` } as CSSProperties}>
+      {panes.length ? (
+        <PaneLayout
+          ref={layout}
+          vertical
+          label="Git change group height"
+          defaultSizes={panes.map((pane) => pane.count)}
+          onChange={(next) => { sizes.current = next; }}
+          onCommit={() => { weights.current = resizedPaneWeights(panes, weights.current, sizes.current); }}
+        >
+          {panes.map((pane) => (
+            <Allotment.Pane key={pane.kind} minSize={pane.minimum} maxSize={pane.expanded ? Infinity : 28}>
+              <GitChangeSection
+                repository={repository}
+                kind={pane.kind}
+                title={pane.title}
+                changes={grouped[pane.kind]}
+                tree={tree}
+                busy={busy}
+                expanded={pane.expanded}
+                onToggle={() => setCollapsed((previous) => ({ ...previous, [pane.kind]: !previous[pane.kind] }))}
+                onActionsChange={onActionsChange}
+              />
+            </Allotment.Pane>
+          ))}
+        </PaneLayout>
+      ) : (
+        <div className="git-empty"><Icon name="check" /><p>No changes.</p></div>
+      )}
+    </div>
+  );
+}
+
 function GitChangeSection({
   repository,
   kind,
@@ -557,6 +617,9 @@ function GitChangeSection({
   changes,
   tree,
   busy,
+  expanded,
+  onToggle,
+  onActionsChange,
 }: {
   repository: GitRepository;
   kind: ChangeGroup;
@@ -564,8 +627,10 @@ function GitChangeSection({
   changes: GitChange[];
   tree: boolean;
   busy: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  onActionsChange: (kind: ChangeGroup, visible: boolean) => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
   const staged = kind === "staged";
   const run = (action: "stage" | "unstage" | "discard", files = changes) =>
     runGitOperation(
@@ -583,7 +648,7 @@ function GitChangeSection({
         <button
           className="git-section-toggle"
           aria-expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
+          onClick={onToggle}
         >
           <Icon name={expanded ? "chevron-down" : "chevron-right"} />
           <span>{title}</span>
@@ -614,6 +679,7 @@ function GitChangeSection({
             changes={changes}
             busy={busy}
             run={run}
+            onActionsChange={onActionsChange}
           />
         ) : (
           <GitChangesList
@@ -704,7 +770,6 @@ function GitChangesList(props: ChangesProps) {
       aria-label={`${kind} files`}
       tabIndex={0}
       aria-activedescendant={`git-${kind}-row-${selected}`}
-      style={{ height: Math.min(312, changes.length * 26) }}
       onScroll={(e) => setScroll(e.currentTarget.scrollTop)}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) {
@@ -801,8 +866,8 @@ function GitChangesList(props: ChangesProps) {
   );
 }
 
-function GitChangesTree(props: ChangesProps) {
-  const { changes, repository, kind, run, busy } = props;
+function GitChangesTree(props: ChangesProps & { onActionsChange: (kind: ChangeGroup, visible: boolean) => void }) {
+  const { changes, repository, kind, run, busy, onActionsChange } = props;
   const [selected, setSelected] = useState<string>("");
   const changeIndex = useMemo(
     () => new Map(changes.map((c) => [c.path, c])),
@@ -810,19 +875,6 @@ function GitChangesTree(props: ChangesProps) {
   );
   const latestIndex = useRef(changeIndex);
   latestIndex.current = changeIndex;
-  const treeRows = useMemo(() => {
-    const directories = new Set<string>();
-    for (const change of changes) {
-      for (
-        let index = change.path.indexOf("/");
-        index >= 0;
-        index = change.path.indexOf("/", index + 1)
-      ) {
-        directories.add(change.path.slice(0, index));
-      }
-    }
-    return changes.length + directories.size;
-  }, [changes]);
   const { model } = useFileTree({
     paths: changes.map((c) => c.path),
     initialExpansion: "open",
@@ -854,6 +906,11 @@ function GitChangesTree(props: ChangesProps) {
     () => filesUnder(changes, selected),
     [changes, selected],
   );
+  const hasActions = selectedFiles.length > 0;
+  useLayoutEffect(() => {
+    onActionsChange(kind, hasActions);
+    return () => onActionsChange(kind, false);
+  }, [kind, hasActions, onActionsChange]);
   function open(event: Event, pinned = false) {
     const row = event
       .composedPath()
@@ -878,7 +935,6 @@ function GitChangesTree(props: ChangesProps) {
         aria-label={`${kind} tree`}
         style={
           {
-            height: Math.min(312, Math.max(26, treeRows * 26)),
             ...themeToTreeStyles({
               colors: {
                 "sideBar.background": "#181818",

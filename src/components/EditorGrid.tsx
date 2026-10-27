@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { Allotment, LayoutPriority, type AllotmentHandle, type AllotmentProps } from "allotment";
 import "allotment/dist/style.css";
 import { EditorGroup } from "./EditorGroup";
@@ -13,16 +13,21 @@ import { scheduleBackup } from "../editor/documents";
 
 // Allotment owns dragging. Add keyboard access and balance only the clicked pair.
 export function PaneLayout({
+  ref,
   children,
   label,
   onChange,
   onCommit = scheduleBackup,
   ...props
-}: AllotmentProps & { label: string; onCommit?: () => void }) {
+}: AllotmentProps & { label: string; onCommit?: () => void; ref?: Ref<AllotmentHandle> }) {
   const host = useRef<HTMLDivElement>(null);
   const handle = useRef<AllotmentHandle>(null);
   const sizes = useRef<number[]>(props.defaultSizes ?? []);
   const mounted = useRef(false);
+  useImperativeHandle(ref, () => ({
+    resize: (next) => handle.current?.resize(next),
+    reset: () => handle.current?.reset(),
+  }), []);
   function sashes() {
     return Array.from(host.current?.querySelectorAll<HTMLElement>(".sash") ?? []).filter(
       (el) => el.closest(".pane-layout") === host.current,
