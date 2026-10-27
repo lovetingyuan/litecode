@@ -492,7 +492,7 @@ export function GitView() {
                         b.remote ? "cloud" : b.current ? "check" : "git-branch"
                       }
                     />
-                    <span>{b.name}</span>
+                    <span className={b.current ? "text-primary font-bold" : undefined}>{b.name}</span>
                     {b.worktree && <small>worktree</small>}
                   </button>
                   <div className="git-branch-actions">

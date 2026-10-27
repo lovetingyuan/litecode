@@ -18,6 +18,7 @@ import {
   normalizeGroup,
   models,
   normalize,
+  scheduleBackup,
 } from "../editor/documents";
 import { commands, execute, installKeys, openFolder } from "../core/commands";
 import { Explorer, refreshTree } from "./Explorer";
@@ -471,10 +472,19 @@ export default function App() {
             </Popover.Root>
           )}
           {s.gitState.branch && (
-            <span className="status-item" title="Current Git branch">
+            <button
+              type="button"
+              className="status-item"
+              title="Current Git branch"
+              aria-label={`Show Git Repository: ${s.gitState.branch}`}
+              onClick={() => {
+                setApp({ view: "editor", sidebar: "git", gitTab: "info" });
+                scheduleBackup();
+              }}
+            >
               <Icon name="source-control" />
               {s.gitState.branch}
-            </span>
+            </button>
           )}
           <button
             title="Show Problems"
