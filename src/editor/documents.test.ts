@@ -41,6 +41,8 @@ import {
   attachDocument,
   autoSave,
   editors,
+  diffEditors,
+  resetEditors,
   models,
   normalize,
   openPath,
@@ -180,6 +182,50 @@ beforeEach(() => {
 });
 
 describe("Editor view snapshots", () => {
+  it("detaches diff view models before releasing shared sources on workspace changes", async () => {
+    const { buffer } = addDocument({ dirty: false });
+    const disposed = vi.spyOn(buffer, "dispose");
+    const detach = vi.fn();
+    const cancel = vi.fn();
+    diffEditors.set("one", { editor: { getModel: () => ({ original: null, modified: buffer }), setModel: detach } as unknown as Monaco.editor.IStandaloneDiffEditor, viewModel: { dispose: cancel } as unknown as Monaco.editor.IDiffEditorViewModel });
+    await resetEditors();
+    expect(detach).toHaveBeenCalledWith(null);
+    expect(detach.mock.invocationCallOrder[0]).toBeLessThan(disposed.mock.invocationCallOrder[0]);
+    expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(disposed.mock.invocationCallOrder[0]);
+    diffEditors.clear();
+  });
+  it("can reuse a loaded source without changing tabs or focus", async () => {
+    const { id } = addDocument({ dirty: false });
+    setApp({ activeGroup: "one", groups: [{ id: "one", tabs: [], active: null, preview: null, views: {} }] });
+    const before = useApp.getState().groups;
+    expect(await openPath(useApp.getState().docs[id].path!, { reveal: false })).toBe(id);
+    expect(useApp.getState().groups).toBe(before);
+  });
+  it("keeps Git comparison descriptors out of document mirrors and saves the shared source", async () => {
+    const { id: source } = addDocument();
+    const resource: Doc = { id: "git-diff:test", name: "Comparison", path: null, language: "plaintext", encoding: "utf8", eol: "LF", revision: null, dirty: true, version: 1,
+      gitDiff: { workspace: "C:/workspace", repository: "C:/workspace", path: "file.txt", oldPath: null, staged: false, conflicted: false, sourceId: source } };
+    setApp((s) => ({ docs: { ...s.docs, [resource.id]: resource }, activeGroup: "one", groups: [{ id: "one", tabs: [resource.id], active: resource.id, preview: null, views: {} }] }));
+    await save(resource.id);
+    expect(writes()).toHaveLength(1);
+    expect(writes()[0].id).toBe(source);
+    await checkpoint();
+    const syncCalls = vi.mocked(call).mock.calls.filter(([name]) => name === "sync_documents");
+    const sync = syncCalls[syncCalls.length - 1]?.[1];
+    expect(((sync?.documents ?? []) as Doc[]).map((d) => d.id)).toEqual([source]);
+    expect(session().gitDiffs?.[0].gitDiff?.sourceId).toBe(source);
+  });
+
+  it("does not dispose a source used by a comparison when switching tabs or splitting it", () => {
+    const { id: source, buffer } = addDocument({ dirty: false });
+    const resource: Doc = { id: "git-diff:retained", name: "Comparison", path: null, language: "plaintext", encoding: "utf8", eol: "LF", revision: null, dirty: false, version: 1,
+      gitDiff: { workspace: "C:/workspace", repository: "C:/workspace", path: "file.txt", oldPath: null, staged: false, conflicted: false, sourceId: source } };
+    setApp((s) => ({ docs: { ...s.docs, [resource.id]: resource }, activeGroup: "one", groups: [{ id: "one", tabs: [resource.id], active: resource.id, preview: null, views: {} }] }));
+    showDocument(resource.id, { pinned: true });
+    splitGroup("one", resource.id);
+    expect(models.get(source)).toBe(buffer);
+    expect(useApp.getState().groups.every((g) => g.tabs.includes(resource.id))).toBe(true);
+  });
   it("persists only the primary search query even when another search is active", () => {
     const main = { ...initialSearch(), query: { ...initialSearch().query, text: "primary" } };
     const secondary = { ...initialSearch("secondary", 2), query: { ...initialSearch().query, text: "secondary" } };
@@ -499,6 +545,7 @@ afterEach(() => {
   vi.useRealTimers();
   models.clear();
   editors.clear();
+  diffEditors.clear();
   vi.unstubAllGlobals();
 });
 

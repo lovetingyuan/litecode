@@ -1,6 +1,6 @@
 import type { Doc, Group } from "../types/types";
 
-export const isTextDocument = (doc: Doc) => !doc.kind || doc.kind === "text" || doc.kind === "svg";
+export const isTextDocument = (doc: Doc) => !doc.gitDiff && (!doc.kind || doc.kind === "text" || doc.kind === "svg");
 export const isMarkdownDocument = (doc: Doc) =>
   isTextDocument(doc) && doc.kind !== "svg" && doc.language === "markdown";
 export const isMarkdownView = (doc: Doc, group?: Group) =>

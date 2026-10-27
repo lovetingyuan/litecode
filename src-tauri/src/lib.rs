@@ -8,6 +8,7 @@ mod file_delete;
 mod file_moves;
 mod files;
 mod formatter_trust;
+mod git;
 #[cfg(windows)]
 mod instance;
 mod lsp;
@@ -134,6 +135,10 @@ pub fn run() {
             commands::new_window,
             commands::open_workspace,
             commands::workspace_git_status,
+            git::git_repository_info,
+            git::git_read_diff,
+            git::git_open_source,
+            git::git_operate,
             commands::read_workspace_directory,
             quick_files::quick_file_paths,
             commands::read_document,

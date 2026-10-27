@@ -39,7 +39,12 @@ type State = {
   editorLayout: EditorLayout | null;
   groupMru: string[];
   tabRevealRequests: Record<string, number>; // Transient UI requests; excluded from session().
-  sidebar: "explorer" | "search" | null;
+  sidebar: "explorer" | "search" | "git" | null;
+  gitRepository: string | null;
+  gitTab: "changes" | "info";
+  gitLayout: "list" | "tree";
+  gitBusy: Record<string, string>;
+  gitMessages: Record<string, string>;
   view: "editor" | "terminal";
   sidebarWidth: number;
   gitState: GitSnapshot;
@@ -74,6 +79,11 @@ export const useApp = create<State>((set) => ({
   groupMru: [group.id],
   tabRevealRequests: {},
   sidebar: "explorer",
+  gitRepository: null,
+  gitTab: "changes",
+  gitLayout: "list",
+  gitBusy: {},
+  gitMessages: {},
   view: "editor",
   sidebarWidth: 260,
   gitState: { root: null, session: null, git: [], branch: null, warnings: [] },

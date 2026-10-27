@@ -101,9 +101,10 @@ pub struct GitSnapshot {
     pub git: Vec<GitEntry>,
     pub branch: Option<String>,
     pub warnings: Vec<String>,
+    pub repositories: Vec<crate::git::Snapshot>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct GitEntry {
     pub path: String,
     pub status: String,
@@ -115,6 +116,25 @@ pub struct RepositoryIndex {
     pub complete: AtomicBool,
     discovery_lock: Mutex<()>,
     pub status_lock: Mutex<()>,
+    versions: Mutex<HashMap<PathBuf, u64>>,
+    cache: Mutex<HashMap<PathBuf, (u64, crate::git::Snapshot, Vec<GitEntry>)>>,
+}
+
+impl RepositoryIndex {
+    pub fn invalidate(&self) {
+        for version in self.versions.lock().unwrap().values_mut() {
+            *version += 1;
+        }
+    }
+    fn invalidate_path(&self, path: &Path) {
+        let mut versions = self.versions.lock().unwrap();
+        let matches = versions.keys().any(|root| path.starts_with(root));
+        for (root, version) in versions.iter_mut() {
+            if !matches || path.starts_with(root) {
+                *version += 1;
+            }
+        }
+    }
 }
 
 pub fn discover_repositories(root: &Path, index: &RepositoryIndex, cancelled: impl Fn() -> bool) {
@@ -122,10 +142,19 @@ pub fn discover_repositories(root: &Path, index: &RepositoryIndex, cancelled: im
     if index.complete.load(Ordering::Acquire) {
         return;
     }
+    let owner = Repository::discover(root).ok();
+    let owner_root = owner.as_ref().and_then(|repo| repo.workdir()).and_then(|path| std::fs::canonicalize(path).ok());
     for entry in walkdir::WalkDir::new(root)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| e.file_name() != ".git")
+        .filter_entry(|e| {
+            if e.file_name() == ".git" { return false; }
+            if e.depth() > 0 && e.file_type().is_dir()
+                && let Some(repo) = &owner
+                && let Some(relative) = owner_root.as_ref().and_then(|base| e.path().strip_prefix(base).ok())
+                && repo.status_should_ignore(Path::new(&format!("{}/", relative.to_string_lossy().replace('\\', "/")))).unwrap_or(false) { return false; }
+            true
+        })
     {
         if cancelled() {
             return;
@@ -160,6 +189,7 @@ pub fn git_snapshot(root: &Path, index: &RepositoryIndex, session: u64) -> Resul
         git: vec![],
         branch: None,
         warnings: vec![],
+        repositories: vec![],
     };
     let mut repositories = index.repositories.lock().unwrap().clone();
     if let Ok(repo) = Repository::discover(root) {
@@ -167,12 +197,34 @@ pub fn git_snapshot(root: &Path, index: &RepositoryIndex, session: u64) -> Resul
             repositories
                 .insert(std::fs::canonicalize(workdir).unwrap_or_else(|_| workdir.to_path_buf()));
         }
-        snapshot.branch = repo
-            .head()
-            .ok()
-            .and_then(|head| head.shorthand().map(str::to_owned));
+        snapshot.branch = crate::git::current_branch(&repo);
     }
     for repo_path in repositories {
+        let version = *index
+            .versions
+            .lock()
+            .unwrap()
+            .entry(repo_path.clone())
+            .or_default();
+        if let Some((cached_version, repository, git)) = index.cache.lock().unwrap().get(&repo_path)
+            && *cached_version == version
+        {
+            snapshot.repositories.push(repository.clone());
+            for entry in git {
+                let full = repo_path.join(&entry.path);
+                if let Ok(relative) = full.strip_prefix(root) {
+                    let mut path = relative.to_string_lossy().replace('\\', "/");
+                    if entry.path.ends_with('/') && !path.ends_with('/') {
+                        path.push('/');
+                    }
+                    snapshot.git.push(GitEntry {
+                        path,
+                        status: entry.status.clone(),
+                    });
+                }
+            }
+            continue;
+        }
         let repo = match Repository::open(&repo_path) {
             Ok(repo) => repo,
             Err(error) => {
@@ -194,6 +246,8 @@ pub fn git_snapshot(root: &Path, index: &RepositoryIndex, session: u64) -> Resul
             .renames_index_to_workdir(true);
         match repo.statuses(Some(&mut options)) {
             Ok(statuses) => {
+                let repository = crate::git::snapshot(&repo, &statuses);
+                let mut cached = vec![];
                 for entry in statuses.iter() {
                     let Some(relative) = entry.path() else {
                         continue;
@@ -202,9 +256,6 @@ pub fn git_snapshot(root: &Path, index: &RepositoryIndex, session: u64) -> Resul
                     // The tree needs it to inherit ignored directory statuses.
                     let is_directory = relative.ends_with('/');
                     let full = repo_path.join(relative);
-                    let Ok(relative) = full.strip_prefix(root) else {
-                        continue;
-                    };
                     let s = entry.status();
                     let status = if s.is_conflicted() {
                         "conflicted"
@@ -221,19 +272,36 @@ pub fn git_snapshot(root: &Path, index: &RepositoryIndex, session: u64) -> Resul
                     } else {
                         "modified"
                     };
-                    let mut path = relative.to_string_lossy().replace('\\', "/");
+                    let mut path = relative.replace('\\', "/");
                     if is_directory && !path.ends_with('/') {
                         path.push('/');
                     }
-                    snapshot.git.push(GitEntry {
+                    cached.push(GitEntry {
                         path,
                         status: status.into(),
                     });
+                    if let Ok(relative) = full.strip_prefix(root) {
+                        let mut path = relative.to_string_lossy().replace('\\', "/");
+                        if is_directory && !path.ends_with('/') {
+                            path.push('/');
+                        }
+                        snapshot.git.push(GitEntry {
+                            path,
+                            status: status.into(),
+                        });
+                    }
                 }
+                index
+                    .cache
+                    .lock()
+                    .unwrap()
+                    .insert(repo_path.clone(), (version, repository.clone(), cached));
+                snapshot.repositories.push(repository);
             }
             Err(e) => snapshot.warnings.push(e.to_string()),
         };
     }
+    snapshot.repositories.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(snapshot)
 }
 
@@ -253,11 +321,13 @@ pub struct WorkspaceChanges {
     pub rescan: bool,
     pub git_changed: bool,
     pub file_index_changed: bool,
+    pub git_paths: Vec<String>,
 }
 
 #[derive(Default)]
 pub struct ChangeQueue {
     paths: HashMap<String, bool>,
+    git_paths: HashSet<String>,
     rescan: bool,
     git_changed: bool,
     file_index_changed: bool,
@@ -350,6 +420,7 @@ impl ChangeQueue {
             rescan: std::mem::take(&mut self.rescan),
             git_changed: std::mem::take(&mut self.git_changed),
             file_index_changed: std::mem::take(&mut self.file_index_changed),
+            git_paths: self.git_paths.drain().collect(),
         })
     }
 }
@@ -363,7 +434,22 @@ pub fn watch(app: &tauri::AppHandle, label: &str, root: PathBuf) -> Result<()> {
     let watched_root = root.clone();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         if let Ok(event) = &event {
+            if event.need_rescan() || event.paths.is_empty() { watched_repositories.invalidate(); }
+            if matches!(event.kind, notify::EventKind::Access(_)) {
+                return;
+            }
+            if !event.paths.is_empty()
+                && event.paths.iter().all(|path| {
+                    let value = path.to_string_lossy().replace('\\', "/");
+                    value.contains("/.git/objects/")
+                        || value.contains("/.git/logs/")
+                        || value.ends_with(".lock")
+                })
+            {
+                return;
+            }
             for path in &event.paths {
+                watched_repositories.invalidate_path(path);
                 if !path.starts_with(&watched_root) {
                     continue;
                 }
@@ -379,13 +465,27 @@ pub fn watch(app: &tauri::AppHandle, label: &str, root: PathBuf) -> Result<()> {
                         .insert(repository.to_path_buf());
                 }
             }
+        } else { watched_repositories.invalidate(); }
+        let mut queue = dirty.lock().unwrap();
+        if event.as_ref().is_ok_and(|event| {
+            !event.paths.is_empty() && event.paths.iter().all(|p| !p.starts_with(&watched_root))
+        }) {
+            queue.git_changed = true;
+            if let Ok(event) = &event {
+                for path in &event.paths { queue.git_paths.insert(crate::git::visible(path)); }
+                if queue.git_paths.len() > 4096 { queue.git_paths.clear(); queue.rescan = true; }
+            }
+        } else {
+            queue.push(&watched_root, event);
         }
-        dirty.lock().unwrap().push(&watched_root, event);
     })
     .map_err(|e| AppError::new("watch", e.to_string()))?;
     watcher
         .watch(&root, RecursiveMode::Recursive)
         .map_err(|e| AppError::new("watch", e.to_string()))?;
+    if let Ok(repo) = Repository::discover(&root) {
+        watch_git_paths(&mut watcher, &repo, &root);
+    }
     let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     {
         let state = app.state::<AppState>();
@@ -412,6 +512,20 @@ pub fn watch(app: &tauri::AppHandle, label: &str, root: PathBuf) -> Result<()> {
                 .get(&discovery_label)
                 .is_none_or(|window| window.workspace_session != session)
         });
+        let roots = repositories.repositories.lock().unwrap().clone();
+        let state = discovery_handle.state::<AppState>();
+        let mut windows = state.windows.lock().unwrap();
+        if let Some(window) = windows
+            .get_mut(&discovery_label)
+            .filter(|w| w.workspace_session == session)
+            && let Some(watcher) = &mut window.watcher
+        {
+            for root in roots {
+                if let Ok(repo) = Repository::open(root) {
+                    watch_git_paths(watcher, &repo, &root_owned);
+                }
+            }
+        }
         discovering.lock().unwrap().git_changed = true;
     });
     std::thread::spawn(move || {
@@ -434,6 +548,25 @@ pub fn watch(app: &tauri::AppHandle, label: &str, root: PathBuf) -> Result<()> {
         }
     });
     Ok(())
+}
+
+fn watch_git_paths(watcher: &mut notify::RecommendedWatcher, repo: &Repository, root: &Path) {
+    if let Some(workdir) = repo.workdir().and_then(|p| std::fs::canonicalize(p).ok())
+        && !workdir.starts_with(root)
+    {
+        let _ = watcher.watch(&workdir, RecursiveMode::Recursive);
+    }
+    let mut metadata = vec![repo.path().to_path_buf()];
+    if let Ok(common) = std::fs::read_to_string(repo.path().join("commondir")) {
+        metadata.push(repo.path().join(common.trim()));
+    }
+    for path in metadata {
+        if let Ok(path) = std::fs::canonicalize(path)
+            && !path.starts_with(root)
+        {
+            let _ = watcher.watch(&path, RecursiveMode::Recursive);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -629,6 +762,20 @@ mod tests {
         assert_eq!(index.repositories.lock().unwrap().len(), 2);
         let snapshot = git_snapshot(&root, &index, 1).unwrap();
         assert_eq!(status(&snapshot, "nested/child.txt"), Some("untracked"));
+    }
+
+    #[test]
+    fn discovery_skips_ignored_dependencies_but_keeps_regular_nested_repositories() {
+        let (_directory, root, _repo) = fixture(&[(".gitignore", "node_modules/\ntmp/\n")]);
+        Repository::init(root.join("node_modules/ignored-repo")).unwrap();
+        Repository::init(root.join("tmp/build-fixture")).unwrap();
+        Repository::init(root.join("packages/nested")).unwrap();
+        let index = RepositoryIndex::default();
+        discover_repositories(&root, &index, || false);
+        let roots = index.repositories.lock().unwrap();
+        assert!(roots.contains(&root.join("packages/nested")));
+        assert!(!roots.contains(&root.join("node_modules/ignored-repo")));
+        assert!(!roots.contains(&root.join("tmp/build-fixture")));
     }
 
     #[test]

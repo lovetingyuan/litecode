@@ -56,6 +56,7 @@ pub struct SearchTask {
 
 #[derive(Default)]
 pub struct AppState {
+    pub git_operations: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
     pub replacement_plans: crate::replacement::PlanningTasks,
     pub tool_lock: tokio::sync::Mutex<()>,
     pub windows: Mutex<HashMap<String, WindowState>>,

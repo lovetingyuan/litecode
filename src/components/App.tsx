@@ -17,6 +17,7 @@ import {
   autoSave,
   normalizeGroup,
   models,
+  normalize,
 } from "../editor/documents";
 import { commands, execute, installKeys, openFolder } from "../core/commands";
 import { Explorer, refreshTree } from "./Explorer";
@@ -41,6 +42,7 @@ import {
   changeEol,
 } from "../editor/editorStatus";
 const TerminalView = lazy(() => import("./TerminalView"));
+const GitView = lazy(() => import("./GitView").then((module) => ({ default: module.GitView })));
 
 let startup: Promise<void> | undefined;
 function start() {
@@ -59,6 +61,11 @@ function start() {
       restoreDocument(mirror);
     }
     const session = boot.session ?? {};
+    for (const doc of session.gitDiffs ?? []) {
+      if (doc.gitDiff && boot.root && normalize(doc.gitDiff.workspace) === normalize(boot.root)) {
+        setApp((s) => ({ docs: { ...s.docs, [doc.id]: { ...doc, dirty: !!(doc.gitDiff?.sourceId && s.docs[doc.gitDiff.sourceId]?.dirty) } } }));
+      }
+    }
     if (session.query) {
       patchSearch(primarySearchId, { query: session.query });
       setApp({ searchHistory: session.searchHistory ?? [] });
@@ -99,7 +106,10 @@ function start() {
       sidebarWidth: Number.isFinite(session.sidebarWidth)
         ? Math.max(170, session.sidebarWidth!)
         : 260,
-      sidebar: session.sidebar === "" ? null : session.sidebar === "search" ? "search" : "explorer",
+      sidebar: session.sidebar === "" ? null : session.sidebar === "search" ? "search" : session.sidebar === "git" ? "git" : "explorer",
+      gitRepository: session.gitRepository ?? null,
+      gitTab: session.gitTab ?? "changes",
+      gitLayout: session.gitLayout ?? "list",
       history: session.history ?? [],
       historyIndex: session.historyIndex ?? -1,
     });
@@ -146,7 +156,7 @@ export default function App() {
     void (async () => {
       const onChange = await listen<WorkspaceChanges>("workspace-changed", ({ payload }) => {
         void handleWorkspaceChanges(payload).then((accepted) => {
-          if (accepted) {void refreshDocuments(payload.rescan ? undefined : payload.changes.map(({ path }) => `${payload.root.replace(/[\\/]+$/, "")}/${path}`));}
+          if (accepted) {void refreshDocuments(payload.rescan ? undefined : [...payload.changes.map(({ path }) => `${payload.root.replace(/[\\/]+$/, "")}/${path}`), ...(payload.gitPaths ?? [])]);}
         });
       });
       if (disposed) {
@@ -367,6 +377,12 @@ export default function App() {
             >
               <Icon name="terminal" />
             </button>
+            <button disabled={!s.ready}
+              className={s.view === "editor" && s.sidebar === "git" ? "active" : ""}
+              aria-label="Source Control (Ctrl+Shift+G)" title="Source Control (Ctrl+Shift+G)"
+              onClick={() => setApp({ view: "editor", sidebar: s.view === "editor" && s.sidebar === "git" ? null : "git" })}>
+              <Icon name="source-control" />
+            </button>
           </div>
           <button
             title="Manage"
@@ -387,6 +403,9 @@ export default function App() {
                 </div>
                 <div className="sidebar-view" hidden={s.sidebar !== "search"}>
                   <SearchView />
+                </div>
+                <div className="sidebar-view" hidden={s.sidebar !== "git"}>
+                  {s.sidebar === "git" && <Suspense fallback={<div className="startup">Loading Source Control…</div>}><GitView /></Suspense>}
                 </div>
               </aside>
             }
@@ -484,7 +503,7 @@ export default function App() {
               </button>
             </>
           )}
-          {s.view === "editor" && doc && group && !isTextView(doc, group) && (
+          {s.view === "editor" && doc && group && !doc.gitDiff && !isTextView(doc, group) && (
             <MediaStatus doc={doc} group={group} />
           )}
           {s.searchSessions.some((search) => search.searching) && <span>Searching…</span>}

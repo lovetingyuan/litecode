@@ -44,6 +44,7 @@ export type Mirror = {
   fileInfo?: FileInfo;
 };
 export type Doc = Omit<Mirror, "text"> & {
+  gitDiff?: GitDiffResource;
   name: string;
   language: string;
   eol: string;
@@ -64,6 +65,10 @@ export type Group = {
 };
 export type Location = { id: string; path?: string | null; line: number; column: number };
 export type Session = {
+  gitDiffs?: Doc[];
+  gitRepository?: string | null;
+  gitTab?: "changes" | "info";
+  gitLayout?: "list" | "tree";
   groups: Group[];
   activeGroup: string;
   editorLayout?: import("../editor/editorLayout").EditorLayout | null;
@@ -96,12 +101,64 @@ export type GitEntry = {
   status: "added" | "deleted" | "ignored" | "modified" | "renamed" | "untracked" | "conflicted";
 };
 export type GitSnapshot = {
+  repositories?: GitRepository[];
   root: string | null;
   session: number | null;
   git: GitEntry[];
   branch: string | null;
   warnings: string[];
 };
+export type GitChange = {
+  indexPath?: string | null;
+  indexOldPath?: string | null;
+  worktreeOldPath?: string | null;
+  path: string;
+  oldPath: string | null;
+  indexStatus: string | null;
+  worktreeStatus: string | null;
+  conflicted: boolean;
+  stamp: string;
+};
+export type GitRepository = {
+  path: string;
+  name: string;
+  branch: string | null;
+  detached: boolean;
+  operation: string | null;
+  changes: GitChange[];
+};
+export type GitInfo = {
+  branch: string | null;
+  head: string | null;
+  detached: boolean;
+  upstream: string | null;
+  ahead: number | null;
+  behind: number | null;
+  lastFetch: number | null;
+  operation: string | null;
+  remotes: { name: string; fetch: string | null; push: string | null }[];
+  branches: { name: string; current: boolean; remote: boolean; upstream: string | null; worktree: boolean }[];
+};
+export type GitDiffResource = {
+  workspace: string;
+  repository: string;
+  path: string;
+  oldPath: string | null;
+  staged: boolean;
+  conflicted: boolean;
+  sourceId?: string;
+};
+export type GitDiffContent = { before: string; after: string; source: string | null; summary: string | null };
+export type GitOperation =
+  | { kind: "stage" | "unstage"; paths: string[] }
+  | { kind: "discard"; files: { path: string; stamp: string }[] }
+  | { kind: "commit"; message: string }
+  | { kind: "fetch"; remote: string }
+  | { kind: "pull"; rebase: boolean; remote?: string; branch?: string }
+  | { kind: "push"; remote?: string }
+  | { kind: "switch" | "deleteBranch"; branch: string }
+  | { kind: "createBranch"; name: string; start?: string }
+  | { kind: "continue" | "abort" };
 export type DirectorySnapshot = {
   root: string;
   session: number;
@@ -110,6 +167,7 @@ export type DirectorySnapshot = {
   warnings: string[];
 };
 export type WorkspaceChanges = {
+  gitPaths?: string[];
   root: string;
   session: number;
   changes: { path: string; structural: boolean }[];

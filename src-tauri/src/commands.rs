@@ -16,7 +16,9 @@ use tauri::{Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 fn visible_path(path: &Path) -> String {
-    crate::tools::process_path(path).to_string_lossy().into_owned()
+    crate::tools::process_path(path)
+        .to_string_lossy()
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -26,15 +28,24 @@ mod path_tests {
     #[test]
     fn returned_paths_keep_unc_roots_and_agree_with_move_paths() {
         for (input, expected) in [
-            (r"\\?\UNC\server\share\project 中文\a.txt", r"\\server\share\project 中文\a.txt"),
+            (
+                r"\\?\UNC\server\share\project 中文\a.txt",
+                r"\\server\share\project 中文\a.txt",
+            ),
             (r"\\?\D:\project 中文\a.txt", r"D:\project 中文\a.txt"),
-            (r"\\server\share\project 中文\a.txt", r"\\server\share\project 中文\a.txt"),
+            (
+                r"\\server\share\project 中文\a.txt",
+                r"\\server\share\project 中文\a.txt",
+            ),
             (r"D:\project 中文\a.txt", r"D:\project 中文\a.txt"),
             ("/tmp/project/a.txt", "/tmp/project/a.txt"),
         ] {
             let visible = visible_path(Path::new(input));
             assert_eq!(visible, expected);
-            assert_eq!(visible.replace('\\', "/"), crate::file_moves::visible(Path::new(input)));
+            assert_eq!(
+                visible.replace('\\', "/"),
+                crate::file_moves::visible(Path::new(input))
+            );
         }
     }
 }
@@ -351,6 +362,7 @@ pub async fn read_workspace_directory(
                 rescan: false,
                 git_changed: true,
                 file_index_changed: false,
+                git_paths: vec![],
             },
         );
     }
@@ -363,6 +375,7 @@ pub async fn workspace_git_status(
     state: State<'_, AppState>,
     expected_root: String,
     session: Option<u64>,
+    force: Option<bool>,
 ) -> Result<workspace::GitSnapshot> {
     let expected = canonical(Path::new(&expected_root))?;
     let (root, repositories, current_session) = {
@@ -385,6 +398,9 @@ pub async fn workspace_git_status(
         )
     };
     tauri::async_runtime::spawn_blocking(move || {
+        if force.unwrap_or(false) {
+            repositories.invalidate();
+        }
         workspace::git_snapshot(&root, &repositories, current_session)
     })
     .await
@@ -516,7 +532,9 @@ pub async fn file_operation(
             trash::delete(source).map_err(|error| {
                 AppError::new(
                     "recycle",
-                    format!("Could not move to Recycle Bin; nothing was permanently deleted: {error}"),
+                    format!(
+                        "Could not move to Recycle Bin; nothing was permanently deleted: {error}"
+                    ),
                 )
             })
         });

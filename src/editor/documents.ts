@@ -23,6 +23,7 @@ import type { FileMove } from "../explorer/explorerMove";
 
 export const models = new Map<string, monaco.editor.ITextModel>();
 export const editors = new Map<string, monaco.editor.IStandaloneCodeEditor>();
+export const diffEditors = new Map<string, { editor: monaco.editor.IStandaloneDiffEditor; viewModel: monaco.editor.IDiffEditorViewModel }>();
 useApp.subscribe((state, previous) => {
   if (state.settings === previous.settings) { return; }
   if (modelSettingKeys.some((key) => settingValue(state.settings, key) !== settingValue(previous.settings, key))) {
@@ -138,9 +139,12 @@ export const editor = () => {
   const s = useApp.getState();
   const group = s.groups.find((g) => g.id === s.activeGroup);
   const doc = group?.active ? s.docs[group.active] : undefined;
-  return doc && !isTextView(doc, group) ? undefined : editors.get(s.activeGroup);
+  return doc && !isTextView(doc, group) && !doc.gitDiff ? undefined : editors.get(s.activeGroup);
 };
-export const model = (id = activeDoc()?.id) => (id ? models.get(id) : undefined);
+export const model = (id = activeDoc()?.id): monaco.editor.ITextModel | undefined => {
+  const source = id && useApp.getState().docs[id]?.gitDiff?.sourceId;
+  return id ? models.get(source || id) : undefined;
+};
 
 export function patchDoc(id: string, patch: Partial<Doc>) {
   setApp((s) => (s.docs[id] ? { docs: { ...s.docs, [id]: { ...s.docs[id], ...patch } } } : {}));
@@ -161,7 +165,7 @@ export function focusDocument(groupId = useApp.getState().activeGroup) {
   const s = useApp.getState();
   const group = s.groups.find((g) => g.id === groupId);
   const doc = group?.active ? s.docs[group.active] : undefined;
-  if (!doc || isTextView(doc, group)) {
+  if (!doc || isTextView(doc, group) || doc.gitDiff) {
     editors.get(groupId)?.focus();
   } else if (typeof document !== "undefined") {
     const preview = document.querySelector<HTMLElement>(
@@ -191,6 +195,10 @@ export function saveEditorView(
 function saveEditorViews() {
   const s = useApp.getState();
   const groups = s.groups.map((g) => {
+    const diff = diffEditors.get(g.id);
+    if (g.active && s.docs[g.active]?.gitDiff && diff) {
+      return { ...g, views: { ...g.views, [g.active]: diff.editor.saveViewState() } };
+    }
     const e = editors.get(g.id);
     if (g.active && e && s.docs[g.active] && isTextView(s.docs[g.active], g)) {
       return { ...g, views: { ...g.views, [g.active]: e.saveViewState() } };
@@ -206,6 +214,10 @@ export function session(): Session {
   saveEditorViews();
   const s = useApp.getState();
   return {
+    gitDiffs: Object.values(s.docs).filter((doc) => doc.gitDiff).map((doc) => ({ ...doc, dirty: false })),
+    gitRepository: s.gitRepository,
+    gitTab: s.gitTab,
+    gitLayout: s.gitLayout,
     groups: s.groups,
     activeGroup: s.activeGroup,
     editorLayout: s.editorLayout,
@@ -250,7 +262,7 @@ export async function checkpoint(options: { waitForMoves?: boolean } = {}) {
 }
 
 async function syncDocumentSnapshot() {
-  const docs: Mirror[] = Object.values(useApp.getState().docs).map((doc) => {
+  const docs: Mirror[] = Object.values(useApp.getState().docs).filter((doc) => !doc.gitDiff).map((doc) => {
     const m = models.get(doc.id);
     return {
       id: doc.id,
@@ -379,6 +391,7 @@ function attachPreviewDocument(doc: Doc) {
 }
 
 type OpenPathOptions = {
+  reveal?: boolean;
   pinned?: boolean;
   group?: string;
   line?: number;
@@ -485,7 +498,7 @@ async function openDocumentPath(path: string, options: OpenPathOptions, sequence
       }
     }
   }
-  showDocument(id, options);
+  if (options.reveal !== false) { showDocument(id, options); }
   return id;
 }
 
@@ -607,6 +620,10 @@ export function showDocument(
       : {}),
   });
   const visible = new Set(useApp.getState().groups.flatMap((g) => g.tabs));
+  for (const tab of visible) {
+    const source = useApp.getState().docs[tab]?.gitDiff?.sourceId;
+    if (source) { visible.add(source); }
+  }
   for (const previous of Object.values(s.docs)) {
     if (previous.id !== id && !previous.dirty && !visible.has(previous.id)) {
       disposeDocument(previous.id);
@@ -648,6 +665,10 @@ export async function autoSave(reason: AutoSaveMode, id?: string) {
 }
 
 export async function save(id = activeDoc()?.id, saveAs = false) {
+  if (id && useApp.getState().docs[id]?.gitDiff) {
+    id = useApp.getState().docs[id].gitDiff?.sourceId;
+    if (!id) { return; }
+  }
   await saveDocument(id, saveAs);
 }
 
@@ -823,13 +844,20 @@ async function saveDocument(
 
 export async function saveAll() {
   for (const doc of Object.values(useApp.getState().docs)) {
-    if (doc.dirty) {
+    if (doc.dirty && !doc.gitDiff) {
       await save(doc.id);
     }
   }
 }
 
 export async function confirmDocumentClose(id: string): Promise<boolean> {
+  const diff = useApp.getState().docs[id]?.gitDiff;
+  if (diff?.sourceId) {
+    const state = useApp.getState();
+    const shared = state.groups.some((g) => g.tabs.some((tab) => tab !== id && (tab === diff.sourceId || state.docs[tab]?.gitDiff?.sourceId === diff.sourceId)));
+    if (shared) { return true; }
+    return confirmDocumentClose(diff.sourceId);
+  }
   const doc = useApp.getState().docs[id];
   if (doc?.dirty) {
     const answer = await ask(
@@ -969,12 +997,18 @@ export async function closeTabs(id: string, groupId: string, mode: CloseTabsMode
 }
 
 function disposeDocument(id: string) {
+  const state = useApp.getState();
+  if (Object.values(state.docs).some((doc) => doc.gitDiff?.sourceId === id)) { return; }
+  const source = state.docs[id]?.gitDiff?.sourceId;
   detachModel(id);
   setApp((s) => {
     const docs = { ...s.docs };
     delete docs[id];
     return { docs };
   });
+  if (source && !useApp.getState().groups.some((g) => g.tabs.includes(source)) && !Object.values(useApp.getState().docs).some((doc) => doc.gitDiff?.sourceId === source)) {
+    disposeDocument(source);
+  }
 }
 
 function detachModel(id: string) {
@@ -986,6 +1020,11 @@ function detachModel(id: string) {
   autoTimers.delete(id);
   const m = models.get(id);
   if (m) {
+    // Cancel the diff view model before releasing its shared source to the worker.
+    for (const { editor, viewModel } of diffEditors.values()) {
+      const pair = editor.getModel();
+      if (pair?.original === m || pair?.modified === m) { editor.setModel(null); viewModel.dispose(); }
+    }
     for (const e of editors.values()) {
       if (e.getModel() === m) {
         e.setModel(null);

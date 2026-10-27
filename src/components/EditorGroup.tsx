@@ -38,6 +38,7 @@ import { isMarkdownView, isTextView } from "../utils/media";
 import { MediaPreview } from "./MediaPreview";
 import { EditorBreadcrumbs } from "./EditorBreadcrumbs";
 import { MarkdownPreview } from "./MarkdownPreview";
+import { GitDiffEditor } from "./GitDiffEditor";
 import { loadedWorkspacePaths } from "../explorer/workspaceTree";
 import { explorerDragFiles, explorerDragType } from "../explorer/explorerDrag";
 
@@ -56,6 +57,7 @@ export function EditorGroup({ group }: { group: Group }) {
   const previous = useRef<string | null>(null);
   const doc = group.active ? docs[group.active] : undefined;
   const textView = !!doc && isTextView(doc, group);
+  const gitDiff = !!doc?.gitDiff;
   const previousTextView = useRef(false);
   const tabs = useRef<HTMLDivElement>(null);
   const revealRequest = useApp((s) => s.tabRevealRequests[group.id] ?? 0);
@@ -98,7 +100,7 @@ export function EditorGroup({ group }: { group: Group }) {
       unicodeHighlight: { ambiguousCharacters: false },
     });
     instance.current = e;
-    editors.set(group.id, e);
+    if (!state.docs[currentGroup?.active ?? ""]?.gitDiff) { editors.set(group.id, e); }
     const subscriptions = [
       installMergeConflictEditor(e, setMergeConflictCount),
       e.onDidFocusEditorText(() => setApp({ activeGroup: group.id })),
@@ -158,7 +160,7 @@ export function EditorGroup({ group }: { group: Group }) {
     ];
     return () => {
       subscriptions.forEach((s) => s.dispose());
-      editors.delete(group.id);
+      if (editors.get(group.id) === e) { editors.delete(group.id); }
       e.dispose();
       instance.current = null;
     };
@@ -179,6 +181,7 @@ export function EditorGroup({ group }: { group: Group }) {
       }
     }
     e.setModel(textView && group.active ? (models.get(group.active) ?? null) : null);
+    if (!gitDiff) { editors.set(group.id, e); }
     if (
       textView &&
       group.active &&
@@ -194,7 +197,7 @@ export function EditorGroup({ group }: { group: Group }) {
     }
     previous.current = group.active;
     previousTextView.current = textView;
-  }, [group.id, group.active, group.views, doc?.path, textView]);
+  }, [group.id, group.active, group.views, doc?.path, textView, gitDiff]);
   useEffect(() => {
     instance.current?.updateOptions(editorOptions(settings, doc?.large));
   }, [group.id, settings, doc?.large]);
@@ -399,7 +402,7 @@ export function EditorGroup({ group }: { group: Group }) {
           )}
         </div>
       </div>
-      {doc && <EditorBreadcrumbs doc={doc} group={group} />}
+      {doc && !doc.gitDiff && <EditorBreadcrumbs doc={doc} group={group} />}
       {doc?.conflict && models.has(doc.id) && (
         <div className="conflict-banner">
           <Icon name="warning" />
@@ -425,7 +428,8 @@ export function EditorGroup({ group }: { group: Group }) {
       {doc && isMarkdownView(doc, group) && (
         <MarkdownPreview key={doc.id} doc={doc} group={group} />
       )}
-      {doc && !textView && !isMarkdownView(doc, group) && (
+      {doc?.gitDiff && <GitDiffEditor key={doc.id} doc={doc} group={group} />}
+      {doc && !doc.gitDiff && !textView && !isMarkdownView(doc, group) && (
         <MediaPreview key={`${doc.id}:${doc.path}`} doc={doc} group={group} />
       )}
       {!doc && (

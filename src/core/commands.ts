@@ -127,6 +127,7 @@ export async function openFolder(newWindow = false, recentPath?: string) {
     (!root || normalize(root).replace(/\/$/, "") !== normalize(path).replace(/\/$/, ""));
   if (switching) {
     for (const id of Object.keys(useApp.getState().docs)) {
+        if (useApp.getState().docs[id]?.gitDiff) { continue; }
       if (!(await confirmDocumentClose(id))) {
         return;
       }
@@ -186,6 +187,13 @@ async function openSettings() {
   return id;
 }
 export const commands: Command[] = [
+  {
+    id: "workbench.view.scm",
+    label: "Show Source Control",
+    key: "Ctrl+Shift+G",
+    menu: "View",
+    run: () => setApp({ sidebar: "git", view: "editor" }),
+  },
   ...(["current", "incoming", "both"] as const).map((choice) => ({
     id: `merge-conflict.accept.${choice}`,
     label: `Merge Conflict: Accept ${choice === "current" ? "Current" : choice === "incoming" ? "Incoming" : "Both"} Change${choice === "both" ? "s" : ""}`,
@@ -991,6 +999,7 @@ export function installKeys() {
               "workbench.action.showCommands",
               "workbench.action.quickOpen",
               "workbench.view.explorer",
+                "workbench.view.scm",
               "workbench.action.findInFiles",
             ].includes(c.command.id)),
       )?.command.id;
@@ -1012,7 +1021,7 @@ export function installKeys() {
     if (
       command &&
       (!typing ||
-        ["Ctrl+S", "Ctrl+Shift+S", "Ctrl+Shift+P", "Ctrl+P", "Ctrl+Shift+F", "Ctrl+O"].includes(
+          ["Ctrl+S", "Ctrl+Shift+S", "Ctrl+Shift+P", "Ctrl+P", "Ctrl+Shift+F", "Ctrl+Shift+G", "Ctrl+O"].includes(
           key,
         ))
     ) {

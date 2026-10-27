@@ -5,24 +5,28 @@ import { directoryPath, type DirectoryCache } from "./directoryCache";
 let running: {
   cache: DirectoryCache;
   pending: boolean;
+  force: boolean;
   promise: Promise<void>;
 } | null = null;
-export function refreshGit(cache: DirectoryCache | null): Promise<void> {
+export function refreshGit(cache: DirectoryCache | null, force = false): Promise<void> {
   if (!cache) {
     return Promise.resolve();
   }
   if (running?.cache === cache) {
     running.pending = true;
+    running.force ||= force;
     return running.promise;
   }
-  const task = { cache, pending: true, promise: Promise.resolve() };
+  const task = { cache, pending: true, force, promise: Promise.resolve() };
   running = task;
   task.promise = (async () => {
     try {
       while (task.pending && !cache.disposed) {
         task.pending = false;
+        const force = task.force;
+        task.force = false;
         try {
-          const gitState = await call<GitSnapshot>("workspace_git_status", { expectedRoot: cache.root, session: cache.session });
+          const gitState = await call<GitSnapshot>("workspace_git_status", { expectedRoot: cache.root, session: cache.session, ...(force ? { force } : {}) });
           if (!cache.disposed && gitState.root && directoryPath(gitState.root).toLowerCase() === directoryPath(cache.root).toLowerCase() && (cache.session === null || cache.session === gitState.session)) {
             if (gitState.warnings.length) {
               notify(gitState.warnings.join("\n"));
