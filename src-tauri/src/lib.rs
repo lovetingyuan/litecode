@@ -20,6 +20,7 @@ mod state;
 mod terminal;
 mod tools;
 mod transactions;
+mod updates;
 mod workspace;
 
 use tauri::Manager;
@@ -44,7 +45,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            app.manage(updates::Updates::new(app.handle()));
             #[cfg(windows)]
             let data_dir = app.state::<instance::Instance>().data_dir.clone();
             #[cfg(not(windows))]
@@ -105,6 +108,7 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
+                window.state::<updates::Updates>().window_destroyed(window.label());
                 let state = window.state::<state::AppState>();
                 state.terminals.close_window(window.label());
                 state.replacement_plans.close_window(window.label());
@@ -128,6 +132,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            updates::get_update_state,
+            updates::check_update,
+            updates::install_update,
+            updates::ack_update_checkpoint,
             commands::bootstrap,
             commands::configuration,
             commands::set_workspace_trust,

@@ -15,4 +15,6 @@ Open **Preferences: Open User Settings (JSON)** to see supported settings with d
 
 Launching LiteCode again with the same user data directory activates the existing window. Portable copies with separate `data` directories can run independently.
 
+**Help → Check for Updates…** checks the latest official GitHub release. Installed editions can download and install signed updates in the app; startup checks show an update button without interrupting your work. See [local release and signing instructions](docs/releases.md) for `npm run release`.
+
 Interrupted workspace replacements are detected on startup. **Search: Recover Interrupted Replacements** lets you restore an operation's starting state or keep current contents; backups are retained, and externally changed files are never overwritten automatically. **Search: Retry Interrupted Replacement** resumes an unfinished operation from the current session.

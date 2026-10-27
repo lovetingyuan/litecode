@@ -14,9 +14,12 @@
     "lint:fix": "npm run lint -- --fix",
     "test": "vitest run",
     "test:e2e": "node tools/verify-desktop.mjs",
+    "test:updates:desktop": "npm run build && node tools/verify-updates-desktop.mjs",
     "test:languages": "node tools/verify-languages.mjs",
     "test:vue": "node tools/verify-vue.mjs",
-    "build:release": "npm run build:tools && tauri build"
+    "build:release": "tauri build",
+    "updater:setup": "node tools/setup-updater.mjs",
+    "release": "node tools/release.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

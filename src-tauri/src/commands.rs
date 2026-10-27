@@ -220,6 +220,9 @@ pub(crate) fn create_editor_window(
     label: &str,
 ) -> Result<()> {
     let result = (|| {
+        let updates = app.state::<crate::updates::Updates>();
+        let _update_gate = updates.window_gate.lock().unwrap();
+        updates.ensure_interactive()?;
         let created = tauri::WebviewWindowBuilder::new(
             app,
             label,

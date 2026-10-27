@@ -30,6 +30,7 @@ import { changeLanguage } from "../editor/editorStatus";
 import { acceptInlineConflict, navigateInlineConflict } from "../editor/mergeConflictEditor";
 import { restartLanguages, stopLanguages, languageReport } from "../editor/languages";
 import { manageWorkspaceTrust } from "./workspaceTrust";
+import { checkForUpdates } from "./updates";
 import {
   matchesWhen,
   normalizeKey,
@@ -844,13 +845,14 @@ export const commands: Command[] = [
     },
   },
   { id: "litecode.setLanguage", label: "Change Language Mode", run: changeLanguage },
+  { id: "litecode.checkForUpdates", label: "Check for Updates…", menu: "Help", run: checkForUpdates },
   {
     id: "litecode.about",
     label: "About LiteCode",
     menu: "Help",
     run: () =>
       setApp({
-        notice: `LiteCode 0.1.0 · ${__GIT_HASH__}`,
+        notice: `LiteCode ${__APP_VERSION__} · ${__GIT_HASH__}`,
         noticeLink: "https://github.com/lovetingyuan/litecode",
       }),
   },

@@ -3,7 +3,7 @@
 @import "./styles/sidebar-scrollbar.css";
 @plugin "daisyui" {
   themes: false;
-  include: tab, button;
+  include: tab, button, progress;
   root: ".search-view";
   logs: false;
 }
@@ -491,8 +491,12 @@ kbd {
   white-space: nowrap;
 }
 .title-layout {
-  margin-left: auto;
+  margin-left: 0;
   display: flex;
+  margin-right: 8px;
+}
+.title-updates {
+  margin-left: auto;
   margin-right: 8px;
 }
 .window-controls {
@@ -1518,6 +1522,9 @@ body.monaco-component {
   background: none;
 }
 @media (max-width: 1000px) {
+  .titlebar:has(.update-button) .title-center {
+    display: none;
+  }
   .title-center {
     left: auto;
     right: 200px;

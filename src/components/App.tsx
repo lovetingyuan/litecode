@@ -29,6 +29,8 @@ import { EditorLayoutView, WorkbenchLayout } from "./EditorGrid";
 import { WelcomePage } from "./WelcomePage";
 import { QuickOpen } from "./QuickOpen";
 import { DialogHost } from "./dialog";
+import { UpdateButton, UpdateDialog } from "./UpdateDialog";
+import { initializeUpdates, updateLocked, useUpdates } from "../core/updates";
 import { DiffViewer } from "./DiffViewer";
 import { Icon, IconButton } from "./ui";
 import "../App.css";
@@ -127,6 +129,7 @@ function start() {
 
 export default function App() {
   const s = useApp();
+  const locked = useUpdates((s) => updateLocked(s.phase));
   const [fatal, setFatal] = useState<string | null>(null);
   const [maximized, setMaximized] = useState(false);
   useExternalDrop(s.ready);
@@ -135,6 +138,15 @@ export default function App() {
     void start().catch((e) => setFatal(errorMessage(e)));
     return installKeys();
   }, []);
+  useEffect(() => {
+    if (!s.ready) {return;}
+    let disposed = false;
+    let cleanup: (() => void) | undefined;
+    void initializeUpdates().then((stop) => {
+      if (disposed) {stop();} else {cleanup = stop;}
+    }).catch((error) => console.error("Could not initialize updates", errorMessage(error)));
+    return () => { disposed = true; cleanup?.(); };
+  }, [s.ready]);
   useEffect(() => {
     if (!s.ready) {
       return;
@@ -255,7 +267,8 @@ export default function App() {
     }
   }
   return (
-    <div className="workbench">
+    <>
+    <div className="workbench" inert={locked}>
       <header className="titlebar" data-tauri-drag-region>
         <div className="app-mark">
           <img src="/litecode.svg" alt="LiteCode" width={32} height={32} draggable={false} />
@@ -299,6 +312,7 @@ export default function App() {
             <span>{s.root ? basename(s.root) : "LiteCode"}</span>
           </button>
         </div>
+        <div className="title-updates"><UpdateButton /></div>
         <div className="title-layout">
           <IconButton
             icon="layout-sidebar-left"
@@ -564,6 +578,8 @@ export default function App() {
       )}
       <DialogHost />
     </div>
+    <UpdateDialog />
+    </>
   );
 }
 
