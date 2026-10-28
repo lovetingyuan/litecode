@@ -1,4 +1,6 @@
 use crate::formatter_trust::{OXFMT_CONFIGS, PRETTIER_CONFIGS, find_config, require_source};
+use crate::sync::MutexExt;
+use crate::sync::RwLockExt;
 use crate::{
     error::{AppError, Result},
     state::AppState,
@@ -47,8 +49,7 @@ fn find_executable(name: &str) -> Option<PathBuf> {
 pub fn settings(window: &WebviewWindow, state: &AppState) -> serde_json::Value {
     let root = state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get(window.label())
         .and_then(|w| w.root.clone());
     crate::configuration::load_settings(
@@ -276,205 +277,207 @@ pub fn tool_status(window: WebviewWindow, state: State<'_, AppState>) -> ToolRep
 #[tauri::command]
 pub async fn format_document(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     path: Option<String>,
     text: String,
     language: String,
 ) -> Result<String> {
-    let workspace_root = state.require_workspace_trust(window.label())?;
-    let has_file = path.is_some();
-    let path = if let Some(path) = path {
-        process_path(&state.authorize(window.label(), &path)?)
-    } else {
-        let extension = match language.as_str() {
-            "typescript" => "ts",
-            "typescriptreact" => "tsx",
-            "javascript" => "js",
-            "javascriptreact" => "jsx",
-            "rust" => "rs",
-            "jsonc" => "jsonc",
-            "html" => "html",
-            "css" => "css",
-            "scss" => "scss",
-            "less" => "less",
-            "json" => "json",
-            _ => {
-                return Err(AppError::new(
-                    "formatter",
-                    "No formatter is configured for this language",
-                ));
-            }
-        };
-        let root = state
-            .windows
-            .lock()
-            .unwrap()
-            .get(window.label())
-            .and_then(|w| w.root.clone())
-            .unwrap_or_else(|| state.data_dir.clone());
-        process_path(&root.join(format!("Untitled.{extension}")))
-    };
-    let config = crate::configuration::load_settings(
-        &state.data_dir.join("settings.json"),
-        workspace_root.as_deref(),
-        &mut vec![],
-    );
-    let root = workspace_root
-        .clone()
-        .unwrap_or_else(|| path.parent().unwrap().into());
-    let mut sources = if has_file || workspace_root.is_some() {
-        vec![path.parent().unwrap().to_path_buf()]
-    } else {
-        vec![]
-    };
-    for source in &sources {
-        require_source(&state, window.label(), source, &workspace_root)?;
-    }
-    let explicit = config["editor.defaultFormatter"].as_str();
-    if explicit.is_some_and(|id| {
-        ![
-            "esbenp.prettier-vscode",
-            "oxc.oxc-vscode",
-            "rust-lang.rust-analyzer",
-        ]
-        .contains(&id)
-    }) {
-        return Err(AppError::new(
-            "formatter",
-            "The configured editor.defaultFormatter is not available in LiteCode.",
-        ));
-    }
-    let prettier_script = root.join("node_modules/prettier/bin/prettier.cjs");
-    let prettier_config = find_config(&path, PRETTIER_CONFIGS, true)?;
-    // An explicit empty config prevents implicit discovery outside checked paths.
-    let mut empty_config = tempfile::Builder::new().suffix(".json").tempfile()?;
-    let mut command;
-    if language == "rust" {
-        let executable = find_executable("rustfmt").ok_or_else(|| {
-            AppError::new(
-                "missingTool",
-                "rustfmt is missing. Run rustup component add rustfmt for your project toolchain.",
-            )
-        })?;
-        command = Command::new(executable);
-        command.args(["--emit", "stdout"]);
-        if let Some(config) = find_config(&path, &[".rustfmt.toml", "rustfmt.toml"], false)? {
-            sources.push(config.clone());
-            command.arg("--config-path").arg(process_path(&config));
+    let (mut child, _empty_config) = crate::state::blocking(window, move |window, state| {
+        let workspace_root = state.require_workspace_trust(window.label())?;
+        let has_file = path.is_some();
+        let path = if let Some(path) = path {
+            process_path(&state.authorize(window.label(), &path)?)
         } else {
-            command.arg("--config-path").arg(empty_config.path());
-        }
-        if let Some(toolchain) = find_config(
-            &root.join("Untitled.rs"),
-            &["rust-toolchain", "rust-toolchain.toml"],
-            false,
-        )? {
-            sources.push(toolchain);
-        }
-        let regex = regex::Regex::new(r#"edition\s*=\s*"(2015|2018|2021|2024)""#).unwrap();
-        for directory in path.parent().unwrap().ancestors() {
-            if let Ok(cargo) = fs::read_to_string(directory.join("Cargo.toml"))
-                && let Some(captures) = regex.captures(&cargo)
-            {
-                command.args(["--edition", &captures[1]]);
-                break;
-            }
-        }
-    } else if language == "html"
-        || explicit == Some("esbenp.prettier-vscode")
-        || explicit.is_none() && (prettier_config.is_some() || prettier_script.exists())
-    {
-        let script = if prettier_script.exists() {
-            sources.push(prettier_script.clone());
-            prettier_script
-        } else {
-            state
-                .data_dir
-                .join("tools/languages/node_modules/prettier/bin/prettier.cjs")
-        };
-        if !script.exists() {
-            return Err(AppError::new(
-                "missingTool",
-                "Prettier is required for this document. Install Language Tools, or add Prettier to your project. Missing project plugins are not installed automatically.",
-            ));
-        }
-        command = Command::new(node(&window, &state)?);
-        command
-            .arg(process_path(&script))
-            .arg("--stdin-filepath")
-            .arg(&path);
-        if let Some(config) = &prettier_config {
-            sources.push(config.clone());
-            command.arg("--config").arg(process_path(config));
-        } else {
-            command.arg("--no-config");
-        }
-    } else {
-        let local_script = root.join("node_modules/oxfmt/bin/oxfmt");
-        let installed = state
-            .data_dir
-            .join("tools/languages/node_modules/oxfmt/bin/oxfmt");
-        if let Some(executable) = config["oxfmt.path"]
-            .as_str()
-            .map(PathBuf::from)
-            .or_else(|| find_executable("oxfmt"))
-        {
-            let executable = if config["oxfmt.path"].is_string() {
-                let executable = if executable.is_absolute() {
-                    executable
-                } else {
-                    root.join(executable)
-                };
-                sources.push(executable.clone());
-                process_path(&executable)
-            } else {
-                executable
+            let extension = match language.as_str() {
+                "typescript" => "ts",
+                "typescriptreact" => "tsx",
+                "javascript" => "js",
+                "javascriptreact" => "jsx",
+                "rust" => "rs",
+                "jsonc" => "jsonc",
+                "html" => "html",
+                "css" => "css",
+                "scss" => "scss",
+                "less" => "less",
+                "json" => "json",
+                _ => {
+                    return Err(AppError::new(
+                        "formatter",
+                        "No formatter is configured for this language",
+                    ));
+                }
             };
-            command = Command::new(executable);
-        } else if local_script.is_file() || installed.is_file() {
-            command = Command::new(node(&window, &state)?);
-            command.arg(process_path(&if local_script.is_file() {
-                sources.push(local_script.clone());
-                local_script
-            } else {
-                installed
-            }));
+            let root = state
+                .windows
+                .lock_recover()
+                .get(window.label())
+                .and_then(|w| w.root.clone())
+                .unwrap_or_else(|| state.data_dir.clone());
+            process_path(&root.join(format!("Untitled.{extension}")))
+        };
+        let config = crate::configuration::load_settings(
+            &state.data_dir.join("settings.json"),
+            workspace_root.as_deref(),
+            &mut vec![],
+        );
+        let root = workspace_root
+            .clone()
+            .unwrap_or_else(|| path.parent().unwrap().into());
+        let mut sources = if has_file || workspace_root.is_some() {
+            vec![path.parent().unwrap().to_path_buf()]
         } else {
-            return Err(AppError::new(
-                "missingTool",
-                "Oxfmt is missing. Install Language Tools, set oxfmt.path, or configure Prettier.",
-            ));
-        }
-        command.arg("--stdin-filepath").arg(&path);
-        if let Some(config) = find_config(&path, OXFMT_CONFIGS, false)? {
-            sources.push(config.clone());
-            command.arg("--config").arg(process_path(&config));
-        } else {
-            std::io::Write::write_all(&mut empty_config, b"{}")?;
-            command.arg("--config").arg(empty_config.path());
-        }
-    }
-    command
-        .current_dir(process_path(&root))
-        .kill_on_drop(true)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    #[cfg(windows)]
-    command.creation_flags(0x08000000);
-    let mut child = {
-        let _disk = state.disk_lock.lock().unwrap();
-        if state.require_workspace_trust(window.label())? != workspace_root {
-            return Err(AppError::new(
-                "workspace",
-                "The workspace changed before formatting started.",
-            ));
-        }
+            vec![]
+        };
         for source in &sources {
             require_source(&state, window.label(), source, &workspace_root)?;
         }
-        command.spawn()?
-    };
+        let explicit = config["editor.defaultFormatter"].as_str();
+        if explicit.is_some_and(|id| {
+            ![
+                "esbenp.prettier-vscode",
+                "oxc.oxc-vscode",
+                "rust-lang.rust-analyzer",
+            ]
+            .contains(&id)
+        }) {
+            return Err(AppError::new(
+                "formatter",
+                "The configured editor.defaultFormatter is not available in LiteCode.",
+            ));
+        }
+        let prettier_script = root.join("node_modules/prettier/bin/prettier.cjs");
+        let prettier_config = find_config(&path, PRETTIER_CONFIGS, true)?;
+        // An explicit empty config prevents implicit discovery outside checked paths.
+        let mut empty_config = tempfile::Builder::new().suffix(".json").tempfile()?;
+        let mut command;
+        if language == "rust" {
+            let executable = find_executable("rustfmt").ok_or_else(|| {
+                AppError::new(
+                    "missingTool",
+                    "rustfmt is missing. Run rustup component add rustfmt for your project toolchain.",
+                )
+            })?;
+            command = Command::new(executable);
+            command.args(["--emit", "stdout"]);
+            if let Some(config) = find_config(&path, &[".rustfmt.toml", "rustfmt.toml"], false)? {
+                sources.push(config.clone());
+                command.arg("--config-path").arg(process_path(&config));
+            } else {
+                command.arg("--config-path").arg(empty_config.path());
+            }
+            if let Some(toolchain) = find_config(
+                &root.join("Untitled.rs"),
+                &["rust-toolchain", "rust-toolchain.toml"],
+                false,
+            )? {
+                sources.push(toolchain);
+            }
+            let regex = regex::Regex::new(r#"edition\s*=\s*"(2015|2018|2021|2024)""#).unwrap();
+            for directory in path.parent().unwrap().ancestors() {
+                if let Ok(cargo) = fs::read_to_string(directory.join("Cargo.toml"))
+                    && let Some(captures) = regex.captures(&cargo)
+                {
+                    command.args(["--edition", &captures[1]]);
+                    break;
+                }
+            }
+        } else if language == "html"
+            || explicit == Some("esbenp.prettier-vscode")
+            || explicit.is_none() && (prettier_config.is_some() || prettier_script.exists())
+        {
+            let script = if prettier_script.exists() {
+                sources.push(prettier_script.clone());
+                prettier_script
+            } else {
+                state
+                    .data_dir
+                    .join("tools/languages/node_modules/prettier/bin/prettier.cjs")
+            };
+            if !script.exists() {
+                return Err(AppError::new(
+                    "missingTool",
+                    "Prettier is required for this document. Install Language Tools, or add Prettier to your project. Missing project plugins are not installed automatically.",
+                ));
+            }
+            command = Command::new(node(&window, &state)?);
+            command
+                .arg(process_path(&script))
+                .arg("--stdin-filepath")
+                .arg(&path);
+            if let Some(config) = &prettier_config {
+                sources.push(config.clone());
+                command.arg("--config").arg(process_path(config));
+            } else {
+                command.arg("--no-config");
+            }
+        } else {
+            let local_script = root.join("node_modules/oxfmt/bin/oxfmt");
+            let installed = state
+                .data_dir
+                .join("tools/languages/node_modules/oxfmt/bin/oxfmt");
+            if let Some(executable) = config["oxfmt.path"]
+                .as_str()
+                .map(PathBuf::from)
+                .or_else(|| find_executable("oxfmt"))
+            {
+                let executable = if config["oxfmt.path"].is_string() {
+                    let executable = if executable.is_absolute() {
+                        executable
+                    } else {
+                        root.join(executable)
+                    };
+                    sources.push(executable.clone());
+                    process_path(&executable)
+                } else {
+                    executable
+                };
+                command = Command::new(executable);
+            } else if local_script.is_file() || installed.is_file() {
+                command = Command::new(node(&window, &state)?);
+                command.arg(process_path(&if local_script.is_file() {
+                    sources.push(local_script.clone());
+                    local_script
+                } else {
+                    installed
+                }));
+            } else {
+                return Err(AppError::new(
+                    "missingTool",
+                    "Oxfmt is missing. Install Language Tools, set oxfmt.path, or configure Prettier.",
+                ));
+            }
+            command.arg("--stdin-filepath").arg(&path);
+            if let Some(config) = find_config(&path, OXFMT_CONFIGS, false)? {
+                sources.push(config.clone());
+                command.arg("--config").arg(process_path(&config));
+            } else {
+                std::io::Write::write_all(&mut empty_config, b"{}")?;
+                command.arg("--config").arg(empty_config.path());
+            }
+        }
+        command
+            .current_dir(process_path(&root))
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let child = {
+            let _disk = state.disk_lock.write_recover();
+            if state.require_workspace_trust(window.label())? != workspace_root {
+                return Err(AppError::new(
+                    "workspace",
+                    "The workspace changed before formatting started.",
+                ));
+            }
+            for source in &sources {
+                require_source(&state, window.label(), source, &workspace_root)?;
+            }
+            command.spawn()?
+        };
+        Ok((child, empty_config))
+    })
+    .await?;
     let mut stdin = child.stdin.take().unwrap();
     tokio::spawn(async move {
         let _ = stdin.write_all(text.as_bytes()).await;

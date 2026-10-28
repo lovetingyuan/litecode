@@ -106,6 +106,23 @@ pub fn inspect(path: &Path) -> Result<FileInfo> {
 // Chromium requests a single byte range for playback and seeking. Bound each
 // response so even a range covering a multi-gigabyte video stays inexpensive.
 const RANGE_CHUNK: u64 = 2 * 1024 * 1024;
+const MAX_FULL_RESPONSE: u64 = 32 * 1024 * 1024;
+const MAX_CONCURRENT_READS: usize = 4;
+
+fn app_origin(request: &Request<Vec<u8>>) -> Result<Option<&str>> {
+    let Some(origin) = request.headers().get("origin") else {
+        return Ok(None);
+    };
+    let origin = origin.to_str().unwrap_or("");
+    let allowed = matches!(
+        origin,
+        "tauri://localhost" | "http://tauri.localhost" | "https://tauri.localhost"
+    ) || (cfg!(dev) && origin == "http://localhost:1420");
+    if !allowed {
+        return Err(AppError::new("access", "Media origin is not allowed"));
+    }
+    Ok(Some(origin))
+}
 fn byte_range(value: &str, len: u64) -> Option<(u64, u64)> {
     let (start, end) = value.strip_prefix("bytes=")?.split_once('-')?;
     if len == 0 {
@@ -133,7 +150,8 @@ fn byte_range(value: &str, len: u64) -> Option<(u64, u64)> {
 }
 
 pub fn response(path: &Path, request: &Request<Vec<u8>>) -> Result<Response<Vec<u8>>> {
-    let (_, mime) =
+    let origin = app_origin(request)?;
+    let (kind, mime) =
         media_type(path).ok_or_else(|| AppError::new("media", "Unsupported media type"))?;
     let mut file = File::open(path)?;
     let len = file.metadata()?.len();
@@ -142,8 +160,11 @@ pub fn response(path: &Path, request: &Request<Vec<u8>>) -> Result<Response<Vec<
         .header("Accept-Ranges", "bytes")
         .header("Cache-Control", "no-store")
         .header("X-Content-Type-Options", "nosniff")
-        .header("Access-Control-Allow-Origin", "*")
+        .header("Vary", "Origin")
         .header("Content-Security-Policy", "default-src 'none'; sandbox");
+    if let Some(origin) = origin {
+        builder = builder.header("Access-Control-Allow-Origin", origin);
+    }
     if request.method() != "GET" && request.method() != "HEAD" {
         return Ok(builder
             .status(StatusCode::METHOD_NOT_ALLOWED)
@@ -163,6 +184,20 @@ pub fn response(path: &Path, request: &Request<Vec<u8>>) -> Result<Response<Vec<
             .status(StatusCode::PARTIAL_CONTENT)
             .header("Content-Range", format!("bytes {start}-{end}/{len}"));
         (start, end - start + 1)
+    } else if matches!(kind, FileKind::Video | FileKind::Audio)
+        && len > RANGE_CHUNK
+        && request.method() != "HEAD"
+    {
+        builder = builder.status(StatusCode::PARTIAL_CONTENT).header(
+            "Content-Range",
+            format!("bytes 0-{}/{len}", RANGE_CHUNK - 1),
+        );
+        (0, RANGE_CHUNK)
+    } else if len > MAX_FULL_RESPONSE && request.method() != "HEAD" {
+        return Ok(builder
+            .status(StatusCode::PAYLOAD_TOO_LARGE)
+            .body(Vec::new())
+            .unwrap());
     } else {
         (0, len)
     };
@@ -180,6 +215,7 @@ fn authorized_response(
     label: &str,
     request: &Request<Vec<u8>>,
 ) -> Result<Response<Vec<u8>>> {
+    app_origin(request)?;
     let encoded = request.uri().path().trim_start_matches('/');
     let query = format!("path={encoded}");
     let path = url::form_urlencoded::parse(query.as_bytes())
@@ -192,24 +228,92 @@ fn authorized_response(
 }
 
 pub fn register<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
-    builder.register_asynchronous_uri_scheme_protocol("media", |context, request, responder| {
-        let app = context.app_handle().clone();
-        let label = context.webview_label().to_string();
-        tauri::async_runtime::spawn_blocking(move || {
-            let result = authorized_response(&app.state::<AppState>(), &label, &request);
-            responder.respond(result.unwrap_or_else(|e| {
-                Response::builder()
-                    .status(if e.code == "access" { 403 } else { 404 })
-                    .body(Vec::new())
-                    .unwrap()
-            }));
-        });
-    })
+    let reads = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_READS));
+    builder.register_asynchronous_uri_scheme_protocol(
+        "media",
+        move |context, request, responder| {
+            // Acquire before spawning: a seek storm must not queue unbounded workers.
+            let Ok(permit) = reads.clone().try_acquire_owned() else {
+                let mut response = Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .header("Retry-After", "1")
+                    .header("Cache-Control", "no-store");
+                if let Ok(Some(origin)) = app_origin(&request) {
+                    response = response
+                        .header("Access-Control-Allow-Origin", origin)
+                        .header("Vary", "Origin");
+                }
+                responder.respond(response.body(Vec::new()).unwrap());
+                return;
+            };
+            let app = context.app_handle().clone();
+            let label = context.webview_label().to_string();
+            tauri::async_runtime::spawn_blocking(move || {
+                let _permit = permit;
+                let result = authorized_response(&app.state::<AppState>(), &label, &request);
+                responder.respond(result.unwrap_or_else(|e| {
+                    Response::builder()
+                        .status(if e.code == "access" { 403 } else { 404 })
+                        .body(Vec::new())
+                        .unwrap()
+                }));
+            });
+        },
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync::MutexExt;
+    #[test]
+    fn cors_only_allows_the_application_and_never_a_wildcard() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("image.png");
+        fs::write(&path, b"image").unwrap();
+        let request = Request::builder()
+            .header("Origin", "http://tauri.localhost")
+            .body(vec![])
+            .unwrap();
+        let result = response(&path, &request).unwrap();
+        assert_eq!(
+            result.headers()["Access-Control-Allow-Origin"],
+            "http://tauri.localhost"
+        );
+        let foreign = Request::builder()
+            .header("Origin", "https://example.com")
+            .body(vec![])
+            .unwrap();
+        assert_eq!(response(&path, &foreign).unwrap_err().code, "access");
+        let plain = response(&path, &Request::new(vec![])).unwrap();
+        assert!(!plain.headers().contains_key("Access-Control-Allow-Origin"));
+    }
+
+    #[test]
+    fn full_requests_are_bounded_without_truncating_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let video = dir.path().join("video.mp4");
+        File::create(&video)
+            .unwrap()
+            .set_len(RANGE_CHUNK + 16)
+            .unwrap();
+        let result = response(&video, &Request::new(vec![])).unwrap();
+        assert_eq!(result.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(result.body().len(), RANGE_CHUNK as usize);
+        let image = dir.path().join("large.png");
+        File::create(&image)
+            .unwrap()
+            .set_len(MAX_FULL_RESPONSE + 1)
+            .unwrap();
+        let result = response(&image, &Request::new(vec![])).unwrap();
+        assert_eq!(result.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(result.body().is_empty());
+        let head = Request::builder().method("HEAD").body(vec![]).unwrap();
+        assert_eq!(
+            response(&image, &head).unwrap().headers()["Content-Length"],
+            (MAX_FULL_RESPONSE + 1).to_string()
+        );
+    }
     #[test]
     fn classification_preserves_utf16_and_handles_large_media() {
         let dir = tempfile::tempdir().unwrap();
@@ -284,13 +388,11 @@ mod tests {
         let state = AppState::default();
         state
             .windows
-            .lock()
-            .unwrap()
+            .lock_recover()
             .insert("allowed".into(), Default::default());
         state
             .windows
-            .lock()
-            .unwrap()
+            .lock_recover()
             .insert("other".into(), Default::default());
         state.grant("allowed", &path).unwrap();
         let encoded: String =

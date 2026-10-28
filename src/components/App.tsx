@@ -37,6 +37,7 @@ import "../App.css";
 import { initializeLanguages } from "../editor/languages";
 import { isTextView } from "../utils/media";
 import { MediaStatus } from "./MediaStatus";
+import { GitLineStatus } from "./GitLineStatus";
 import { useExternalDrop } from "../hooks/useExternalDrop";
 import { recoverInterruptedReplacements } from "../search/replacements";
 import {
@@ -61,7 +62,7 @@ function start() {
       keybindings: boot.keybindings ?? [],
     });
     for (const mirror of boot.documents) {
-      restoreDocument(mirror);
+      restoreDocument(mirror, { synchronized: true });
     }
     const session = boot.session ?? {};
     for (const doc of session.gitDiffs ?? []) {
@@ -294,7 +295,9 @@ export default function App() {
             </Menu.Root>
           ))}
         </nav>
-        <div className="title-center" data-tauri-drag-region>
+        <div className="title-center" data-tauri-drag-region />
+        <div className="title-updates"><UpdateButton /></div>
+        <div className="title-layout">
           <IconButton
             icon="arrow-left"
             label="Go Back (Alt+Left)"
@@ -307,13 +310,7 @@ export default function App() {
             onClick={() => void execute("workbench.action.navigateForward")}
             disabled={s.historyIndex >= s.history.length - 1}
           />
-          <button className="command-center" onClick={() => setApp({ quick: "" })}>
-            <Icon name="search" />
-            <span>{s.root ? basename(s.root) : "LiteCode"}</span>
-          </button>
-        </div>
-        <div className="title-updates"><UpdateButton /></div>
-        <div className="title-layout">
+          <IconButton icon="search" label="Search (Ctrl+P)" onClick={() => setApp({ quick: "" })} />
           <IconButton
             icon="layout-sidebar-left"
             label="Toggle Primary Side Bar"
@@ -511,6 +508,7 @@ export default function App() {
           </button>
         </div>
         <div className="status-right">
+          <GitLineStatus doc={s.view === "editor" && doc && isTextView(doc, group) ? doc : undefined} />
           {s.view === "editor" && doc && isTextView(doc, group) && (
             <>
               <button onClick={() => setApp({ quick: ":" })}>
@@ -518,7 +516,7 @@ export default function App() {
                 {s.cursor.selected ? ` (${s.cursor.selected} selected)` : ""}
               </button>
               <IndentationStatus documentId={doc.id} />
-              <button onClick={changeEncoding}>
+              <button className="encoding-status" onClick={changeEncoding}>
                 {doc.encoding.toUpperCase().replace("UTF8", "UTF-8")}
               </button>
               <button onClick={changeEol}>{doc.eol}</button>
@@ -592,7 +590,7 @@ function IndentationStatus({ documentId }: { documentId: string }) {
     return () => listener?.dispose();
   }, [model]);
   return (
-    <button onClick={changeIndent}>
+    <button className="indentation-status" onClick={changeIndent}>
       {options?.insertSpaces === false ? "Tabs" : "Spaces"}: {options?.tabSize ?? 4}
     </button>
   );

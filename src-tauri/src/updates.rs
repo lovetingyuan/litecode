@@ -1,4 +1,5 @@
 use crate::error::{AppError, Result};
+use crate::sync::MutexExt;
 use serde::Serialize;
 use std::{
     collections::HashSet,
@@ -105,11 +106,11 @@ impl Updates {
         }
     }
     fn snapshot(&self) -> Snapshot {
-        self.inner.lock().unwrap().snapshot.clone()
+        self.inner.lock_recover().snapshot.clone()
     }
     fn publish(&self, app: &AppHandle, change: impl FnOnce(&mut Snapshot)) -> Snapshot {
         let snapshot = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_recover();
             change(&mut inner.snapshot);
             inner.snapshot.revision += 1;
             inner.snapshot.clone()
@@ -127,7 +128,7 @@ impl Updates {
         Ok(())
     }
     pub fn window_destroyed(&self, label: &str) {
-        if let Some(barrier) = &mut self.inner.lock().unwrap().barrier {
+        if let Some(barrier) = &mut self.inner.lock_recover().barrier {
             if barrier.pending.contains(label) {
                 barrier.failure = Some(format!(
                     "Window {label} closed before its update backup completed"
@@ -137,7 +138,7 @@ impl Updates {
         }
     }
     fn fail(&self, app: &AppHandle, error: &AppError) {
-        self.inner.lock().unwrap().barrier = None;
+        self.inner.lock_recover().barrier = None;
         self.publish(app, |s| {
             s.phase = Phase::Error;
             s.error = Some(error.message.clone());
@@ -146,8 +147,8 @@ impl Updates {
     }
     async fn prepare(&self, app: &AppHandle) -> Result<()> {
         let id = {
-            let _window_gate = self.window_gate.lock().unwrap();
-            let mut inner = self.inner.lock().unwrap();
+            let _window_gate = self.window_gate.lock_recover();
+            let mut inner = self.inner.lock_recover();
             let id = inner.snapshot.revision + 1;
             inner.snapshot.phase = Phase::Preparing;
             inner.snapshot.request_id = Some(id);
@@ -167,8 +168,7 @@ impl Updates {
                 let notified = self.notify.notified();
                 if self
                     .inner
-                    .lock()
-                    .unwrap()
+                    .lock_recover()
                     .barrier
                     .as_ref()
                     .ok_or_else(|| AppError::new("updateBackup", "Update backup was cancelled"))?
@@ -224,7 +224,7 @@ pub async fn check_update(
                 for label in cleanup_app.webview_windows().keys() {
                     state.terminals.close_window(label);
                 }
-                for (_, server) in state.servers.lock().unwrap().drain() {
+                for (_, server) in state.servers.lock_recover().drain() {
                     crate::lsp::kill_tree(server.pid);
                 }
                 cleanup_app.cleanup_before_exit();
@@ -262,7 +262,7 @@ pub async fn check_update(
                 )
             })?
             .map_err(update_error)?;
-        let mut inner = state.inner.lock().unwrap();
+        let mut inner = state.inner.lock_recover();
         inner.update = update;
         let version = inner.update.as_ref().map(|u| u.version.clone());
         let notes = inner.update.as_ref().and_then(|u| u.body.clone());
@@ -302,7 +302,7 @@ pub fn ack_update_checkpoint(
     request_id: u64,
     error: Option<String>,
 ) {
-    if let Some(barrier) = &mut state.inner.lock().unwrap().barrier {
+    if let Some(barrier) = &mut state.inner.lock_recover().barrier {
         if barrier.acknowledge(request_id, window.label(), error) {
             state.notify.notify_one();
         }
@@ -316,7 +316,7 @@ pub async fn install_update(app: AppHandle, state: State<'_, Updates>) -> Result
         .try_lock()
         .map_err(|_| AppError::new("updateBusy", "An update operation is already running."))?;
     let update = {
-        let inner = state.inner.lock().unwrap();
+        let inner = state.inner.lock_recover();
         if inner.snapshot.portable {
             return Err(AppError::new(
                 "portable",

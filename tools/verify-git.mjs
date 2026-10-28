@@ -6,6 +6,7 @@ import { createServer } from "node:net";
 import { chromium } from "playwright";
 import { verifyGitBranches } from "./verify-git-branches.mjs";
 import { verifyGitDiff } from "./verify-git-diff.mjs";
+import { verifyGitBlame } from "./verify-git-blame.mjs";
 
 // Real native UI and Git. --repo creates an isolated worktree; its main checkout is read-only.
 const source = process.argv.includes("--repo")
@@ -209,6 +210,10 @@ async function verify() {
     (r) => r.path.toLowerCase() === root.replace(/\\/g, "/").toLowerCase(),
   );
   assert.ok(repository, JSON.stringify(initial));
+  if (process.argv.includes("--blame-only")) {
+    checks.push(await verifyGitBlame({ page, root, git, run, waitPage, invoke, repository }));
+    return;
+  }
   if (!branchesOnly) {
     assert.ok(
       repository.changes.some(

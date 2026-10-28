@@ -1,3 +1,5 @@
+use crate::sync::MutexExt;
+use crate::sync::RwLockExt;
 use crate::{
     error::{AppError, Result},
     state::AppState,
@@ -76,57 +78,80 @@ async fn read_message<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R) -> Res
 #[tauri::command]
 pub async fn lsp_start(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     server_id: String,
     language: String,
     on_event: Channel<ServerEvent>,
 ) -> Result<Value> {
-    let disk = state.disk_lock.lock().unwrap();
-    let key = format!("{}/{}", window.label(), server_id);
-    // A WebView reload loses its client transports; replace that window's old process.
-    if let Some(previous) = state.servers.lock().unwrap().remove(&key) {
-        kill_tree(previous.pid);
-    }
-    let spec = tools::server_spec(&window, &state, &language)?;
-    let mut command = tokio::process::Command::new(tools::process_path(&spec.executable));
-    command
-        .args(
-            spec.arguments.iter().map(|argument| {
+    let (
+        mut stdin,
+        stdout,
+        stderr,
+        mut receiver,
+        pending,
+        mut child,
+        key,
+        pid,
+        description,
+        initialization_options,
+    ) = crate::state::blocking(window.clone(), move |window, state| {
+        let disk = state.disk_lock.write_recover();
+        let key = format!("{}/{}", window.label(), server_id);
+        // A WebView reload loses its client transports; replace that window's old process.
+        if let Some(previous) = state.servers.lock_recover().remove(&key) {
+            kill_tree(previous.pid);
+        }
+        let spec = tools::server_spec(&window, &state, &language)?;
+        let mut command = tokio::process::Command::new(tools::process_path(&spec.executable));
+        command
+            .args(spec.arguments.iter().map(|argument| {
                 tools::process_path(std::path::Path::new(argument)).into_os_string()
-            }),
-        )
-        .kill_on_drop(true)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    if let Some(root) = &spec.root {
-        command.current_dir(tools::process_path(root));
-    }
-    #[cfg(windows)]
-    command.creation_flags(0x08000000);
-    let mut child = command.spawn().map_err(|e| {
-        AppError::new(
-            "languageTool",
-            format!("Cannot start {}: {e}", spec.executable.display()),
-        )
-    })?;
-    let pid = child
-        .id()
-        .ok_or_else(|| AppError::new("process", "Server exited before startup"))?;
-    let mut stdin = child.stdin.take().unwrap();
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
-    let (sender, mut receiver) = mpsc::channel::<Value>(64);
-    let pending = Arc::new(Mutex::new(HashMap::new()));
-    state.servers.lock().unwrap().insert(
-        key.clone(),
-        Server {
+            }))
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        if let Some(root) = &spec.root {
+            command.current_dir(tools::process_path(root));
+        }
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let mut child = command.spawn().map_err(|e| {
+            AppError::new(
+                "languageTool",
+                format!("Cannot start {}: {e}", spec.executable.display()),
+            )
+        })?;
+        let pid = child
+            .id()
+            .ok_or_else(|| AppError::new("process", "Server exited before startup"))?;
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+        let (sender, receiver) = mpsc::channel::<Value>(64);
+        let pending = Arc::new(Mutex::new(HashMap::new()));
+        state.servers.lock_recover().insert(
+            key.clone(),
+            Server {
+                pid,
+                sender,
+                pending: pending.clone(),
+            },
+        );
+        drop(disk);
+        Ok((
+            stdin,
+            stdout,
+            stderr,
+            receiver,
+            pending,
+            child,
+            key,
             pid,
-            sender,
-            pending: pending.clone(),
-        },
-    );
-    drop(disk);
+            spec.description,
+            spec.initialization_options,
+        ))
+    })
+    .await?;
     let app = window.app_handle().clone();
     tauri::async_runtime::spawn(async move {
         let writer = tokio::spawn(async move {
@@ -170,7 +195,7 @@ pub async fn lsp_start(
                     break;
                 };
                 sequence += 1;
-                pending.lock().unwrap().insert(sequence, permit);
+                pending.lock_recover().insert(sequence, permit);
                 reader_channel
                     .send(ServerEvent {
                         sequence,
@@ -197,14 +222,14 @@ pub async fn lsp_start(
             message: Value::Null,
         });
         let state = app.state::<AppState>();
-        let mut servers = state.servers.lock().unwrap();
+        let mut servers = state.servers.lock_recover();
         if servers.get(&key).is_some_and(|server| server.pid == pid) {
             servers.remove(&key);
         }
     });
     Ok(serde_json::json!({
-        "description": spec.description,
-        "initializationOptions": spec.initialization_options,
+        "description": description,
+        "initializationOptions": initialization_options,
     }))
 }
 
@@ -218,8 +243,7 @@ pub async fn lsp_send(
     let key = format!("{}/{}", window.label(), server_id);
     let sender = state
         .servers
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get(&key)
         .map(|s| s.sender.clone())
         .ok_or_else(|| AppError::new("lspStopped", "Language service is not running"))?;
@@ -239,11 +263,10 @@ pub fn lsp_ack(
     if let Some(server) =
         state
             .servers
-            .lock()
-            .unwrap()
+            .lock_recover()
             .get(&format!("{}/{}", window.label(), server_id))
     {
-        server.pending.lock().unwrap().remove(&sequence);
+        server.pending.lock_recover().remove(&sequence);
     }
 }
 
@@ -252,8 +275,7 @@ pub fn lsp_stop(window: WebviewWindow, state: State<'_, AppState>, server_id: St
     if let Some(server) =
         state
             .servers
-            .lock()
-            .unwrap()
+            .lock_recover()
             .remove(&format!("{}/{}", window.label(), server_id))
     {
         kill_tree(server.pid);

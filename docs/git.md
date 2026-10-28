@@ -73,6 +73,35 @@ The Changes and Repository tabs share the normal sidebar and editor groups.
 
 ## Implementation and boundaries
 
+### Current line attribution
+
+Text editors show the current line's last author and relative author time before
+the status bar's line/column position. Mouse, keyboard and split-editor focus all
+update the attribution. Hover for the full author, local date/time, commit summary
+and short hash. The summary is read-only and enabled automatically.
+
+Attribution starts at the file's containing repository's current HEAD, including
+nested repositories and detached HEADs. Added or changed lines in the editor,
+working tree or index show `尚未提交`; unchanged lines retain their commits even
+after insertions and deletions. Untracked files and unborn branches also show
+`尚未提交`. The Source Control repository selector does not affect this lookup.
+
+The read-only `git_blame_file` command uses the existing workspace/session and
+repository-path checks. Rust reads HEAD blame in a blocking task, then maps
+normalized, decoded HEAD lines to the current editor buffer. It returns compressed
+line ranges and deduplicated commit metadata without changing the index.
+LF/CRLF and UTF-8 BOM differences do not make otherwise unchanged lines uncommitted.
+Git cannot reliably attribute binary history such as UTF-16; those files, files
+over 20 MiB, ignored untracked files, previews and comparisons hide the summary.
+Empty committed files and the editor's virtual trailing line have no attribution.
+
+Cursor movement only queries the returned ranges. Buffer changes debounce for
+200ms and coalesce behind one active request. Saves and Git watcher refreshes
+invalidate the displayed result; obsolete file, model, group and workspace
+responses are discarded. Per-window HEAD caches retain at most eight files and
+32 MiB, reset with the workspace, and use the full HEAD ID in their key. Read
+failures clear the summary without repeated notifications.
+
 Rust git2/libgit2 reads status, refs and blobs. System Git on PATH handles writes
 and network operations, retaining Git configuration, SSH, credential helpers,
 hooks and signing. These operations use the existing workspace trust flow.
@@ -98,6 +127,17 @@ upstream settings page, editing remotes, or deleting remote branches.
 
 ## Verification
 
+Current-line attribution validation on 2026-10-28: all 676 frontend cases passed
+across the full run and focused reruns; four existing grammar/release cases timed
+out under concurrent load and passed separately. All 145 native tests passed,
+with four existing optional/platform tests skipped. Lint and the production build
+passed. The browser and native line-blame acceptance checks passed without page
+errors, including edits, undo, commits, branch switches and split focus. Evidence:
+`.verification/line-blame/` and `.verification/git-1793180862712/`.
+The existing editor-status regression also passed all original assertions with
+its navigation budget increased from 15s to 60s in an ignored temporary runner;
+the unchanged runner exceeded its initial page-load timeout on this machine.
+
 Remote address Open buttons were verified on 2026-10-27: all 621 frontend tests,
 lint, type checking and the production build passed. The focused native check
 passed without page errors, covering missing/multiple remotes, distinct fetch
@@ -122,6 +162,7 @@ npm run test:e2e -- --git
 npm run test:e2e -- --git --branches-only
 npm run test:e2e -- --git --repo D:/lovetingyuan/hotsou
 node tools/verify-git.mjs --remotes-only
+node tools/verify-git.mjs --blame-only
 ```
 
 The first command uses an independent temporary repository and a local bare
@@ -129,6 +170,10 @@ remote for branch row actions, tracking reuse and creation, name collisions,
 copying, worktree guards, keyboard/overflow checks and ahead/behind states.
 These additional branch checks run without `--repo`, keeping remote settings
 isolated from a user's shared worktree configuration.
+Use `--blame-only` for real IPC, line attribution, unsaved/saved/staged changes,
+commit and branch watcher refreshes, split focus, overflow and access checks.
+`node tools/verify-line-blame.mjs` checks the real Monaco/status UI with isolated
+IPC, including zero Git reads on cursor movement and long author truncation.
 Use `--branches-only` to run just the branch checks in a fresh fixture.
 Use `--remotes-only` to check per-address Open buttons, fetch/push targets,
 unsupported addresses, keyboard activation and single-line narrow-sidebar layout in an

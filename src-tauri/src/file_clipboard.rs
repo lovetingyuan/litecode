@@ -1,3 +1,4 @@
+use crate::sync::RwLockExt;
 use crate::{
     error::{AppError, Result},
     file_moves::{FileMove, MoveFailure, key, visible, within, workspace},
@@ -94,7 +95,7 @@ pub async fn paste_file_clipboard(
     let label = window.label().to_owned();
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let _disk = state.disk_lock.lock().unwrap();
+        let _disk = state.disk_lock.write_recover();
         let root = workspace(&state, &label, &expected_root)?;
         let target = fs::canonicalize(&target_directory)?;
         if !target.is_dir() || !within(&target, &root) {

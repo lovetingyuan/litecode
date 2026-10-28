@@ -1,4 +1,5 @@
 use super::*;
+use crate::sync::MutexExt;
 
 fn edit(path: &Path, before: &str, encoding: &str) -> DiskEdit {
     let bytes = files::encode(before, encoding).unwrap();
@@ -235,8 +236,7 @@ fn recovery_checks_owner_root_and_buffers_without_losing_unsaved_snapshots() {
     assert!(window.documents["untitled:one"].dirty);
     state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .insert("editor-project".into(), window);
     assert!(authorize(&state, "main", &journal, true).is_err());
     assert!(authorize(&state, "editor-project", &journal, true).is_ok());
@@ -244,8 +244,7 @@ fn recovery_checks_owner_root_and_buffers_without_losing_unsaved_snapshots() {
     assert!(check_buffers(&state, "editor-project", &journal, true).is_err());
     state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get_mut("editor-project")
         .unwrap()
         .documents
@@ -259,8 +258,7 @@ fn recovery_checks_owner_root_and_buffers_without_losing_unsaved_snapshots() {
     );
     state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get_mut("editor-project")
         .unwrap()
         .root = None;
@@ -349,7 +347,7 @@ fn a_missing_buffer_parent_does_not_prevent_journaling_or_recovery() {
         ..Default::default()
     };
     restore_buffers(&state, "main", &mut window).unwrap();
-    state.windows.lock().unwrap().insert("main".into(), window);
+    state.windows.lock_recover().insert("main".into(), window);
     assert!(authorize(&state, "main", &journal, true).is_ok());
     assert_eq!(
         load(&path).unwrap().buffers[0].before.text,

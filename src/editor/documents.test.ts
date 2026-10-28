@@ -63,6 +63,7 @@ import {
   moveTab,
   splitGroup,
   checkpoint,
+  scheduleBackup,
   patchMediaView,
   refreshDocuments,
   renameDocuments,
@@ -92,6 +93,7 @@ class Buffer {
   getValue() {
     return this.text;
   }
+  getValueLength() { return this.text.length; }
   getAlternativeVersionId() {
     return this.version;
   }
@@ -182,6 +184,109 @@ beforeEach(() => {
 });
 
 describe("Editor view snapshots", () => {
+  it("reuses unchanged clean and dirty bodies when another document is edited", async () => {
+    const clean = addDocument({ dirty: false });
+    const dirty = addDocument();
+    const changed = addDocument();
+    await checkpoint();
+    const cleanRead = vi.spyOn(clean.buffer, "getValue");
+    const dirtyRead = vi.spyOn(dirty.buffer, "getValue");
+    const changedRead = vi.spyOn(changed.buffer, "getValue");
+    changed.buffer.edit("latest");
+    await checkpoint();
+    const args = vi.mocked(call).mock.calls.filter(([name]) => name === "sync_documents").slice(-1)[0][1]!;
+    const docs = args.documents as import("../types/types").DocumentSnapshot[];
+    expect(docs.find(d => d.id === changed.id)).toMatchObject({ text: "latest" });
+    expect(docs.find(d => d.id === clean.id)).not.toHaveProperty("text");
+    expect(docs.find(d => d.id === dirty.id)).not.toHaveProperty("text");
+    expect(cleanRead).not.toHaveBeenCalled();
+    expect(dirtyRead).not.toHaveBeenCalled();
+    expect(changedRead).toHaveBeenCalledOnce();
+  });
+  it("retries a failed body sync, including an empty body, before acknowledging it", async () => {
+    const { buffer } = addDocument();
+    await checkpoint();
+    buffer.edit("");
+    vi.mocked(call).mockRejectedValueOnce(new Error("disk full"));
+    await expect(checkpoint()).rejects.toThrow("disk full");
+    await checkpoint();
+    const calls = vi.mocked(call).mock.calls.filter(([name]) => name === "sync_documents");
+    expect((calls.slice(-1)[0][1]!.documents as { text?: string }[])[0].text).toBe("");
+    await checkpoint();
+    expect((vi.mocked(call).mock.calls.slice(-1)[0][1]!.documents as { text?: string }[])[0]).not.toHaveProperty("text");
+  });
+  it("synchronizes encoding and dirty metadata without rereading the body", async () => {
+    const { id, buffer } = addDocument({ dirty: false });
+    await checkpoint();
+    const read = vi.spyOn(buffer, "getValue");
+    patchDoc(id, { encoding: "gbk", dirty: true });
+    await checkpoint();
+    const docs = vi.mocked(call).mock.calls.slice(-1)[0][1]!.documents as import("../types/types").DocumentSnapshot[];
+    expect(docs[0]).toMatchObject({ encoding: "gbk", dirty: true });
+    expect(docs[0]).not.toHaveProperty("text");
+    expect(read).not.toHaveBeenCalled();
+  });
+  it("captures queued bodies when the job executes and only acknowledges the captured version", async () => {
+    const { buffer } = addDocument();
+    await checkpoint();
+    const pending = deferred<void>();
+    vi.mocked(call).mockImplementationOnce(() => pending.promise as never);
+    buffer.edit("first");
+    const first = checkpoint();
+    await vi.waitFor(() => expect(vi.mocked(call)).toHaveBeenCalledTimes(2));
+    const second = checkpoint();
+    buffer.edit("latest");
+    pending.resolve();
+    await Promise.all([first, second]);
+    const docs = vi.mocked(call).mock.calls.slice(-1)[0][1]!.documents as import("../types/types").DocumentSnapshot[];
+    expect(docs[0].text).toBe("latest");
+    await checkpoint();
+    expect((vi.mocked(call).mock.calls.slice(-1)[0][1]!.documents as { text?: string }[])[0]).not.toHaveProperty("text");
+  });
+  it("waits for a new large document but explicit checkpoints bypass the delay", async () => {
+    const { id } = addDocument({ large: true });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(vi.mocked(call).mock.calls.slice(-1)[0][1]!.documents).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1599);
+    expect(vi.mocked(call)).toHaveBeenCalledOnce();
+    await checkpoint();
+    expect(vi.mocked(call).mock.calls.slice(-1)[0][1]!.documents).toContainEqual(expect.objectContaining({ id, text: "edited" }));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(vi.mocked(call)).toHaveBeenCalledTimes(2);
+  });
+  it("keeps a restored large document in the first metadata-only checkpoint", async () => {
+    const buffer = new Buffer("recovered unsaved text");
+    vi.mocked(monaco.editor.createModel).mockReturnValueOnce(buffer as unknown as Monaco.editor.ITextModel);
+    restoreDocument({ id: "restored-large", path: "C:/workspace/large.txt", text: buffer.getValue(),
+      version: 7, revision: "disk", encoding: "utf8", dirty: true,
+      fileInfo: { kind: "text", size: 30 * 1024 * 1024, stamp: "old" } }, { synchronized: true });
+    const read = vi.spyOn(buffer, "getValue");
+    await vi.advanceTimersByTimeAsync(400);
+    expect(vi.mocked(call).mock.calls.slice(-1)[0][1]!.documents).toContainEqual(
+      expect.objectContaining({ id: "restored-large", version: 7, dirty: true }));
+    expect((vi.mocked(call).mock.calls.slice(-1)[0][1]!.documents as { text?: string }[])[0]).not.toHaveProperty("text");
+    expect(read).not.toHaveBeenCalled();
+  });
+  it("backs up ordinary documents without waiting for a large document's idle period", async () => {
+    const large = addDocument({ large: true });
+    const small = addDocument();
+    await checkpoint();
+    vi.mocked(call).mockClear();
+    large.buffer.edit("large edits");
+    await vi.advanceTimersByTimeAsync(100);
+    small.buffer.edit("small edits");
+    await vi.advanceTimersByTimeAsync(400);
+    const calls = () => vi.mocked(call).mock.calls.filter(([name]) => name === "sync_documents");
+    const first = calls().slice(-1)[0][1]!.documents as { id: string; text?: string }[];
+    expect(first.find(doc => doc.id === small.id)?.text).toBe("small edits");
+    expect(first.find(doc => doc.id === large.id)).not.toHaveProperty("text");
+    await vi.advanceTimersByTimeAsync(1499);
+    expect(calls()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    const next = calls().slice(-1)[0][1]!.documents as { id: string; text?: string }[];
+    expect(next.find(doc => doc.id === large.id)?.text).toBe("large edits");
+    scheduleBackup();
+  });
   it("detaches diff view models before releasing shared sources on workspace changes", async () => {
     const { buffer } = addDocument({ dirty: false });
     const disposed = vi.spyOn(buffer, "dispose");

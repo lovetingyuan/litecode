@@ -29,6 +29,7 @@ import {
 } from "../git/branches";
 import {
   changePaths,
+  cancelGitOperation,
   openGitDiff,
   openGitSource,
   readGitInfo,
@@ -109,6 +110,8 @@ export function GitView() {
     ? details.info : null;
   const currentInfo = details?.snapshot === git && !busy ? info : null;
   const [refreshing, setRefreshing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  useEffect(() => setCancelling(false), [busy, repositoryPath]);
   const [branchPending, setBranchPending] = useState(false);
   const branchWorking = useRef(false);
   useEffect(() => {
@@ -274,6 +277,24 @@ export function GitView() {
           />
         </div>
       </div>
+      {repository && busy && ["fetch", "push", "pull", "pullRebase"].includes(busy) && (
+        <div className="git-operation-status" role="status" aria-live="polite">
+          <span>{cancelling ? "Cancelling Git operation…" : `Git ${busy === "pullRebase" ? "pull (rebase)" : busy} in progress…`}</span>
+          <button
+            type="button"
+            className="btn btn-xs"
+            disabled={cancelling}
+            onClick={() => {
+              setCancelling(true);
+              void cancelGitOperation(repository.path).then((cancelled) => {
+                if (!cancelled) { setCancelling(false); }
+              }).catch((error) => { setCancelling(false); report(error); });
+            }}
+          >
+            Cancel Git operation
+          </button>
+        </div>
+      )}
       {!root ? (
         <div className="git-empty">
           <Icon name="source-control" />

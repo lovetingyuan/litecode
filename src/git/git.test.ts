@@ -28,7 +28,8 @@ import { ask } from "../components/dialog";
 import { patchDoc, save } from "../editor/documents";
 import { refreshGit } from "../explorer/workspaceGit";
 import { setApp, useApp } from "../store/store";
-import { runGitOperation } from "./git";
+import { cancelGitOperation, runGitOperation } from "./git";
+import { call } from "../core/bridge";
 
 const source: Doc = {
   id: "source",
@@ -62,6 +63,22 @@ beforeEach(() => {
   vi.mocked(ask).mockResolvedValue("Cancel");
 });
 describe("Git remote operation feedback", () => {
+  it("cancels the current request and keeps busy until the operation settles", async () => {
+    setApp({ docs: {} });
+    let finish!: () => void;
+    vi.mocked(trustedCall).mockImplementation(() => new Promise((resolve) => { finish = () => resolve(""); }));
+    vi.mocked(call).mockResolvedValue(true);
+    const pending = runGitOperation("C:/repo", { kind: "fetch", remote: "origin" });
+    const args = vi.mocked(trustedCall).mock.calls[0][1];
+    if (!args || typeof args === "function") { throw new Error("Expected Git request arguments"); }
+    const requestId = args.requestId;
+    expect(await cancelGitOperation("C:/repo")).toBe(true);
+    expect(call).toHaveBeenCalledWith("git_cancel", { requestId });
+    expect(useApp.getState().gitBusy["C:/repo"]).toBe("fetch");
+    finish();
+    await pending;
+    expect(await cancelGitOperation("C:/repo")).toBe(false);
+  });
   it.each([
     { request: { kind: "fetch", remote: "origin" }, busy: "fetch" },
     { request: { kind: "pull", rebase: false }, busy: "pull" },

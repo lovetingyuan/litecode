@@ -1,3 +1,5 @@
+use crate::sync::MutexExt;
+use crate::sync::RwLockExt;
 use crate::{
     error::{AppError, Result},
     state::{AppState, canonical},
@@ -6,7 +8,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use tauri::{State, WebviewWindow};
+use tauri::WebviewWindow;
 
 pub fn require_source(
     state: &AppState,
@@ -26,7 +28,7 @@ pub fn require_source(
     } else {
         source.parent().unwrap().to_path_buf()
     };
-    let windows = state.windows.lock().unwrap();
+    let windows = state.windows.lock_recover();
     let window = windows
         .get(label)
         .ok_or_else(|| AppError::new("window", "Window is not initialized"))?;
@@ -57,7 +59,7 @@ fn grant(
     expected_root: Option<&str>,
     directory: &str,
 ) -> Result<()> {
-    let _disk = state.disk_lock.lock().unwrap();
+    let _disk = state.disk_lock.write_recover();
     let root = state.require_workspace_trust(label)?;
     if expected_root.map(Path::new).map(canonical).transpose()? != root {
         return Err(AppError::new(
@@ -74,8 +76,7 @@ fn grant(
     }
     state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get_mut(label)
         .unwrap()
         .formatter_trust
@@ -84,20 +85,22 @@ fn grant(
 }
 
 #[tauri::command]
-pub fn trust_formatter(
+pub async fn trust_formatter(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     path: Option<String>,
     expected_root: Option<String>,
     directory: String,
 ) -> Result<()> {
-    grant(
-        &state,
-        window.label(),
-        path.as_deref(),
-        expected_root.as_deref(),
-        &directory,
-    )
+    crate::state::blocking(window, move |window, state| {
+        grant(
+            &state,
+            window.label(),
+            path.as_deref(),
+            expected_root.as_deref(),
+            &directory,
+        )
+    })
+    .await
 }
 
 // Resolve configuration without executing project code, then pin this exact file
@@ -214,7 +217,7 @@ mod tests {
         let root = dir.path().join("workspace");
         fs::create_dir(&root).unwrap();
         let root = canonical(&root).unwrap();
-        state.windows.lock().unwrap().get_mut("main").unwrap().root = Some(root.clone());
+        state.windows.lock_recover().get_mut("main").unwrap().root = Some(root.clone());
         state
             .set_workspace_trust("main", root.to_str().unwrap(), true)
             .unwrap();
@@ -252,7 +255,7 @@ mod tests {
             .set_workspace_trust("main", root.to_str().unwrap(), false)
             .unwrap();
         assert!(
-            state.windows.lock().unwrap()["main"]
+            state.windows.lock_recover()["main"]
                 .formatter_trust
                 .is_empty()
         );
@@ -291,7 +294,7 @@ mod tests {
         )
         .unwrap();
         let root = canonical(dir.path()).unwrap();
-        state.windows.lock().unwrap().get_mut("main").unwrap().root = Some(root.clone());
+        state.windows.lock_recover().get_mut("main").unwrap().root = Some(root.clone());
         assert_eq!(
             require_source(&state, "main", &file, &None)
                 .unwrap_err()
@@ -302,7 +305,7 @@ mod tests {
         let other = dir.path().join("other");
         fs::create_dir(&other).unwrap();
         let other = canonical(&other).unwrap();
-        state.windows.lock().unwrap().get_mut("main").unwrap().root = Some(other.clone());
+        state.windows.lock_recover().get_mut("main").unwrap().root = Some(other.clone());
         state
             .set_workspace_trust("main", other.to_str().unwrap(), true)
             .unwrap();
@@ -378,7 +381,7 @@ mod tests {
             .unwrap();
         assert!(status.status.success());
         let root = canonical(&root).unwrap();
-        state.windows.lock().unwrap().get_mut("main").unwrap().root = Some(root.clone());
+        state.windows.lock_recover().get_mut("main").unwrap().root = Some(root.clone());
         state
             .set_workspace_trust("main", root.to_str().unwrap(), true)
             .unwrap();

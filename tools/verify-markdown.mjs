@@ -31,7 +31,10 @@ const png = Buffer.from(
 );
 await writeFile(path.join(root, "图片 #+.png"), png);
 await writeFile(path.join(run, "outside.png"), png);
+let httpImageRequests = 0;
+let httpsImageRequests = 0;
 const images = createHttpServer((_, response) => {
+  httpImageRequests++;
   response.writeHead(200, { "Content-Type": "image/png" });
   response.end(png);
 });
@@ -177,9 +180,10 @@ try {
   page = browser.contexts()[0].pages()[0];
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(String(error)));
-  await page.route("https://markdown-test.invalid/**", (route) =>
-    route.fulfill({ status: 200, contentType: "image/png", body: png }),
-  );
+  await page.route("https://markdown-test.invalid/**", (route) => {
+    httpsImageRequests++;
+    return route.fulfill({ status: 200, contentType: "image/png", body: png });
+  });
   await page.waitForURL("http://localhost:1420/**", { waitUntil: "commit", timeout: 60000 });
   await page.locator("file-tree-container").waitFor({ timeout: 180000 });
   console.log("Desktop ready");
@@ -425,11 +429,21 @@ try {
   await group(first).getByAltText("Local", { exact: true }).waitFor();
   await page.waitForFunction(
     () =>
-      [...document.querySelectorAll(".markdown-body img")].length === 3 &&
+      [...document.querySelectorAll(".markdown-body img")].length === 1 &&
       [...document.querySelectorAll(".markdown-body img")].every((img) => img.naturalWidth === 1),
   );
   await group(first).getByRole("img", { name: "Missing image", exact: true }).waitFor();
-  assert.equal(await group(first).locator(".markdown-image-error").count(), 2);
+  assert.equal(await group(first).locator(".markdown-image-error").count(), 4);
+  assert.equal(httpImageRequests, 0);
+  assert.equal(httpsImageRequests, 0);
+  await group(first).getByRole("button", { name: "Load remote images", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".markdown-body img").length === 2 &&
+    [...document.querySelectorAll(".markdown-body img")].every((img) => img.naturalWidth === 1));
+  assert.equal(httpImageRequests, 0);
+  assert.equal(httpsImageRequests, 1);
+  assert.equal(await group(first).getByAltText("HTTPS", { exact: true }).getAttribute("referrerpolicy"), "no-referrer");
+  await group(first).getByRole("button", { name: "Block remote images", exact: true }).click();
+  assert.equal(await group(first).locator(".markdown-body img").count(), 1);
   assert.equal(await group(first).getByRole("link", { name: "Unsafe", exact: true }).count(), 0);
   assert.equal(await page.evaluate(() => window.markdownExecuted), undefined);
   assert.equal(
@@ -451,7 +465,7 @@ try {
   assert.equal(denied, true);
   await page.screenshot({ path: path.join(run, "01-markdown-preview.png") });
   checks.push(
-    "Text default, keyboard menu, unsaved buffer, GFM, safe HTML/URLs, local/HTTP/HTTPS images and authorized-file boundary",
+    "Text default, keyboard menu, unsaved buffer, GFM, safe HTML/URLs, local images, explicit HTTPS opt-in, blocked HTTP and authorized-file boundary",
   );
   console.log(checks.at(-1));
 

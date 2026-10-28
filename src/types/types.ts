@@ -54,6 +54,7 @@ export type Doc = Omit<Mirror, "text"> & {
   searchQuery?: Query;
   imageSize?: { width: number; height: number };
 };
+export type DocumentSnapshot = Omit<Mirror, "text"> & { text?: string };
 export type Group = {
   id: string;
   tabs: string[];
@@ -149,6 +150,13 @@ export type GitDiffResource = {
   sourceId?: string;
 };
 export type GitDiffContent = { before: string; after: string; source: string | null; summary: string | null };
+export type GitBlameRange = { startLine: number; lineCount: number; commit: string | null };
+export type GitBlameCommit = { author: string; authorTime: number; summary: string };
+export type GitFileBlame = {
+  head: string | null;
+  ranges: GitBlameRange[];
+  commits: Record<string, GitBlameCommit>;
+};
 export type GitOperation =
   | { kind: "stage" | "unstage"; paths: string[] }
   | { kind: "discard"; files: { path: string; stamp: string }[] }

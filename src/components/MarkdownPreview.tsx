@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { errorMessage, mediaSource } from "../core/bridge";
 import { models, openPath, patchMediaView } from "../editor/documents";
-import { markdownHeadingIds, resolveMarkdownUrl } from "../utils/markdown";
+import { markdownHeadingIds, markdownImageTarget, resolveMarkdownUrl } from "../utils/markdown";
 import { codeLanguage, loadSyntax, monaco } from "../editor/monaco";
 import { previewFontStyle } from "../editor/font";
 import { notify, useApp } from "../store/store";
@@ -64,7 +64,7 @@ export function MarkdownPreview({ doc, group }: { doc: Doc; group: Group }) {
         }
       }}
     >
-      <MarkdownContent text={text} path={doc.path} groupId={group.id} />
+      <MarkdownContent key={`${doc.id}:${doc.path}`} text={text} path={doc.path} groupId={group.id} />
     </div>
   );
 }
@@ -78,6 +78,7 @@ const MarkdownContent = memo(function MarkdownContent({
   path: string | null;
   groupId: string;
 }) {
+  const [allowRemote, setAllowRemote] = useState(false);
   async function follow(href: string, article: HTMLElement) {
     const target = resolveMarkdownUrl(href, path);
     if (!target) {
@@ -140,21 +141,28 @@ const MarkdownContent = memo(function MarkdownContent({
   };
   return (
     <article className="markdown-body">
+      {text.trim().length > 0 && <button
+        type="button"
+        className="btn btn-xs"
+        aria-pressed={allowRemote}
+        title="Loading remote images shares your IP address with their hosts. Only HTTPS images are allowed."
+        onClick={() => setAllowRemote((allowed) => !allowed)}
+      >
+        {allowRemote ? "Block remote images" : "Load remote images"}
+      </button>}
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[markdownHeadingIds]}
         skipHtml
         components={components}
         urlTransform={(url, key) => {
+          if (key === "src") {
+            const image = markdownImageTarget(url, path, allowRemote);
+            return image?.kind === "file" ? mediaSource(image.path) : image?.url ?? "";
+          }
           const target = resolveMarkdownUrl(url, path);
           if (!target) {
             return "";
-          }
-          if (key === "src") {
-            if (target.kind === "file") {
-              return mediaSource(target.path);
-            }
-            return target.kind === "external" && /^https?:/i.test(target.url) ? target.url : "";
           }
           return target.kind === "external" ? target.url : url;
         }}
@@ -238,5 +246,5 @@ function PreviewImage({ src, alt, title }: { src?: string; alt?: string; title?:
       </span>
     );
   }
-  return <img src={src} alt={alt ?? ""} title={title} onError={() => setFailed(true)} />;
+  return <img src={src} alt={alt ?? ""} title={title} referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
 }

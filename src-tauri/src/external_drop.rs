@@ -1,3 +1,5 @@
+use crate::sync::MutexExt;
+use crate::sync::RwLockExt;
 use crate::{
     error::{AppError, Result},
     file_clipboard::{check_source, copy_item},
@@ -112,7 +114,7 @@ pub fn install(window: &WebviewWindow) -> tauri::Result<()> {
                 let items = paths.iter().map(|path| DropItem { path: visible(path), directory: path.is_dir() }).collect();
                 {
                     let state = window.state::<AppState>();
-                    let mut windows = state.windows.lock().unwrap();
+                    let mut windows = state.windows.lock_recover();
                     let Some(w) = windows.get_mut(window.label()) else { return; };
                     // Resolution can finish out of order; the renderer releases cancelled batches.
                     if w.drops.len() >= 8 { return; }
@@ -137,8 +139,7 @@ pub fn install(_: &WebviewWindow) -> tauri::Result<()> {
 fn batch(state: &AppState, label: &str, id: &str) -> Result<Vec<PathBuf>> {
     state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get(label)
         .and_then(|w| w.drops.get(id))
         .cloned()
@@ -147,7 +148,7 @@ fn batch(state: &AppState, label: &str, id: &str) -> Result<Vec<PathBuf>> {
 
 #[tauri::command]
 pub fn release_external_drop(window: WebviewWindow, state: State<'_, AppState>, batch_id: String) {
-    if let Some(w) = state.windows.lock().unwrap().get_mut(window.label()) {
+    if let Some(w) = state.windows.lock_recover().get_mut(window.label()) {
         w.drops.remove(&batch_id);
     }
 }
@@ -259,7 +260,7 @@ pub async fn plan_external_copy(
     let label = window.label().to_owned();
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let _disk = state.disk_lock.lock().unwrap();
+        let _disk = state.disk_lock.write_recover();
         let paths = batch(&state, &label, &batch_id)?;
         let source = paths
             .get(index)
@@ -343,7 +344,7 @@ pub async fn copy_external_item(
     let label = window.label().to_owned();
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let _disk = state.disk_lock.lock().unwrap();
+        let _disk = state.disk_lock.write_recover();
         let paths = batch(&state, &label, &batch_id)?;
         let source = paths
             .get(index)
@@ -456,7 +457,7 @@ mod tests {
     fn isolates_native_batches_by_window_and_validates_workspace_target() {
         let (_temp, source, target) = fixture();
         let state = AppState::default();
-        state.windows.lock().unwrap().insert(
+        state.windows.lock_recover().insert(
             "main".into(),
             crate::state::WindowState {
                 root: Some(target.clone()),
@@ -465,8 +466,7 @@ mod tests {
         );
         state
             .windows
-            .lock()
-            .unwrap()
+            .lock_recover()
             .get_mut("main")
             .unwrap()
             .drops

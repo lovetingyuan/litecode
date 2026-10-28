@@ -1,3 +1,4 @@
+use crate::sync::MutexExt;
 mod commands;
 mod configuration;
 mod error;
@@ -15,8 +16,10 @@ mod lsp;
 mod media;
 mod quick_files;
 mod replacement;
+mod recovery;
 mod search;
 mod state;
+mod sync;
 mod terminal;
 mod tools;
 mod transactions;
@@ -62,7 +65,7 @@ pub fn run() {
             }
             let state = app.state::<state::AppState>();
             let mut labels = state.recovery_windows().unwrap_or_else(|error| {
-                state.startup_warnings.lock().unwrap().push(format!(
+                state.startup_warnings.lock_recover().push(format!(
                     "Could not inspect recovery sessions: {}",
                     error.message
                 ));
@@ -77,8 +80,7 @@ pub fn run() {
                         {
                             state
                                 .windows
-                                .lock()
-                                .unwrap()
+                                .lock_recover()
                                 .entry(label.clone())
                                 .or_default()
                                 .root = Some(root);
@@ -88,7 +90,7 @@ pub fn run() {
                         }
                     }
                 }
-                Err(error) => state.startup_warnings.lock().unwrap().push(format!(
+                Err(error) => state.startup_warnings.lock_recover().push(format!(
                     "Could not inspect replacement recovery: {}. Backups were preserved.",
                     error.message
                 )),
@@ -99,8 +101,7 @@ pub fn run() {
                 if let Err(error) = commands::create_editor_window(app.handle(), &state, &label) {
                     state
                         .startup_warnings
-                        .lock()
-                        .unwrap()
+                        .lock_recover()
                         .push(format!("Could not restore {label}: {}", error.message));
                 }
             }
@@ -108,18 +109,24 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
-                window.state::<updates::Updates>().window_destroyed(window.label());
+                window
+                    .state::<updates::Updates>()
+                    .window_destroyed(window.label());
                 let state = window.state::<state::AppState>();
+                state.cancel_git(window.label());
                 state.terminals.close_window(window.label());
                 state.replacement_plans.close_window(window.label());
-                for (key, task) in state.searches.lock().unwrap().iter() {
+                for (key, task) in state.searches.lock_recover().iter() {
                     if key.starts_with(&format!("{}/", window.label())) {
                         task.cancelled
                             .store(true, std::sync::atomic::Ordering::Release);
                     }
                 }
+                // Final synchronous flush must finish before the last window exits.
+                // Do not wait for the disk gate on the UI thread: a task holding
+                // it may be waiting for this thread to create a window.
                 let _ = state.checkpoint(window.label());
-                state.servers.lock().unwrap().retain(|key, server| {
+                state.servers.lock_recover().retain(|key, server| {
                     if key.starts_with(&format!("{}/", window.label())) {
                         lsp::kill_tree(server.pid);
                         false
@@ -127,7 +134,7 @@ pub fn run() {
                         true
                     }
                 });
-                state.windows.lock().unwrap().remove(window.label());
+                state.windows.lock_recover().remove(window.label());
                 state.terminals.close_window(window.label());
             }
         })
@@ -145,8 +152,10 @@ pub fn run() {
             commands::workspace_git_status,
             git::git_repository_info,
             git::git_read_diff,
+            git::blame::git_blame_file,
             git::git_open_source,
             git::git_operate,
+            git::git_cancel,
             commands::read_workspace_directory,
             quick_files::quick_file_paths,
             commands::read_document,

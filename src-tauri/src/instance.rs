@@ -1,3 +1,4 @@
+use crate::sync::MutexExt;
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -116,7 +117,7 @@ async fn claim(name: &str) -> std::io::Result<Option<NamedPipeServer>> {
 
 fn activate(app: &tauri::AppHandle) -> std::io::Result<()> {
     let instance = app.state::<Instance>();
-    let focused = instance.focused.lock().unwrap().clone();
+    let focused = instance.focused.lock_recover().clone();
     let window = focused
         .and_then(|label| app.get_webview_window(&label))
         .or_else(|| app.get_webview_window("main"))
@@ -204,7 +205,7 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
                     if instance.pending.swap(false, Ordering::AcqRel) { let _ = activate(app); }
                 }
                 RunEvent::WindowEvent { label, event: WindowEvent::Focused(true), .. } => {
-                    *instance.focused.lock().unwrap() = Some(label.clone());
+                    *instance.focused.lock_recover() = Some(label.clone());
                 }
                 _ => (),
             }

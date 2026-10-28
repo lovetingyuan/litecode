@@ -1,3 +1,4 @@
+use crate::sync::MutexExt;
 use crate::{
     error::{AppError, Result},
     files,
@@ -8,13 +9,13 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     fs,
-    io::{Read, Write},
     path::{Component, Path, PathBuf},
-    process::{Command, Stdio},
-    sync::{Arc, Mutex},
-    time::{Duration, Instant, SystemTime},
+    sync::Arc,
+    time::{Duration, SystemTime},
 };
-use tauri::{Manager, State, WebviewWindow};
+use tauri::{State, WebviewWindow};
+
+pub mod blame;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,10 +61,22 @@ pub fn operation(repo: &Repository) -> Option<String> {
 }
 
 pub fn current_branch(repo: &Repository) -> Option<String> {
-    repo.head().ok().and_then(|head| {
-        if head.is_branch() { head.shorthand().map(str::to_owned) }
-        else { head.target().map(|id| id.to_string()[..7].to_owned()) }
-    }).or_else(|| repo.find_reference("HEAD").ok().and_then(|head| head.symbolic_target().and_then(|target| target.strip_prefix("refs/heads/")).map(str::to_owned)))
+    repo.head()
+        .ok()
+        .and_then(|head| {
+            if head.is_branch() {
+                head.shorthand().map(str::to_owned)
+            } else {
+                head.target().map(|id| id.to_string()[..7].to_owned())
+            }
+        })
+        .or_else(|| {
+            repo.find_reference("HEAD").ok().and_then(|head| {
+                head.symbolic_target()
+                    .and_then(|target| target.strip_prefix("refs/heads/"))
+                    .map(str::to_owned)
+            })
+        })
 }
 
 fn status_name(status: Status, index: bool) -> Option<String> {
@@ -192,7 +205,7 @@ fn context(
 ) -> Result<PathBuf> {
     let expected = canonical(Path::new(expected_root))?;
     let requested = canonical(Path::new(repository))?;
-    let windows = state.windows.lock().unwrap();
+    let windows = state.windows.lock_recover();
     let window = windows
         .get(label)
         .ok_or_else(|| AppError::new("workspace", "Window is closed"))?;
@@ -202,8 +215,7 @@ fn context(
     let listed = window
         .repositories
         .repositories
-        .lock()
-        .unwrap()
+        .lock_recover()
         .contains(&requested);
     let containing = Repository::discover(&expected)
         .ok()
@@ -303,7 +315,9 @@ pub struct Info {
 pub fn info(root: &Path) -> Result<Info> {
     let repo = Repository::open(root).map_err(git_error)?;
     let head = repo.head().ok();
-    let branch = (!repo.head_detached().unwrap_or(false)).then(|| current_branch(&repo)).flatten();
+    let branch = (!repo.head_detached().unwrap_or(false))
+        .then(|| current_branch(&repo))
+        .flatten();
     let upstream_branch = branch
         .as_ref()
         .and_then(|name| repo.find_branch(name, BranchType::Local).ok())
@@ -565,8 +579,7 @@ pub async fn git_read_diff(
         context(&state, window.label(), &expected_root, session, &repository)?;
         state
             .windows
-            .lock()
-            .unwrap()
+            .lock_recover()
             .get_mut(window.label())
             .unwrap()
             .grants
@@ -594,8 +607,7 @@ pub fn git_open_source(
     }
     state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get_mut(window.label())
         .unwrap()
         .grants
@@ -649,90 +661,38 @@ pub enum Operation {
     Abort,
 }
 
-fn read_tail(mut stream: impl Read) -> std::io::Result<Vec<u8>> {
-    let mut output = vec![];
-    let mut bytes = [0; 8192];
-    loop {
-        let count = stream.read(&mut bytes)?;
-        if count == 0 {
-            return Ok(output);
-        }
-        output.extend_from_slice(&bytes[..count]);
-        if output.len() > 65536 {
-            output.drain(..output.len() - 65536);
-        }
-    }
+mod process;
+
+enum Prepared {
+    Command {
+        args: Vec<String>,
+        input: Option<Vec<u8>>,
+    },
+    Done(String),
 }
 
+fn git_command(_root: &Path, args: &[&str], input: Option<&[u8]>) -> Result<Prepared> {
+    Ok(Prepared::Command {
+        args: args.iter().map(|arg| (*arg).to_owned()).collect(),
+        input: input.map(<[u8]>::to_vec),
+    })
+}
+
+#[cfg(test)]
 fn run_git(root: &Path, args: &[&str], input: Option<&[u8]>) -> Result<String> {
-    let mut cmd = Command::new("git");
-    cmd.current_dir(crate::tools::process_path(root))
-        .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_EDITOR", "true")
-        .env("GIT_SEQUENCE_EDITOR", "true")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
+    process::run_sync(
+        root,
+        &args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>(),
+        input,
+    )
+}
+
+#[cfg(test)]
+pub fn execute(root: &Path, request: Operation) -> Result<String> {
+    match prepare(root, request)? {
+        Prepared::Done(text) => Ok(text),
+        Prepared::Command { args, input } => process::run_sync(root, &args, input.as_deref()),
     }
-    let mut child = cmd.spawn().map_err(|error| {
-        AppError::new(
-            "missingGit",
-            format!("Cannot start system Git. Install Git and restart LiteCode. {error}"),
-        )
-    })?;
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
-    let out = std::thread::spawn(move || read_tail(stdout));
-    let err = std::thread::spawn(move || read_tail(stderr));
-    if let Some(mut stdin) = child.stdin.take() {
-        if let Some(input) = input {
-            if let Err(error) = stdin.write_all(input) {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(git_error(error));
-            }
-        }
-    }
-    let started = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if started.elapsed() > Duration::from_secs(300) {
-            crate::lsp::kill_tree(child.id());
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(AppError::new(
-                "gitTimeout",
-                "Git timed out. Check credentials or hooks, then refresh the repository before retrying.",
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(30));
-    };
-    let stdout = out
-        .join()
-        .map_err(|_| git_error("Git output reader failed"))??;
-    let stderr = err
-        .join()
-        .map_err(|_| git_error("Git output reader failed"))??;
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&stdout),
-        String::from_utf8_lossy(&stderr)
-    );
-    if !status.success() {
-        return Err(git_error(if text.trim().is_empty() {
-            format!("Git exited with {status}")
-        } else {
-            text
-        }));
-    }
-    Ok(text)
 }
 
 fn branch_name(name: &str) -> Result<()> {
@@ -767,10 +727,10 @@ fn path_input(root: &Path, paths: &[String]) -> Result<Vec<u8>> {
     Ok(input)
 }
 
-pub fn execute(root: &Path, request: Operation) -> Result<String> {
+fn prepare(root: &Path, request: Operation) -> Result<Prepared> {
     let repo = Repository::open(root).map_err(git_error)?;
     match request {
-        Operation::Stage { paths } => run_git(
+        Operation::Stage { paths } => git_command(
             root,
             &[
                 "--literal-pathspecs",
@@ -783,7 +743,7 @@ pub fn execute(root: &Path, request: Operation) -> Result<String> {
         Operation::Unstage { paths } => {
             let input = path_input(root, &paths)?;
             if repo.head().is_err() {
-                run_git(
+                git_command(
                     root,
                     &[
                         "--literal-pathspecs",
@@ -797,7 +757,7 @@ pub fn execute(root: &Path, request: Operation) -> Result<String> {
                     Some(&input),
                 )
             } else {
-                run_git(
+                git_command(
                     root,
                     &[
                         "--literal-pathspecs",
@@ -847,9 +807,9 @@ pub fn execute(root: &Path, request: Operation) -> Result<String> {
                 trash::delete(path).map_err(git_error)?;
             }
             if tracked.is_empty() {
-                Ok(String::new())
+                Ok(Prepared::Done(String::new()))
             } else {
-                run_git(
+                git_command(
                     root,
                     &[
                         "--literal-pathspecs",
@@ -869,11 +829,11 @@ pub fn execute(root: &Path, request: Operation) -> Result<String> {
             if repo.index().map_err(git_error)?.has_conflicts() {
                 return Err(git_error("Stage resolved conflicts before committing"));
             }
-            run_git(root, &["commit", "--file=-"], Some(message.as_bytes()))
+            git_command(root, &["commit", "--file=-"], Some(message.as_bytes()))
         }
         Operation::Fetch { remote } => {
             remote_name(&repo, &remote)?;
-            run_git(root, &["fetch", "--progress", &remote], None)
+            git_command(root, &["fetch", "--progress", &remote], None)
         }
         Operation::Pull {
             remote,
@@ -897,7 +857,7 @@ pub fn execute(root: &Path, request: Operation) -> Result<String> {
                 branch_name(branch)?;
                 args.extend([remote, branch]);
             }
-            run_git(root, &args, None)
+            git_command(root, &args, None)
         }
         Operation::Push { remote } => {
             if repo.head_detached().unwrap_or(false) {
@@ -909,7 +869,7 @@ pub fn execute(root: &Path, request: Operation) -> Result<String> {
                 let name = head
                     .shorthand()
                     .ok_or_else(|| git_error("No current branch"))?;
-                run_git(
+                git_command(
                     root,
                     &[
                         "push",
@@ -921,14 +881,14 @@ pub fn execute(root: &Path, request: Operation) -> Result<String> {
                     None,
                 )
             } else {
-                run_git(root, &["push", "--progress"], None)
+                git_command(root, &["push", "--progress"], None)
             }
         }
         Operation::Switch { branch } => {
             branch_name(&branch)?;
             repo.find_branch(&branch, BranchType::Local)
                 .map_err(git_error)?;
-            run_git(root, &["switch", "--", &branch], None)
+            git_command(root, &["switch", "--", &branch], None)
         }
         Operation::CreateBranch { name, start } => {
             branch_name(&name)?;
@@ -943,11 +903,11 @@ pub fn execute(root: &Path, request: Operation) -> Result<String> {
                 }
                 args.push(start);
             }
-            run_git(root, &args, None)
+            git_command(root, &args, None)
         }
         Operation::DeleteBranch { branch } => {
             branch_name(&branch)?;
-            run_git(root, &["branch", "--delete", "--", &branch], None)
+            git_command(root, &["branch", "--delete", "--", &branch], None)
         }
         Operation::Continue | Operation::Abort => {
             let action = if matches!(request, Operation::Continue) {
@@ -956,8 +916,8 @@ pub fn execute(root: &Path, request: Operation) -> Result<String> {
                 "--abort"
             };
             match operation(&repo).as_deref() {
-                Some("merge") => run_git(root, &["merge", action], None),
-                Some("rebase") => run_git(root, &["rebase", action], None),
+                Some("merge") => git_command(root, &["merge", action], None),
+                Some("rebase") => git_command(root, &["rebase", action], None),
                 _ => Err(git_error("No supported merge or rebase is in progress")),
             }
         }
@@ -971,31 +931,77 @@ pub async fn git_operate(
     expected_root: String,
     session: u64,
     repository: String,
+    request_id: String,
     request: Operation,
 ) -> Result<String> {
-    state.require_workspace_trust(window.label())?;
-    let root = context(&state, window.label(), &expected_root, session, &repository)?;
-    let lock = state
-        .git_operations
-        .lock()
-        .unwrap()
-        .entry(root.clone())
-        .or_insert_with(|| Arc::new(Mutex::new(())))
-        .clone();
-    let app = window.app_handle().clone();
+    if request_id.is_empty() || request_id.len() > 128 {
+        return Err(git_error("Invalid Git request ID"));
+    }
     let label = window.label().to_owned();
-    tauri::async_runtime::spawn_blocking(move || {
-        let _operation = lock.lock().unwrap();
-        let state = app.state::<AppState>();
-        context(&state, &label, &expected_root, session, &repository)?;
-        let result = execute(&root, request);
-        for window in state.windows.lock().unwrap().values() {
+    let key = format!("{label}/{request_id}");
+    let (cancel, cancelled) = tokio::sync::watch::channel(false);
+    {
+        let mut tasks = state.git_tasks.lock_recover();
+        if tasks.contains_key(&key) {
+            return Err(git_error("Git request already exists"));
+        }
+        tasks.insert(key.clone(), cancel);
+    }
+    let _task = RunningTask { state: &state, key };
+    let preparation_cancelled = cancelled.clone();
+    let (root, _operation, prepared) = crate::state::blocking(window, move |window, state| {
+        if *preparation_cancelled.borrow() { return Err(AppError::new("cancelled", "Git operation cancelled.")); }
+        state.require_workspace_trust(window.label())?;
+        let root = context(state, window.label(), &expected_root, session, &repository)?;
+        let lock = {
+            let mut operations = state.git_operations.lock_recover();
+            operations.retain(|_, lock| Arc::strong_count(lock) > 1);
+            operations.entry(root.clone()).or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))).clone()
+        };
+        let guard = lock.try_lock_owned().map_err(|_| AppError::new("gitBusy",
+            "Another Git operation is running in this repository. Wait or cancel it before retrying."))?;
+        Ok((root.clone(), guard, prepare(&root, request)?))
+    }).await?;
+    let result = match prepared {
+        Prepared::Done(text) => Ok(text),
+        Prepared::Command { args, input } => {
+            process::run(
+                &root,
+                &args,
+                input.as_deref(),
+                cancelled,
+                Duration::from_secs(300),
+            )
+            .await
+        }
+    };
+    result
+}
+
+struct RunningTask<'a> {
+    state: &'a AppState,
+    key: String,
+}
+impl Drop for RunningTask<'_> {
+    fn drop(&mut self) {
+        self.state.git_tasks.lock_recover().remove(&self.key);
+        for window in self.state.windows.lock_recover().values() {
             window.repositories.invalidate();
         }
-        result
-    })
-    .await
-    .map_err(git_error)?
+    }
+}
+
+#[tauri::command]
+pub fn git_cancel(window: WebviewWindow, state: State<'_, AppState>, request_id: String) -> bool {
+    state
+        .git_tasks
+        .lock_recover()
+        .get(&format!("{}/{}", window.label(), request_id))
+        .map(|task| {
+            task.send_replace(true);
+            true
+        })
+        .unwrap_or(false)
 }
 
 #[cfg(test)]

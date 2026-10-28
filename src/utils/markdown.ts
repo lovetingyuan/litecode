@@ -3,6 +3,16 @@ export type MarkdownTarget =
   | { kind: "external"; url: string }
   | { kind: "file"; path: string; hash: string };
 
+export function markdownImageTarget(value: string, path: string | null, allowRemote = false) {
+  const target = resolveMarkdownUrl(value, path);
+  if (target?.kind === "file") {
+    return target;
+  }
+  return allowRemote && target?.kind === "external" && /^https:/i.test(target.url)
+    ? target
+    : undefined;
+}
+
 function fileUrl(path: string) {
   const normalized = path.replace(/\\/g, "/");
   // Encode filename delimiters before constructing the base URL.

@@ -1,3 +1,4 @@
+use crate::sync::MutexExt;
 use crate::{
     error::{AppError, Result},
     state::AppState,
@@ -111,8 +112,7 @@ pub async fn quick_file_paths(
 ) -> Result<QuickFilePaths> {
     let root = state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get(window.label())
         .and_then(|w| w.root.clone());
     let Some(root) = root else {

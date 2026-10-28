@@ -1,3 +1,5 @@
+use crate::sync::MutexExt;
+use crate::sync::RwLockExt;
 use crate::{
     error::{AppError, Result},
     files,
@@ -9,7 +11,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use tauri::{State, WebviewWindow};
+use tauri::WebviewWindow;
 
 #[cfg(test)]
 mod tests;
@@ -256,7 +258,7 @@ fn logs(state: &AppState, owner: &str) -> Result<Vec<(String, PathBuf, Journal)>
                     result.push((id, path, journal));
                 }
             }
-            Err(error) => state.startup_warnings.lock().unwrap().push(format!(
+            Err(error) => state.startup_warnings.lock_recover().push(format!(
                 "Could not inspect replacement backup {}: {}. The backup was preserved.",
                 path.display(),
                 error.message
@@ -353,8 +355,7 @@ fn authorize(state: &AppState, owner: &str, journal: &Journal, paths: bool) -> R
     }
     let root = state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get(owner)
         .and_then(|w| w.root.clone());
     if root != journal.root {
@@ -376,7 +377,7 @@ fn authorize(state: &AppState, owner: &str, journal: &Journal, paths: bool) -> R
     Ok(())
 }
 fn check_buffers(state: &AppState, owner: &str, journal: &Journal, finished: bool) -> Result<()> {
-    let windows = state.windows.lock().unwrap();
+    let windows = state.windows.lock_recover();
     let window = windows
         .get(owner)
         .ok_or_else(|| AppError::new("window", "Window is not initialized"))?;
@@ -617,169 +618,171 @@ fn begin_replay(path: &Path, journal: &mut Journal, redo: bool) -> Result<()> {
 #[tauri::command]
 pub async fn replace_disk(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     transaction_id: String,
     edits: Vec<DiskEdit>,
     buffers: Vec<BufferEdit>,
     expected_root: Option<String>,
 ) -> Result<Report> {
-    let _disk = state.disk_lock.lock().unwrap();
-    ensure_no_pending(&state, window.label())?;
-    let root = state
-        .windows
-        .lock()
-        .unwrap()
-        .get(window.label())
-        .and_then(|w| w.root.clone());
-    if expected_root
-        .as_deref()
-        .map(Path::new)
-        .map(canonical)
-        .transpose()?
-        != root
-    {
-        return Err(AppError::new(
-            "workspace",
-            "The workspace changed before replacement",
-        ));
-    }
-    let path = journal_path(&state, window.label(), &transaction_id)?;
-    if path.try_exists()? {
-        return Err(AppError::new(
-            "transaction",
-            "This replacement already exists",
-        ));
-    }
-    for e in &edits {
-        state.authorize(window.label(), &e.path)?;
-    }
-    for b in &buffers {
-        if let Some(p) = &b.before.path {
-            state.authorize_recovery(window.label(), p)?;
-        }
-        let windows = state.windows.lock().unwrap();
-        let m = windows
+    crate::state::blocking(window, move |window, state| {
+        let _disk = state.disk_lock.write_recover();
+        ensure_no_pending(&state, window.label())?;
+        let root = state
+            .windows
+            .lock_recover()
             .get(window.label())
-            .and_then(|w| w.documents.get(&b.before.id))
-            .ok_or_else(|| AppError::new("stale", "A replacement editor was closed"))?;
-        if m.version != b.before.version
-            || m.text != b.before.text
-            || m.path != b.before.path
-            || m.encoding != b.before.encoding
+            .and_then(|w| w.root.clone());
+        if expected_root
+            .as_deref()
+            .map(Path::new)
+            .map(canonical)
+            .transpose()?
+            != root
         {
             return Err(AppError::new(
-                "stale",
-                "An editor changed while preparing replacement",
+                "workspace",
+                "The workspace changed before replacement",
             ));
         }
-    }
-    let mut journal = create_journal(window.label(), root, edits, buffers)?;
-    persist(&path, &journal)?;
-    execute(&path, &mut journal)
+        let path = journal_path(&state, window.label(), &transaction_id)?;
+        if path.try_exists()? {
+            return Err(AppError::new(
+                "transaction",
+                "This replacement already exists",
+            ));
+        }
+        for e in &edits {
+            state.authorize(window.label(), &e.path)?;
+        }
+        for b in &buffers {
+            if let Some(p) = &b.before.path {
+                state.authorize_recovery(window.label(), p)?;
+            }
+            let windows = state.windows.lock_recover();
+            let m = windows
+                .get(window.label())
+                .and_then(|w| w.documents.get(&b.before.id))
+                .ok_or_else(|| AppError::new("stale", "A replacement editor was closed"))?;
+            if m.version != b.before.version
+                || m.text != b.before.text
+                || m.path != b.before.path
+                || m.encoding != b.before.encoding
+            {
+                return Err(AppError::new(
+                    "stale",
+                    "An editor changed while preparing replacement",
+                ));
+            }
+        }
+        let mut journal = create_journal(window.label(), root, edits, buffers)?;
+        persist(&path, &journal)?;
+        execute(&path, &mut journal)
+    })
+    .await
 }
 #[tauri::command]
 pub async fn replay_replacement(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     transaction_id: String,
     redo: bool,
 ) -> Result<Report> {
-    let _disk = state.disk_lock.lock().unwrap();
-    let path = journal_path(&state, window.label(), &transaction_id)?;
-    let mut journal = load(&path)?;
-    authorize(&state, window.label(), &journal, true)?;
-    check_buffers(&state, window.label(), &journal, false)?;
-    begin_replay(&path, &mut journal, redo)?;
-    execute(&path, &mut journal)
+    crate::state::blocking(window, move |window, state| {
+        let _disk = state.disk_lock.write_recover();
+        let path = journal_path(&state, window.label(), &transaction_id)?;
+        let mut journal = load(&path)?;
+        authorize(&state, window.label(), &journal, true)?;
+        check_buffers(&state, window.label(), &journal, false)?;
+        begin_replay(&path, &mut journal, redo)?;
+        execute(&path, &mut journal)
+    })
+    .await
 }
 #[tauri::command]
-pub async fn finish_replacement(
-    window: WebviewWindow,
-    state: State<'_, AppState>,
-    transaction_id: String,
-) -> Result<()> {
-    let _disk = state.disk_lock.lock().unwrap();
-    let path = journal_path(&state, window.label(), &transaction_id)?;
-    let mut journal = load(&path)?;
-    authorize(&state, window.label(), &journal, true)?;
-    let Some(operation) = journal.pending else {
-        return Ok(());
-    };
-    check_buffers(&state, window.label(), &journal, true)?;
-    for e in journal.entries.iter().filter(|e| eligible(&journal, e)) {
-        let expected = if operation.target_after() {
-            &e.after_revision
-        } else {
-            &e.edit.revision
+pub async fn finish_replacement(window: WebviewWindow, transaction_id: String) -> Result<()> {
+    crate::state::blocking(window, move |window, state| {
+        let _disk = state.disk_lock.write_recover();
+        let path = journal_path(&state, window.label(), &transaction_id)?;
+        let mut journal = load(&path)?;
+        authorize(&state, window.label(), &journal, true)?;
+        let Some(operation) = journal.pending else {
+            return Ok(());
         };
-        if revision(&e.edit.path)? != *expected {
-            return Err(AppError::new(
-                "conflict",
-                format!("{} changed before confirming replacement", e.edit.path),
-            ));
+        check_buffers(&state, window.label(), &journal, true)?;
+        for e in journal.entries.iter().filter(|e| eligible(&journal, e)) {
+            let expected = if operation.target_after() {
+                &e.after_revision
+            } else {
+                &e.edit.revision
+            };
+            if revision(&e.edit.path)? != *expected {
+                return Err(AppError::new(
+                    "conflict",
+                    format!("{} changed before confirming replacement", e.edit.path),
+                ));
+            }
         }
-    }
-    journal.pending = None;
-    persist(&path, &journal)
+        journal.pending = None;
+        persist(&path, &journal)
+    })
+    .await
 }
 #[tauri::command]
-pub async fn resume_replacement(
-    window: WebviewWindow,
-    state: State<'_, AppState>,
-    transaction_id: String,
-) -> Result<Report> {
-    let _disk = state.disk_lock.lock().unwrap();
-    let path = journal_path(&state, window.label(), &transaction_id)?;
-    let mut journal = load(&path)?;
-    authorize(&state, window.label(), &journal, true)?;
-    check_buffers(&state, window.label(), &journal, false)?;
-    execute(&path, &mut journal)
+pub async fn resume_replacement(window: WebviewWindow, transaction_id: String) -> Result<Report> {
+    crate::state::blocking(window, move |window, state| {
+        let _disk = state.disk_lock.write_recover();
+        let path = journal_path(&state, window.label(), &transaction_id)?;
+        let mut journal = load(&path)?;
+        authorize(&state, window.label(), &journal, true)?;
+        check_buffers(&state, window.label(), &journal, false)?;
+        execute(&path, &mut journal)
+    })
+    .await
 }
 #[tauri::command]
-pub async fn replacement_recovery(
-    window: WebviewWindow,
-    state: State<'_, AppState>,
-) -> Result<Vec<Recovery>> {
-    let _disk = state.disk_lock.lock().unwrap();
-    Ok(logs(&state, window.label())?
-        .into_iter()
-        .map(|(id, _, journal)| description(&journal, id))
-        .collect())
+pub async fn replacement_recovery(window: WebviewWindow) -> Result<Vec<Recovery>> {
+    crate::state::blocking(window, move |window, state| {
+        let _disk = state.disk_lock.write_recover();
+        Ok(logs(&state, window.label())?
+            .into_iter()
+            .map(|(id, _, journal)| description(&journal, id))
+            .collect())
+    })
+    .await
 }
 #[tauri::command]
 pub async fn recover_replacement(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     transaction_id: String,
     keep: bool,
 ) -> Result<Report> {
-    let _disk = state.disk_lock.lock().unwrap();
-    let path = journal_path(&state, window.label(), &transaction_id)?;
-    let root = state
-        .windows
-        .lock()
-        .unwrap()
-        .get(window.label())
-        .and_then(|w| w.root.clone());
-    let mut journal = load(&path)?;
-    upgrade_legacy(&mut journal, window.label(), root);
-    authorize(&state, window.label(), &journal, !keep)?;
-    if keep {
+    crate::state::blocking(window, move |window, state| {
+        let _disk = state.disk_lock.write_recover();
+        let path = journal_path(&state, window.label(), &transaction_id)?;
+        let root = state
+            .windows
+            .lock_recover()
+            .get(window.label())
+            .and_then(|w| w.root.clone());
+        let mut journal = load(&path)?;
+        upgrade_legacy(&mut journal, window.label(), root);
+        authorize(&state, window.label(), &journal, !keep)?;
+        if keep {
+            journal.version = 2;
+            journal.pending = None;
+            persist(&path, &journal)?;
+            return Ok(Report {
+                complete: true,
+                ..Default::default()
+            });
+        }
+        check_buffers(&state, window.label(), &journal, false)?;
+        journal
+            .pending
+            .as_mut()
+            .ok_or_else(|| AppError::new("transaction", "This replacement is already resolved"))?
+            .rollback = true;
         journal.version = 2;
-        journal.pending = None;
         persist(&path, &journal)?;
-        return Ok(Report {
-            complete: true,
-            ..Default::default()
-        });
-    }
-    check_buffers(&state, window.label(), &journal, false)?;
-    journal
-        .pending
-        .as_mut()
-        .ok_or_else(|| AppError::new("transaction", "This replacement is already resolved"))?
-        .rollback = true;
-    journal.version = 2;
-    persist(&path, &journal)?;
-    execute(&path, &mut journal)
+        execute(&path, &mut journal)
+    })
+    .await
 }

@@ -1,3 +1,4 @@
+use crate::sync::{MutexExt, RwLockExt};
 use crate::{
     error::{AppError, Result},
     files,
@@ -9,17 +10,17 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, RwLock, Weak,
         atomic::{AtomicBool, AtomicU64},
     },
 };
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Mirror {
+pub struct DocumentRecord<T = String> {
     pub id: String,
     pub path: Option<String>,
-    pub text: String,
+    pub text: T,
     pub version: u64,
     pub revision: Option<String>,
     pub encoding: String,
@@ -36,15 +37,61 @@ pub struct Mirror {
     pub search_query: Option<serde_json::Value>,
 }
 
+pub type Mirror = DocumentRecord<String>;
+pub type DocumentSnapshot = DocumentRecord<Option<String>>;
+
+impl<T> DocumentRecord<T> {
+    pub fn with_text<U>(self, text: U) -> DocumentRecord<U> {
+        DocumentRecord {
+            id: self.id,
+            path: self.path,
+            text,
+            version: self.version,
+            revision: self.revision,
+            encoding: self.encoding,
+            dirty: self.dirty,
+            kind: self.kind,
+            file_info: self.file_info,
+            language: self.language,
+            name: self.name,
+            search_query: self.search_query,
+        }
+    }
+}
+
+impl Mirror {
+    // Never clone the body when capturing a recovery manifest.
+    pub fn metadata(&self) -> DocumentSnapshot {
+        DocumentRecord {
+            id: self.id.clone(),
+            path: self.path.clone(),
+            text: None,
+            version: self.version,
+            revision: self.revision.clone(),
+            encoding: self.encoding.clone(),
+            dirty: self.dirty,
+            kind: self.kind,
+            file_info: self.file_info.clone(),
+            language: self.language.clone(),
+            name: self.name.clone(),
+            search_query: self.search_query.clone(),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct WindowState {
     pub root: Option<PathBuf>,
     pub formatter_trust: HashSet<(Option<PathBuf>, PathBuf)>,
     pub grants: HashSet<PathBuf>,
     pub documents: HashMap<String, Mirror>,
+    pub text_generations: HashMap<String, u64>,
+    pub next_text_generation: u64,
+    pub backup: crate::recovery::BackupState,
     pub watcher: Option<RecommendedWatcher>,
     pub workspace_session: u64,
     pub repositories: Arc<crate::workspace::RepositoryIndex>,
+    pub git_blame: Arc<Mutex<crate::git::blame::Cache>>,
     pub session: serde_json::Value,
     pub drops: HashMap<String, Vec<PathBuf>>,
 }
@@ -56,11 +103,14 @@ pub struct SearchTask {
 
 #[derive(Default)]
 pub struct AppState {
-    pub git_operations: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
+    pub git_operations: Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
+    pub git_tasks: Mutex<HashMap<String, tokio::sync::watch::Sender<bool>>>,
     pub replacement_plans: crate::replacement::PlanningTasks,
     pub tool_lock: tokio::sync::Mutex<()>,
     pub windows: Mutex<HashMap<String, WindowState>>,
-    pub disk_lock: Mutex<()>,
+    // Shared for ordinary saves/backups; exclusive for multi-file mutations.
+    pub disk_lock: RwLock<()>,
+    pub(crate) disk_operations: Mutex<HashMap<String, Weak<Mutex<()>>>>,
     pub searches: Mutex<HashMap<String, Arc<SearchTask>>>,
     pub servers: Mutex<HashMap<String, crate::lsp::Server>>,
     pub terminals: crate::terminal::Service,
@@ -112,6 +162,24 @@ pub fn recovery_path(path: &Path) -> Result<PathBuf> {
 }
 
 impl AppState {
+    pub fn cancel_git(&self, label: &str) {
+        for (key, task) in self.git_tasks.lock_recover().iter() {
+            if key.starts_with(&format!("{label}/")) {
+                task.send_replace(true);
+            }
+        }
+    }
+    pub fn disk_operation(&self, key: String) -> Arc<Mutex<()>> {
+        let mut operations = self.disk_operations.lock_recover();
+        operations.retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = operations.get(&key).and_then(Weak::upgrade) {
+            return lock;
+        }
+        let lock = Arc::new(Mutex::new(()));
+        operations.insert(key, Arc::downgrade(&lock));
+        lock
+    }
+
     pub fn authorize_recovery(&self, label: &str, path: &str) -> Result<PathBuf> {
         self.authorize_path(label, recovery_path(Path::new(path))?)
     }
@@ -121,7 +189,7 @@ impl AppState {
     }
 
     fn authorize_path(&self, label: &str, path: PathBuf) -> Result<PathBuf> {
-        let windows = self.windows.lock().unwrap();
+        let windows = self.windows.lock_recover();
         let window = windows
             .get(label)
             .ok_or_else(|| AppError::new("window", "Window is not initialized"))?;
@@ -143,8 +211,7 @@ impl AppState {
     pub fn require_workspace_trust(&self, label: &str) -> Result<Option<PathBuf>> {
         let root = self
             .windows
-            .lock()
-            .unwrap()
+            .lock_recover()
             .get(label)
             .ok_or_else(|| AppError::new("window", "Window is not initialized"))?
             .root
@@ -175,14 +242,15 @@ impl AppState {
         trusted: bool,
     ) -> Result<()> {
         let expected = canonical(Path::new(expected_root))?;
-        let _disk = self.disk_lock.lock().unwrap();
-        let mut windows = self.windows.lock().unwrap();
+        let _disk = self.disk_lock.write_recover();
+        let windows = self.windows.lock_recover();
         if windows.get(label).and_then(|w| w.root.as_ref()) != Some(&expected) {
             return Err(AppError::new(
                 "workspace",
                 "The workspace changed. Review the current folder before trusting it.",
             ));
         }
+        drop(windows);
         let mut roots = self.trusted_roots()?;
         roots.retain(|root| root != &expected);
         if trusted {
@@ -193,8 +261,10 @@ impl AppState {
             &serde_json::to_vec(&roots)?,
         )?;
         if !trusted {
+            let mut windows = self.windows.lock_recover();
             for (label, w) in windows.iter_mut() {
                 if w.root.as_ref() == Some(&expected) {
+                    self.cancel_git(label);
                     w.formatter_trust.clear();
                     self.terminals.close_window(label);
                 }
@@ -204,7 +274,7 @@ impl AppState {
                 .filter(|(_, w)| w.root.as_ref() == Some(&expected))
                 .map(|(label, _)| format!("{label}/"))
                 .collect();
-            self.servers.lock().unwrap().retain(|key, server| {
+            self.servers.lock_recover().retain(|key, server| {
                 if labels.iter().any(|label| key.starts_with(label)) {
                     crate::lsp::kill_tree(server.pid);
                     false
@@ -219,12 +289,16 @@ impl AppState {
     pub fn sync_documents(
         &self,
         label: &str,
-        documents: Vec<Mirror>,
+        documents: Vec<DocumentSnapshot>,
         session: serde_json::Value,
     ) -> Result<()> {
-        let _disk = self.disk_lock.lock().unwrap();
+        let _disk = self.disk_lock.read_recover();
+        let lock = self.disk_operation(format!("session:{label}"));
+        let _session = lock.lock_recover();
         for doc in &documents {
-            if !doc.kind.is_text() && (!doc.text.is_empty() || doc.dirty) {
+            if !doc.kind.is_text()
+                && (doc.text.as_ref().is_some_and(|text| !text.is_empty()) || doc.dirty)
+            {
                 return Err(AppError::new(
                     "binary",
                     "Binary recovery records cannot contain text edits.",
@@ -233,23 +307,61 @@ impl AppState {
             if let Some(path) = &doc.path {
                 self.authorize_path(label, recovery_path(Path::new(path))?)?;
             }
-            if doc.text.len() > files::MAX_FILE as usize {
+            if doc
+                .text
+                .as_ref()
+                .is_some_and(|text| text.len() > files::MAX_FILE as usize)
+            {
                 return Err(AppError::new("size", "Backup exceeds the document limit"));
             }
         }
         {
-            let mut windows = self.windows.lock().unwrap();
+            let mut windows = self.windows.lock_recover();
             let w = windows
                 .get_mut(label)
                 .ok_or_else(|| AppError::new("window", "Window is not initialized"))?;
+            let mut unique = HashSet::new();
+            for doc in &documents {
+                if !unique.insert(&doc.id) {
+                    return Err(AppError::new("document", "Duplicate document snapshot"));
+                }
+                let previous = w.documents.get(&doc.id);
+                if previous.is_some_and(|old| old.version > doc.version) {
+                    continue;
+                }
+                if doc.kind.is_text()
+                    && doc.text.is_none()
+                    && previous.is_none_or(|old| !old.kind.is_text() || old.version != doc.version)
+                {
+                    return Err(AppError::new(
+                        "document",
+                        "The document body must be synchronized before reusing it",
+                    ));
+                }
+            }
             let ids: HashSet<_> = documents.iter().map(|d| d.id.clone()).collect();
             w.documents.retain(|id, _| ids.contains(id));
-            for doc in documents {
+            w.text_generations.retain(|id, _| ids.contains(id));
+            for mut doc in documents {
                 if w.documents
                     .get(&doc.id)
                     .is_none_or(|m| m.version <= doc.version)
                 {
-                    w.documents.insert(doc.id.clone(), doc);
+                    let text = if let Some(text) = doc.text.take() {
+                        w.next_text_generation += 1;
+                        w.text_generations
+                            .insert(doc.id.clone(), w.next_text_generation);
+                        text
+                    } else if doc.kind.is_text() {
+                        // Move, rather than clone, an unchanged body out of the old mirror.
+                        w.documents
+                            .remove(&doc.id)
+                            .map(|old| old.text)
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+                    w.documents.insert(doc.id.clone(), doc.with_text(text));
                 }
             }
             w.session = session;
@@ -259,7 +371,7 @@ impl AppState {
 
     pub fn recovery_windows(&self) -> Result<Vec<String>> {
         let mut labels = vec![];
-        let mut warnings = self.startup_warnings.lock().unwrap();
+        let mut warnings = self.startup_warnings.lock_recover();
         for entry in fs::read_dir(&self.data_dir)? {
             let entry = entry?;
             let name = entry.file_name();
@@ -290,8 +402,7 @@ impl AppState {
     pub fn grant(&self, label: &str, path: &Path) -> Result<PathBuf> {
         let path = canonical(path)?;
         self.windows
-            .lock()
-            .unwrap()
+            .lock_recover()
             .entry(label.into())
             .or_default()
             .grants
@@ -300,23 +411,92 @@ impl AppState {
     }
 
     pub fn checkpoint(&self, label: &str) -> Result<()> {
-        let windows = self.windows.lock().unwrap();
-        let Some(window) = windows.get(label) else {
-            return Ok(());
-        };
-        let data = serde_json::json!({"root": window.root, "session": window.session, "documents": window.documents.values().collect::<Vec<_>>()});
-        files::atomic_write(
-            &self.data_dir.join(format!("session-{label}.json")),
-            &serde_json::to_vec(&data)?,
-        )
+        crate::recovery::checkpoint(self, label)
     }
+}
+
+// Own the window/app handle rather than borrowing Tauri State across the task.
+pub async fn blocking<T, F>(window: tauri::WebviewWindow, work: F) -> Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce(tauri::WebviewWindow, &AppState) -> Result<T> + Send + 'static,
+{
+    use tauri::Manager;
+    let app = window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move || work(window, &app.state::<AppState>()))
+        .await
+        .map_err(|error| AppError::new("task", error.to_string()))?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn mirror(id: &str, path: Option<&Path>) -> Mirror {
+    #[test]
+    fn poisoned_window_and_disk_locks_do_not_disable_backups() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState {
+            data_dir: dir.path().into(),
+            ..Default::default()
+        };
+        state
+            .windows
+            .lock_recover()
+            .insert("main".into(), WindowState::default());
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _disk = state.disk_lock.write_recover();
+            let _windows = state.windows.lock_recover();
+            panic!("failed task");
+        }));
+        state
+            .sync_documents("main", vec![mirror("unsaved", None)], serde_json::json!({}))
+            .unwrap();
+        assert!(state.data_dir.join("session-main.json").is_file());
+        assert_eq!(
+            state.windows.lock_recover()["main"].documents["unsaved"].text,
+            "unsaved text"
+        );
+    }
+
+    #[test]
+    fn a_busy_window_does_not_block_another_windows_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = Arc::new(AppState {
+            data_dir: dir.path().into(),
+            ..Default::default()
+        });
+        state
+            .windows
+            .lock_recover()
+            .insert("other".into(), WindowState::default());
+        let gate = state.disk_lock.read_recover();
+        let session = state.disk_operation("session:busy".into());
+        let busy = session.lock_recover();
+        assert!(state.disk_lock.try_write().is_err());
+        assert!(Arc::ptr_eq(
+            &session,
+            &state.disk_operation("session:busy".into())
+        ));
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let worker = state.clone();
+        let task = std::thread::spawn(move || {
+            sender
+                .send(worker.sync_documents(
+                    "other",
+                    vec![mirror("buffer", None)],
+                    serde_json::json!({}),
+                ))
+                .unwrap();
+        });
+        let result = receiver.recv_timeout(std::time::Duration::from_secs(5));
+        drop(busy);
+        drop(gate);
+        task.join().unwrap();
+        result.unwrap().unwrap();
+        assert!(state.data_dir.join("session-other.json").is_file());
+    }
+
+    fn mirror(id: &str, path: Option<&Path>) -> DocumentSnapshot {
         serde_json::from_value(serde_json::json!({
             "id": id, "path": path.map(|p| p.to_string_lossy()), "text": "unsaved text",
             "version": 1, "revision": null, "encoding": "utf8", "dirty": true
@@ -336,7 +516,7 @@ mod tests {
             data_dir: dir.path().join("data"),
             ..Default::default()
         };
-        state.windows.lock().unwrap().insert(
+        state.windows.lock_recover().insert(
             "main".into(),
             WindowState {
                 root: Some(fs::canonicalize(&root).unwrap()),
@@ -355,13 +535,9 @@ mod tests {
             serde_json::from_slice(&fs::read(state.data_dir.join("session-main.json")).unwrap())
                 .unwrap();
         assert_eq!(saved["documents"].as_array().unwrap().len(), 2);
-        assert!(
-            saved["documents"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|d| d["text"] == "unsaved text")
-        );
+        assert_eq!(saved["version"], 2);
+        let restored = crate::recovery::load(&state, "main", &mut vec![]);
+        assert!(restored.documents.iter().all(|d| d.text == "unsaved text"));
         assert!(state.authorize("main", path.to_str().unwrap()).is_err());
         let outside = root.join("../outside/missing.txt");
         assert!(
@@ -382,7 +558,7 @@ mod tests {
                 )
                 .is_err()
         );
-        assert_eq!(state.windows.lock().unwrap()["main"].documents.len(), 2);
+        assert_eq!(state.windows.lock_recover()["main"].documents.len(), 2);
     }
 
     #[test]
@@ -426,7 +602,7 @@ mod tests {
             data_dir: dir.path().join("data"),
             ..Default::default()
         };
-        state.windows.lock().unwrap().insert(
+        state.windows.lock_recover().insert(
             "main".into(),
             WindowState {
                 root: Some(fs::canonicalize(&root).unwrap()),
@@ -453,7 +629,7 @@ mod tests {
             data_dir: state.data_dir.clone(),
             ..Default::default()
         };
-        restarted.windows.lock().unwrap().insert(
+        restarted.windows.lock_recover().insert(
             "main".into(),
             WindowState {
                 root: Some(fs::canonicalize(&root).unwrap()),
@@ -468,7 +644,7 @@ mod tests {
             state.require_workspace_trust("main").unwrap_err().code,
             "workspaceTrust"
         );
-        state.windows.lock().unwrap().get_mut("main").unwrap().root =
+        state.windows.lock_recover().get_mut("main").unwrap().root =
             Some(fs::canonicalize(&other).unwrap());
         assert!(
             state
@@ -496,8 +672,7 @@ mod tests {
         ] {
             state
                 .windows
-                .lock()
-                .unwrap()
+                .lock_recover()
                 .insert(label.into(), WindowState::default());
             let mut doc = mirror(label, None);
             doc.dirty = label != "editor-clean";
@@ -519,7 +694,7 @@ mod tests {
             vec!["editor-empty-123-0", "editor-project"]
         );
         assert!(dir.path().join("session-editor-empty-123-0.json").is_file());
-        assert!(!state.startup_warnings.lock().unwrap().is_empty());
+        assert!(!state.startup_warnings.lock_recover().is_empty());
     }
 
     #[test]
@@ -529,7 +704,7 @@ mod tests {
         fs::create_dir(&root).unwrap();
         fs::write(dir.path().join("secret"), "secret").unwrap();
         let state = AppState::default();
-        state.windows.lock().unwrap().insert(
+        state.windows.lock_recover().insert(
             "main".into(),
             WindowState {
                 root: Some(fs::canonicalize(&root).unwrap()),

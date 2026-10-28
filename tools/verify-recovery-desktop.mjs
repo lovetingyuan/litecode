@@ -22,6 +22,22 @@ const processes = [], browsers = [], locks = [], checks = [];
 const errors = [];
 let port = 23000 + Date.now() % 5000;
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// WebView2 can expose worker targets as pages over CDP. Only editor URLs have
+// the application DOM; waiting for a worker's load/sidebar never completes.
+const editorPages = browser => browser.contexts()[0].pages().filter(page => {
+  try {
+    const url = new URL(page.url());
+    return url.origin === "http://localhost:1420" && url.pathname === "/";
+  } catch { return false; }
+});
+async function waitEditors(browser, count = 1) {
+  for (let i = 0; i < 600; i++) {
+    const pages = editorPages(browser);
+    if (pages.length >= count) { return pages; }
+    await delay(100);
+  }
+  throw new Error(`Expected ${count} editor windows`);
+}
 function check(message) { checks.push(message); console.log("PASS: " + message); }
 function launch(binary, debugPort) {
   const child = spawn(binary, [], {
@@ -57,7 +73,7 @@ async function connect(debugPort) {
 async function prepare(page) {
   page.setDefaultTimeout(30000);
   page.on("pageerror", (error) => errors.push(String(error)));
-  await page.waitForURL("http://localhost:1420/**", { timeout: 60000 });
+  await page.waitForURL("http://localhost:1420/**", { waitUntil: "commit", timeout: 60000 });
   await page.locator(".sidebar").waitFor({ state: "attached", timeout: 90000 });
   await page.evaluate(async () => {
     function moduleUrl(suffix) {
@@ -91,6 +107,10 @@ async function hold(file) {
   return async () => { child.stdin.end("\n"); await exited(child); };
 }
 async function json(file) { return JSON.parse(await readFile(file, "utf8")); }
+async function recoveryText(manifest, id) {
+  const doc = manifest.documents.find(doc => doc.id === id);
+  return doc.body ? readFile(path.join(data, "recovery", "main", `${doc.body}.txt`), "utf8") : doc.text;
+}
 async function pending(page) { return invoke(page, "replacement_recovery"); }
 async function prompt(page, choice) {
   await page.evaluate(() => { void window.__litecodeVerification.r.recoverInterruptedReplacements(); });
@@ -100,7 +120,7 @@ try {
   console.log("Fixture: " + run);
   const first = launch(exe, port);
   let browser = await connect(port);
-  let page = await prepare(browser.contexts()[0].pages()[0]);
+  let page = await prepare((await waitEditors(browser))[0]);
   const documentId = await page.evaluate(async (file) => {
     const { d } = window.__litecodeVerification;
     const id = await d.openPath(file, { pinned: true });
@@ -113,21 +133,30 @@ try {
   const secondaryLabel = await invoke(page, "new_window");
   let second;
   for (let i = 0; i < 100; i++) {
-    second = browser.contexts()[0].pages().find((p) => p !== page);
+    second = editorPages(browser).find((p) => p !== page);
     if (second) { break; }
     await delay(100);
   }
   assert(second, "New editor window was not created");
   await prepare(second);
+  // Minimize both windows so the OS cannot refocus main when the last editor
+  // is minimized and change which window the duplicate launch should restore.
+  await invoke(page, "plugin:window|minimize", { label: "main" });
   await invoke(second, "plugin:window|minimize", { label: secondaryLabel });
   const duplicates = [launch(exe, port + 10), launch(exe, port + 11), launch(exe, port + 12)];
   assert.deepEqual(await Promise.all(duplicates.map(exited)), [0, 0, 0]);
   assert.equal(first.exitCode, null);
-  assert.equal(browser.contexts()[0].pages().length, 2);
+  assert.equal(editorPages(browser).length, 2);
+  for (let i = 0; i < 100; i++) {
+    if (!await invoke(second, "plugin:window|is_minimized", { label: secondaryLabel }) &&
+        await invoke(second, "plugin:window|is_focused", { label: secondaryLabel })) { break; }
+    await delay(100);
+  }
   assert.equal(await invoke(second, "plugin:window|is_minimized", { label: secondaryLabel }), false);
   assert.equal(await invoke(second, "plugin:window|is_focused", { label: secondaryLabel }), true);
   const after = await json(path.join(data, "session-main.json"));
-  assert.equal(after.documents.find((d) => d.id === documentId).text, before.documents.find((d) => d.id === documentId).text);
+  assert.equal(await recoveryText(before, documentId), "alpha user edit\n");
+  assert.equal(await recoveryText(after, documentId), "alpha user edit\n");
   check("Concurrent duplicate launches reuse the process, restore the last window and preserve unsaved recovery data");
 
   await page.evaluate(async ({ id, files }) => {
@@ -184,6 +213,15 @@ try {
   assert.equal(partial.complete, false);
   assert.equal(await readFile(c, "utf8"), "new\n");
   assert.equal(await readFile(d, "utf8"), "old D\n");
+  const largeRecovery = path.join(root, "large-recovery.txt");
+  await writeFile(largeRecovery, "x".repeat(21 * 1024 * 1024));
+  const largeId = await page.evaluate(async file => {
+    const { d } = window.__litecodeVerification;
+    const id = await d.openPath(file, { reveal: false, force: true });
+    d.models.get(id).setValue("large recovered edit\n");
+    await d.checkpoint();
+    return id;
+  }, largeRecovery);
   await page.evaluate(() => window.__litecodeVerification.d.checkpoint());
   await invoke(second, "sync_documents", { documents: [], session: {} });
   await unlock();
@@ -192,12 +230,17 @@ try {
   port += 1;
   const restarted = launch(exe, port);
   browser = await connect(port);
-  for (let i = 0; i < 100 && browser.contexts()[0].pages().length < 2; i++) { await delay(100); }
-  const pages = await Promise.all(browser.contexts()[0].pages().map(prepare));
+  const pages = await Promise.all((await waitEditors(browser, 2)).map(prepare));
   second = (await Promise.all(pages.map(async (p) => ({ page: p, pending: await pending(p) })))).find((p) => p.pending.length)?.page;
   assert(second, "A clean secondary window with a pending disk journal was not restored");
   page = pages.find((p) => p !== second);
   assert.equal(await buffer(page, documentId), "alpha user edit\n");
+  assert.equal(await buffer(page, largeId), "large recovered edit\n");
+  await delay(600);
+  const largeBackup = (await json(path.join(data, "session-main.json"))).documents.find(doc => doc.id === largeId);
+  assert(largeBackup?.dirty && largeBackup.body, "Restored large document disappeared during its first backup interval");
+  assert.equal(await recoveryText({ documents: [largeBackup] }, largeId), "large recovered edit\n");
+  check("A restored large document retains its unsaved body through the first metadata-only checkpoint");
   await second.getByRole("button", { name: "恢复操作前状态", exact: true }).click();
   for (let i = 0; i < 100 && (await pending(second)).length; i++) { await delay(100); }
   assert.equal(await readFile(c, "utf8"), "old C\n");
@@ -228,7 +271,7 @@ try {
   await copyFile(exe, independentExe);
   const independent = launch(independentExe, port + 1);
   const separate = await connect(port + 1);
-  await prepare(separate.contexts()[0].pages()[0]);
+  await prepare((await waitEditors(separate))[0]);
   assert.equal(independent.exitCode, null);
   assert.equal(restarted.exitCode, null);
   check("A different portable data directory runs independently alongside the first instance");
@@ -236,7 +279,8 @@ try {
   await writeFile(path.join(run, "results.json"), JSON.stringify({ checks, errors, run, generatedAt: new Date().toISOString() }, null, 2));
   console.log(JSON.stringify({ checks: checks.length, run }));
 } catch (error) {
-  await writeFile(path.join(run, "failure.json"), JSON.stringify({ error: String(error.stack ?? error), checks, errors }, null, 2));
+  const pages = browsers.flatMap(browser => browser.contexts().flatMap(context => context.pages().map(page => ({ url: page.url(), closed: page.isClosed() }))));
+  await writeFile(path.join(run, "failure.json"), JSON.stringify({ error: String(error.stack ?? error), checks, errors, pages }, null, 2));
   throw error;
 } finally {
   for (const child of locks) { if (child.exitCode === null) { child.stdin.end("\n"); } }

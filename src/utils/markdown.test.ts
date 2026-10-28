@@ -3,7 +3,19 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { markdownHeadingIds, resolveMarkdownUrl } from "./markdown";
+import { markdownHeadingIds, markdownImageTarget, resolveMarkdownUrl } from "./markdown";
+
+describe("Markdown image privacy", () => {
+  it("blocks remote images by default and only opts in HTTPS", () => {
+    for (const url of ["https://example.com/pixel", "http://example.com/pixel", "//example.com/pixel"]) {
+      expect(markdownImageTarget(url, null)).toBeUndefined();
+    }
+    expect(markdownImageTarget("https://example.com/pixel", null, true)?.kind).toBe("external");
+    expect(markdownImageTarget("http://example.com/pixel", null, true)).toBeUndefined();
+    expect(markdownImageTarget("javascript:alert(1)", null, true)).toBeUndefined();
+    expect(markdownImageTarget("./local.png", "C:/docs/README.md")?.kind).toBe("file");
+  });
+});
 
 describe("Markdown resource URLs", () => {
   const path = "C:\\workspace\\文档 #+\\README.md";

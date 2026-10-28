@@ -103,7 +103,10 @@ export function EditorGroup({ group }: { group: Group }) {
     if (!state.docs[currentGroup?.active ?? ""]?.gitDiff) { editors.set(group.id, e); }
     const subscriptions = [
       installMergeConflictEditor(e, setMergeConflictCount),
-      e.onDidFocusEditorText(() => setApp({ activeGroup: group.id })),
+      e.onDidFocusEditorText(() => {
+        setApp({ activeGroup: group.id });
+        syncCursor(e, group.id);
+      }),
       e.onDidBlurEditorWidget(() => {
         if (!document.activeElement?.closest(".editor-view-trigger, .media-menu")) {
           void autoSave("onFocusChange", previous.current ?? undefined);
@@ -198,6 +201,9 @@ export function EditorGroup({ group }: { group: Group }) {
     previous.current = group.active;
     previousTextView.current = textView;
   }, [group.id, group.active, group.views, doc?.path, textView, gitDiff]);
+  useEffect(() => {
+    if (textView && instance.current) { syncCursor(instance.current, group.id); }
+  }, [activeGroup, group.active, group.id, textView]);
   useEffect(() => {
     instance.current?.updateOptions(editorOptions(settings, doc?.large));
   }, [group.id, settings, doc?.large]);
@@ -449,6 +455,17 @@ export function EditorGroup({ group }: { group: Group }) {
       )}
     </section>
   );
+}
+
+function syncCursor(editor: monaco.editor.IStandaloneCodeEditor, groupId: string) {
+  if (useApp.getState().activeGroup !== groupId) { return; }
+  const selection = editor.getSelection();
+  if (!selection) { return; }
+  setApp({ cursor: {
+    line: selection.positionLineNumber,
+    column: selection.positionColumn,
+    selected: editor.getModel()?.getValueLengthInRange(selection) ?? 0,
+  } });
 }
 
 export function EditorTabsScrollbar({

@@ -1,3 +1,4 @@
+use crate::sync::MutexExt;
 use crate::{
     error::{AppError, Result},
     search::Query,
@@ -18,7 +19,7 @@ pub struct PlanningTasks(Mutex<HashMap<(String, String), Arc<AtomicBool>>>);
 
 impl PlanningTasks {
     fn register(&self, label: &str, id: String) -> Result<()> {
-        let mut tasks = self.0.lock().unwrap();
+        let mut tasks = self.0.lock_recover();
         if tasks.keys().any(|(owner, _)| owner == label) {
             return Err(AppError::new(
                 "replacementBusy",
@@ -31,15 +32,14 @@ impl PlanningTasks {
 
     fn get(&self, label: &str, id: String) -> Result<Arc<AtomicBool>> {
         self.0
-            .lock()
-            .unwrap()
+            .lock_recover()
             .get(&(label.into(), id))
             .cloned()
             .ok_or_else(|| AppError::new("cancelled", "Replacement planning is no longer active"))
     }
 
     fn cancel(&self, label: &str, id: String, release: bool) {
-        let mut tasks = self.0.lock().unwrap();
+        let mut tasks = self.0.lock_recover();
         let key = (label.into(), id);
         if let Some(task) = tasks.get(&key) {
             task.store(true, Ordering::Release);
@@ -50,7 +50,7 @@ impl PlanningTasks {
     }
 
     pub fn close_window(&self, label: &str) {
-        self.0.lock().unwrap().retain(|(owner, _), task| {
+        self.0.lock_recover().retain(|(owner, _), task| {
             if owner != label {
                 return true;
             }
@@ -508,7 +508,7 @@ mod tests {
         assert!(!two.load(Ordering::Acquire));
         tasks.close_window("two");
         assert!(two.load(Ordering::Acquire));
-        assert!(tasks.0.lock().unwrap().is_empty());
+        assert!(tasks.0.lock_recover().is_empty());
     }
 
     #[test]

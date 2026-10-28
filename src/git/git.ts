@@ -178,6 +178,13 @@ export function changePaths(changes: GitChange[]): string[] {
   ];
 }
 
+const activeGitOperations = new Map<string, string>();
+
+export async function cancelGitOperation(repository: string): Promise<boolean> {
+  const requestId = activeGitOperations.get(repository);
+  return requestId ? call<boolean>("git_cancel", { requestId }) : false;
+}
+
 export async function runGitOperation(
   repository: string,
   request: GitOperation,
@@ -276,7 +283,9 @@ export async function runGitOperation(
       Object.values(useApp.getState().docs).map((doc) => [doc.id, doc.version]),
     );
     started = true;
-    await trustedCall<string>("git_operate", { ...context, request });
+    const requestId = crypto.randomUUID();
+    activeGitOperations.set(repository, requestId);
+    await trustedCall<string>("git_operate", { ...context, requestId, request });
     if (request.kind === "discard") {
       const paths = new Set(
         request.files.map((f) => normalize(join(repository, f.path))),
@@ -298,6 +307,7 @@ export async function runGitOperation(
     }
     return false;
   } finally {
+    activeGitOperations.delete(repository);
     if (started && useApp.getState().root === context.expectedRoot) {
       await Promise.allSettled([refreshGitPanel(), refreshDocuments()]);
       window.dispatchEvent(

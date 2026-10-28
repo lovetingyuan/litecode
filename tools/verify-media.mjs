@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { mkdir, copyFile, cp, writeFile, readFile, rename, unlink } from "node:fs/promises";
+import { mkdir, copyFile, symlink, writeFile, readFile, rename, unlink } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { chromium } from "playwright";
@@ -17,7 +17,7 @@ const app = path.join(run, "app"),
 await mkdir(data, { recursive: true });
 await mkdir(root, { recursive: true });
 await copyFile(executable, path.join(app, "LiteCode.exe"));
-await cp("src-tauri/tools", path.join(app, "tools"), { recursive: true });
+await symlink(path.resolve("src-tauri/tools"), path.join(app, "tools"), "junction");
 await writeFile(
   path.join(data, "session-main.json"),
   JSON.stringify({ root, documents: [], session: {} }),
@@ -100,18 +100,19 @@ try {
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.waitForURL("http://localhost:1420/**", {
-    waitUntil: "domcontentloaded",
-    timeout: 60000,
+    waitUntil: "commit",
+    timeout: 180000,
   });
-  await page.locator("file-tree-container").waitFor({ timeout: 60000 });
-  const urls = await page.evaluate(() =>
-    Object.fromEntries(
-      performance.getEntriesByType("resource").flatMap((entry) => {
-        const match = new URL(entry.name).pathname.match(/^\/src\/(?:editor|store|core)\/(documents|store|bridge)\.ts$/);
-        return match ? [[match[1], entry.name]] : [];
-      }),
-    ),
-  );
+  await page.locator("file-tree-container").waitFor({ timeout: 180000 });
+  // The browser's resource timing buffer may fill before these modules load.
+  // Resolve the actual Vite import URLs, including their HMR version queries.
+  const appSource = await fetch("http://localhost:1420/src/components/App.tsx").then((response) => response.text());
+  const imports = [...appSource.matchAll(/from ["']([^"']+)["']/g)].map((match) => match[1]);
+  const urls = Object.fromEntries(["documents", "store", "bridge"].map((name) => {
+    const url = imports.find((url) => url.split("?")[0].endsWith(`/${name}.ts`));
+    assert.ok(url, `App must import ${name}`);
+    return [name, new URL(url, "http://localhost:1420").href];
+  }));
   async function action(module, method, ...args) {
     return page.evaluate(async ({ url, method, args }) => (await import(url))[method](...args), {
       url: urls[module],
@@ -265,8 +266,8 @@ try {
     "SVG defaults to image; source edit previews unsaved buffer without saving; split views remain independent",
   );
   await action("documents", "checkpoint");
-  await page.reload();
-  await page.locator("file-tree-container").waitFor();
+  await page.reload({ waitUntil: "commit" });
+  await page.locator("file-tree-container").waitFor({ timeout: 180000 });
   await page.waitForFunction(() => document.querySelectorAll(".editor-group").length === 2);
   assert.equal((await state()).docs[svgId].dirty, true);
   assert.equal(await page.locator(".media-preview").count(), 1);
@@ -338,8 +339,11 @@ try {
     .waitFor();
   checks.push("Media rename preserves tab and zoom; deletion displays file missing state");
   const backup = JSON.parse(await readFile(path.join(data, "session-main.json"), "utf8"));
+  assert.equal(backup.version, 2);
   for (const id of [audioId, videoId]) {
-    assert.equal(backup.documents.find((d) => d.id === id).text, "");
+    const doc = backup.documents.find((d) => d.id === id);
+    assert.equal(doc.text, null);
+    assert.equal(doc.body, undefined);
   }
   assert.equal(errors.length, 0, errors.join("\n"));
   await writeFile(path.join(run, "report.json"), JSON.stringify({ checks, errors, log }, null, 2));

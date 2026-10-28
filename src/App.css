@@ -474,22 +474,6 @@ kbd {
   height: 100%;
   justify-content: center;
 }
-.command-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: #ffffff08;
-  border: 1px solid #ffffff24;
-  width: 80%;
-  height: 25px;
-  padding: 0 10px;
-}
-.command-center span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .title-layout {
   margin-left: 0;
   display: flex;
@@ -862,6 +846,25 @@ body.monaco-component {
 }
 .statusbar .codicon {
   font-size: 14px;
+}
+.status-right > .git-line-status {
+  min-width: 0;
+  max-width: min(240px, 25vw);
+  padding: 0 7px;
+}
+.git-line-status > .codicon {
+  flex-shrink: 0;
+}
+.git-line-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-line-status:hover {
+  background: #ffffff14;
+}
+.status-right > button {
+  flex-shrink: 0;
 }
 .statusbar .workspace-status {
   min-width: 0;
@@ -1540,7 +1543,7 @@ body.monaco-component {
   .statusbar button {
     padding: 0 4px;
   }
-  .status-right > button:nth-child(2) {
+  .status-right > .indentation-status {
     display: none;
   }
 }
@@ -1552,13 +1555,7 @@ body.monaco-component {
     right: 145px;
     width: 28%;
   }
-  .title-center > .icon-button {
-    display: none;
-  }
-  .command-center {
-    width: 100%;
-  }
-  .status-right > button:nth-child(3) {
+  .status-right > .encoding-status {
     display: none;
   }
 }

@@ -1,3 +1,5 @@
+use crate::sync::MutexExt;
+use crate::sync::RwLockExt;
 use crate::{
     error::{AppError, Result},
     state::{AppState, canonical},
@@ -8,7 +10,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use tauri::{State, WebviewWindow};
+use tauri::WebviewWindow;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct FileMove {
@@ -29,7 +31,9 @@ pub struct MoveReport {
 }
 
 pub(crate) fn visible(path: &Path) -> String {
-    crate::tools::process_path(path).to_string_lossy().replace('\\', "/")
+    crate::tools::process_path(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 pub(crate) fn key(path: &Path) -> String {
@@ -142,7 +146,7 @@ fn plan(root: &Path, sources: &[String], target: &Path) -> Result<Vec<FileMove>>
 
 pub(crate) fn workspace(state: &AppState, label: &str, expected_root: &str) -> Result<PathBuf> {
     let expected = canonical(Path::new(expected_root))?;
-    let windows = state.windows.lock().unwrap();
+    let windows = state.windows.lock_recover();
     let root = windows
         .get(label)
         .and_then(|w| w.root.as_ref())
@@ -206,29 +210,33 @@ pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 #[tauri::command]
-pub fn plan_file_moves(
+pub async fn plan_file_moves(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     sources: Vec<String>,
     target_directory: String,
     expected_root: String,
 ) -> Result<Vec<FileMove>> {
-    let _disk = state.disk_lock.lock().unwrap();
-    let root = workspace(&state, window.label(), &expected_root)?;
-    plan(&root, &sources, Path::new(&target_directory))
+    crate::state::blocking(window, move |window, state| {
+        let _disk = state.disk_lock.write_recover();
+        let root = workspace(&state, window.label(), &expected_root)?;
+        plan(&root, &sources, Path::new(&target_directory))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn move_files(
+pub async fn move_files(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     sources: Vec<String>,
     target_directory: String,
     expected_root: String,
 ) -> Result<MoveReport> {
-    let _disk = state.disk_lock.lock().unwrap();
-    let root = workspace(&state, window.label(), &expected_root)?;
-    Ok(apply(plan(&root, &sources, Path::new(&target_directory))?))
+    crate::state::blocking(window, move |window, state| {
+        let _disk = state.disk_lock.write_recover();
+        let root = workspace(&state, window.label(), &expected_root)?;
+        Ok(apply(plan(&root, &sources, Path::new(&target_directory))?))
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -344,8 +352,7 @@ mod tests {
         let state = AppState::default();
         state
             .windows
-            .lock()
-            .unwrap()
+            .lock_recover()
             .entry("test".into())
             .or_default()
             .root = Some(root.clone());

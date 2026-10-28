@@ -181,8 +181,10 @@ try {
   await page.waitForFunction(async () => (await window.__TAURI_INTERNALS__.invoke("get_update_state")).currentVersion === "0.1.1");
   const mainBackup = JSON.parse(await readFile(path.join(dataDir, "session-main.json"), "utf8"));
   const secondaryBackup = JSON.parse(await readFile(path.join(dataDir, `session-${label}.json`), "utf8"));
-  assert(mainBackup.documents.some((d) => d.text === "unsaved main 更新" && d.dirty));
-  assert(secondaryBackup.documents.some((d) => d.text === "unsaved second 编辑" && d.dirty));
+  const recoveryText = async (backup, owner) => Promise.all(backup.documents.filter(d => d.dirty).map(d =>
+    d.body ? readFile(path.join(dataDir, "recovery", owner, `${d.body}.txt`), "utf8") : d.text));
+  assert((await recoveryText(mainBackup, "main")).includes("unsaved main 更新"));
+  assert((await recoveryText(secondaryBackup, label)).includes("unsaved second 编辑"));
   await page.locator(".monaco-editor").first().waitFor();
   check("NSIS upgrades resources, restarts version 0.1.1, and preserves dirty buffers from both windows");
   await page.screenshot({ path: path.join(run, "after-upgrade.png") });

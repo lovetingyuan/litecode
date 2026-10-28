@@ -1,3 +1,5 @@
+use crate::sync::MutexExt;
+use crate::sync::RwLockExt;
 mod profiles;
 
 use crate::{
@@ -39,7 +41,7 @@ struct Flow {
 }
 impl Flow {
     fn reserve(&self, count: usize) -> bool {
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = self.pending.lock_recover();
         while *pending + count > OUTPUT_WINDOW && !self.closed.load(Ordering::Acquire) {
             pending = self.changed.wait(pending).unwrap();
         }
@@ -50,7 +52,7 @@ impl Flow {
         true
     }
     fn ack(&self, count: usize) -> Result<()> {
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = self.pending.lock_recover();
         if count > *pending {
             return Err(AppError::new(
                 "terminalAck",
@@ -62,7 +64,7 @@ impl Flow {
         Ok(())
     }
     fn drained(&self) -> bool {
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = self.pending.lock_recover();
         while *pending > 0 && !self.closed.load(Ordering::Acquire) {
             pending = self.changed.wait(pending).unwrap();
         }
@@ -101,10 +103,10 @@ impl Session {
         });
         #[cfg(windows)]
         self.job.terminate();
-        let _ = self.killer.lock().unwrap().kill();
-        self.writer.lock().unwrap().take();
+        let _ = self.killer.lock_recover().kill();
+        self.writer.lock_recover().take();
         // ClosePseudoConsole can wait for its output pipe; never run it on the UI thread.
-        if let Some(master) = self.master.lock().unwrap().take() {
+        if let Some(master) = self.master.lock_recover().take() {
             std::thread::spawn(move || drop(master));
         }
     }
@@ -167,8 +169,7 @@ impl Drop for Job {
 impl Service {
     fn get(&self, owner: &str, id: &str) -> Result<Arc<Session>> {
         self.sessions
-            .lock()
-            .unwrap()
+            .lock_recover()
             .get(id)
             .filter(|s| s.owner == owner)
             .cloned()
@@ -181,7 +182,7 @@ impl Service {
     }
     pub fn close_window(&self, owner: &str) {
         let removed: Vec<_> = {
-            let mut sessions = self.sessions.lock().unwrap();
+            let mut sessions = self.sessions.lock_recover();
             let ids: Vec<_> = sessions
                 .iter()
                 .filter(|(_, s)| s.owner == owner)
@@ -253,8 +254,7 @@ pub fn terminal_profiles(window: WebviewWindow, state: State<'_, AppState>) -> R
     let settings = tools::settings(&window, &state);
     let root = state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get(window.label())
         .and_then(|w| w.root.clone());
     let profiles = profiles::detect(&settings, root.as_deref())?;
@@ -393,8 +393,7 @@ pub async fn terminal_create(
     }
     let epoch = state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get(window.label())
         .map(|w| w.workspace_session)
         .unwrap_or(0);
@@ -430,7 +429,7 @@ pub async fn terminal_create(
                 .as_deref()
                 .map(tools::process_path)
                 .unwrap_or_else(profiles::home),
-            _ => source.cwd.lock().unwrap().clone(),
+            _ => source.cwd.lock_recover().clone(),
         }
     } else if let Some(cwd) = cwd {
         let path = PathBuf::from(cwd);
@@ -528,12 +527,12 @@ pub async fn terminal_create(
     let (id, result, session, mut reader, mut child, flow, output, events) = created;
     {
         // Serialize installation with trust revocation and workspace replacement.
-        let _disk = state.disk_lock.lock().unwrap();
+        let _disk = state.disk_lock.write_recover();
         if let Err(error) = state.require_workspace_trust(window.label()) {
             session.close();
             return Err(error);
         }
-        let windows = state.windows.lock().unwrap();
+        let windows = state.windows.lock_recover();
         if !windows
             .get(window.label())
             .is_some_and(|w| w.workspace_session == epoch && w.root.as_ref() == expected.as_ref())
@@ -547,8 +546,7 @@ pub async fn terminal_create(
         state
             .terminals
             .sessions
-            .lock()
-            .unwrap()
+            .lock_recover()
             .insert(id, session.clone());
     }
     let (status_tx, status_rx) = mpsc::channel();
@@ -559,9 +557,9 @@ pub async fn terminal_create(
         #[cfg(windows)]
         exit_session.job.terminate();
         // ConPTY's output pipe reaches EOF only after closing the pseudoconsole.
-        let master = exit_session.master.lock().unwrap().take();
+        let master = exit_session.master.lock_recover().take();
         drop(master);
-        exit_session.writer.lock().unwrap().take();
+        exit_session.writer.lock_recover().take();
     });
     std::thread::spawn(move || {
         let mut buffer = [0; 16 * 1024];
@@ -620,8 +618,7 @@ pub async fn terminal_write(
     let session = state.terminals.get(window.label(), &id)?;
     let writer = session
         .writer
-        .lock()
-        .unwrap()
+        .lock_recover()
         .clone()
         .ok_or_else(|| pty_error("Terminal input is closed"))?;
     tauri::async_runtime::spawn_blocking(move || writer.send(data).map_err(pty_error))
@@ -639,7 +636,7 @@ pub fn terminal_resize(
 ) -> Result<()> {
     let size = size(cols, rows)?;
     let session = state.terminals.get(window.label(), &id)?;
-    let master = session.master.lock().unwrap();
+    let master = session.master.lock_recover();
     master
         .as_ref()
         .ok_or_else(|| pty_error("Terminal is closed"))?
@@ -657,7 +654,7 @@ pub fn terminal_ack(
 }
 #[tauri::command]
 pub fn terminal_close(window: WebviewWindow, state: State<'_, AppState>, id: String) -> Result<()> {
-    let mut sessions = state.terminals.sessions.lock().unwrap();
+    let mut sessions = state.terminals.sessions.lock_recover();
     if let Some(session) = sessions.get(&id)
         && session.owner != window.label()
     {
@@ -685,7 +682,7 @@ pub fn terminal_update_cwd(
             "Shell reported an invalid local directory",
         ));
     }
-    *session.cwd.lock().unwrap() = tools::process_path(&std::fs::canonicalize(path)?);
+    *session.cwd.lock_recover() = tools::process_path(&std::fs::canonicalize(path)?);
     Ok(())
 }
 

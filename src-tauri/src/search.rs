@@ -1,3 +1,4 @@
+use crate::sync::MutexExt;
 use crate::{
     error::{AppError, Result},
     state::{AppState, Mirror, SearchTask},
@@ -423,7 +424,7 @@ pub async fn search_start(
         return Err(AppError::new("query", "Search text is empty"));
     }
     let (root, documents, repositories) = {
-        let windows = state.windows.lock().unwrap();
+        let windows = state.windows.lock_recover();
         let w = windows
             .get(window.label())
             .ok_or_else(|| AppError::new("window", "Window not initialized"))?;
@@ -443,7 +444,7 @@ pub async fn search_start(
     });
     let task_key = key(window.label(), &request_id);
     {
-        let mut tasks = state.searches.lock().unwrap();
+        let mut tasks = state.searches.lock_recover();
         if tasks
             .keys()
             .filter(|k| k.starts_with(&format!("{}/", window.label())))
@@ -555,8 +556,7 @@ pub async fn search_start(
         }
         app.state::<AppState>()
             .searches
-            .lock()
-            .unwrap()
+            .lock_recover()
             .remove(&task_key);
     });
     Ok(())
@@ -584,8 +584,7 @@ pub fn search_ack(
 ) {
     if let Some(task) = state
         .searches
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get(&key(window.label(), &request_id))
     {
         task.acknowledged.fetch_max(sequence, Ordering::Release);
@@ -596,8 +595,7 @@ pub fn search_ack(
 pub fn search_cancel(window: WebviewWindow, state: State<'_, AppState>, request_id: String) {
     if let Some(task) = state
         .searches
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get(&key(window.label(), &request_id))
     {
         task.cancelled.store(true, Ordering::Release);
@@ -610,9 +608,18 @@ mod tests {
 
     #[test]
     fn normalized_unc_paths_match_display_paths_and_remain_absolute() {
-        assert_eq!(normalized(r"\\?\UNC\server\share\中文 File.txt"), "//server/share/中文 file.txt");
-        assert_eq!(normalized(r"\\?\UNC\server\share\中文 File.txt"), normalized(r"\\server\share\中文 File.txt"));
-        assert_eq!(normalized(r"\\?\D:\中文 File.txt"), normalized(r"D:\中文 File.txt"));
+        assert_eq!(
+            normalized(r"\\?\UNC\server\share\中文 File.txt"),
+            "//server/share/中文 file.txt"
+        );
+        assert_eq!(
+            normalized(r"\\?\UNC\server\share\中文 File.txt"),
+            normalized(r"\\server\share\中文 File.txt")
+        );
+        assert_eq!(
+            normalized(r"\\?\D:\中文 File.txt"),
+            normalized(r"D:\中文 File.txt")
+        );
     }
 
     #[test]

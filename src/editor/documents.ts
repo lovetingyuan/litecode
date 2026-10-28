@@ -20,6 +20,7 @@ import { organizeSettings, parseConfiguration, settingValue } from "../utils/set
 import { applyModelSettings, modelSettingKeys } from "./settings";
 import { layoutGroups, restoreLayout, splitLayout, type SplitDirection } from "./editorLayout";
 import type { FileMove } from "../explorer/explorerMove";
+import { DocumentBackups } from "./documentBackup";
 
 export const models = new Map<string, monaco.editor.ITextModel>();
 export const editors = new Map<string, monaco.editor.IStandaloneCodeEditor>();
@@ -39,6 +40,8 @@ const subscriptions = new Map<string, monaco.IDisposable>();
 const saveQueues = new Map<string, Promise<void>>();
 const refreshRequests = new Map<string, symbol>();
 let backupTimer: ReturnType<typeof setTimeout>;
+const backups = new DocumentBackups();
+let sessionBackupDue: number | undefined;
 let autoTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let checkpointQueue = Promise.resolve();
 let saveSequence = 0;
@@ -274,38 +277,44 @@ export async function checkpoint(options: { waitForMoves?: boolean } = {}) {
 }
 
 async function syncDocumentSnapshot() {
-  const docs: Mirror[] = Object.values(useApp.getState().docs).filter((doc) => !doc.gitDiff).map((doc) => {
-    const m = models.get(doc.id);
-    return {
-      id: doc.id,
-      path: doc.path,
-      text: m?.getValue() ?? "",
-      version: doc.version,
-      revision: doc.revision,
-      encoding: doc.encoding,
-      dirty: doc.dirty,
-      language: doc.language,
-      name: doc.name,
-      searchQuery: doc.searchQuery,
-      kind: doc.kind,
-      fileInfo: doc.fileInfo,
-    };
-  });
-  const currentSession = session();
+  await queueDocumentSnapshot(false);
+}
+
+const backupDocuments = () => Object.values(useApp.getState().docs).filter(doc => !doc.gitDiff);
+
+function queueDocumentSnapshot(automatic: boolean) {
   checkpointQueue = checkpointQueue
     .catch(() => {})
-    .then(() => call<void>("sync_documents", { documents: docs, session: currentSession }));
-  await checkpointQueue;
+    .then(async () => {
+      if (automatic && documentMove) { return; }
+      const capturedDue = sessionBackupDue;
+      const snapshot = backups.capture(backupDocuments(), models, automatic);
+      await call<void>("sync_documents", { documents: snapshot.documents, session: session() });
+      snapshot.acknowledge();
+      if (sessionBackupDue === capturedDue) { sessionBackupDue = undefined; }
+      backups.noteChanges(backupDocuments(), models);
+      armBackupTimer();
+    });
+  return checkpointQueue;
 }
 
 export function closeWindowWithRecovery(destroy: () => Promise<void>) {
   return windowClose ??= checkpoint({ waitForMoves: true }).then(destroy).finally(() => { windowClose = undefined; });
 }
 export function scheduleBackup() {
+  sessionBackupDue = Date.now() + 400;
+  backups.noteChanges(backupDocuments(), models);
+  armBackupTimer();
+}
+
+function armBackupTimer() {
   clearTimeout(backupTimer);
+  if (documentMove) { return; }
+  const deadline = Math.min(sessionBackupDue ?? Infinity, backups.nextDeadline());
+  if (!Number.isFinite(deadline)) { return; }
   backupTimer = setTimeout(
-    () => void checkpoint().catch((e) => notify(`Backup failed: ${errorMessage(e)}`)),
-    400,
+    () => void queueDocumentSnapshot(true).catch((e) => notify(`Backup failed: ${errorMessage(e)}`)),
+    Math.max(0, deadline - Date.now()),
   );
 }
 
@@ -368,7 +377,7 @@ export function attachDocument(doc: Doc, text: string, initiallyDirty = false) {
   return m;
 }
 
-export function restoreDocument(mirror: Mirror) {
+export function restoreDocument(mirror: Mirror, options: { synchronized?: boolean } = {}) {
   const detected = languageFor(mirror.path ?? "");
   // Upgrade language modes saved before their syntax support was added.
   const language =
@@ -395,6 +404,9 @@ export function restoreDocument(mirror: Mirror) {
   } else {
     attachPreviewDocument(doc);
   }
+  // Bootstrap already owns this exact body in its backend mirror. In
+  // particular, retain restored large buffers before their first idle timer.
+  if (options.synchronized) { backups.confirmRestored(doc, models.get(doc.id)); }
 }
 
 function attachPreviewDocument(doc: Doc) {
@@ -898,6 +910,8 @@ export async function resetEditors() {
   // In-flight saves still use the models and may schedule another backup.
   await Promise.allSettled(saveQueues.values());
   clearTimeout(backupTimer);
+  sessionBackupDue = undefined;
+  backups.reset();
   for (const id of Object.keys(useApp.getState().docs)) {
     detachModel(id);
   }

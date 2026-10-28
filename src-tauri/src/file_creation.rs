@@ -1,3 +1,5 @@
+use crate::sync::MutexExt;
+use crate::sync::RwLockExt;
 use crate::{
     error::{AppError, Result},
     file_moves::{visible, within},
@@ -8,7 +10,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use tauri::{State, WebviewWindow};
+use tauri::WebviewWindow;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -194,7 +196,7 @@ fn with_current_root<T>(
     operation: impl FnOnce(&Path) -> Result<T>,
 ) -> Result<T> {
     let expected = fs::canonicalize(expected)?;
-    let windows = state.windows.lock().unwrap();
+    let windows = state.windows.lock_recover();
     let root = windows
         .get(label)
         .filter(|window| window.workspace_session == session)
@@ -212,34 +214,38 @@ fn with_current_root<T>(
 #[tauri::command]
 pub async fn validate_workspace_creation(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     expected_root: String,
     session: u64,
     parent: String,
     name: String,
     kind: String,
 ) -> Result<Option<String>> {
-    with_current_root(&state, window.label(), &expected_root, session, |root| {
-        Ok(plan(root, &parent, &name, &kind)
-            .err()
-            .map(|error| error.message))
+    crate::state::blocking(window, move |window, state| {
+        with_current_root(&state, window.label(), &expected_root, session, |root| {
+            Ok(plan(root, &parent, &name, &kind)
+                .err()
+                .map(|error| error.message))
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn create_workspace_entry(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     expected_root: String,
     session: u64,
     parent: String,
     name: String,
     kind: String,
 ) -> Result<CreatedEntry> {
-    let _disk = state.disk_lock.lock().unwrap();
-    with_current_root(&state, window.label(), &expected_root, session, |root| {
-        create(root, &parent, &name, &kind)
+    crate::state::blocking(window, move |window, state| {
+        let _disk = state.disk_lock.write_recover();
+        with_current_root(&state, window.label(), &expected_root, session, |root| {
+            create(root, &parent, &name, &kind)
+        })
     })
+    .await
 }
 
 #[derive(Debug, Serialize)]
@@ -372,32 +378,36 @@ fn rename_entry(root: &Path, source: &str, name: &str) -> Result<RenamedEntry> {
 #[tauri::command]
 pub async fn validate_workspace_rename(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     expected_root: String,
     session: u64,
     source: String,
     name: String,
 ) -> Result<Option<String>> {
-    with_current_root(&state, window.label(), &expected_root, session, |root| {
-        Ok(plan_rename(root, &source, &name)
-            .err()
-            .map(|error| error.message))
+    crate::state::blocking(window, move |window, state| {
+        with_current_root(&state, window.label(), &expected_root, session, |root| {
+            Ok(plan_rename(root, &source, &name)
+                .err()
+                .map(|error| error.message))
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn rename_workspace_entry(
     window: WebviewWindow,
-    state: State<'_, AppState>,
     expected_root: String,
     session: u64,
     source: String,
     name: String,
 ) -> Result<RenamedEntry> {
-    let _disk = state.disk_lock.lock().unwrap();
-    with_current_root(&state, window.label(), &expected_root, session, |root| {
-        rename_entry(root, &source, &name)
+    crate::state::blocking(window, move |window, state| {
+        let _disk = state.disk_lock.write_recover();
+        with_current_root(&state, window.label(), &expected_root, session, |root| {
+            rename_entry(root, &source, &name)
+        })
     })
+    .await
 }
 
 #[cfg(test)]

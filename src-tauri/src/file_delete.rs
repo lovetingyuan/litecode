@@ -1,3 +1,5 @@
+use crate::sync::MutexExt;
+use crate::sync::RwLockExt;
 use crate::{
     error::{AppError, Result},
     file_moves::key,
@@ -11,7 +13,7 @@ pub(crate) fn recycle(
     path: &str,
     recycler: impl FnOnce(&Path) -> Result<()>,
 ) -> Result<()> {
-    let _disk = state.disk_lock.lock().unwrap();
+    let _disk = state.disk_lock.write_recover();
     // Authorization resolves links. Check the user's selected entry first so a
     // grant for its referent can never turn "delete link" into "delete target".
     let selected = Path::new(path);
@@ -32,8 +34,7 @@ pub(crate) fn recycle(
     }
     if state
         .windows
-        .lock()
-        .unwrap()
+        .lock_recover()
         .get(label)
         .and_then(|window| window.root.as_ref())
         .is_some_and(|root| root == &source)
@@ -65,8 +66,7 @@ mod tests {
         let state = AppState::default();
         state
             .windows
-            .lock()
-            .unwrap()
+            .lock_recover()
             .entry("test".into())
             .or_default()
             .root = Some(root.clone());
@@ -118,8 +118,7 @@ mod tests {
         fs::write(&file, "keep").unwrap();
         state
             .windows
-            .lock()
-            .unwrap()
+            .lock_recover()
             .get_mut("test")
             .unwrap()
             .grants
