@@ -151,6 +151,7 @@ pub fn run() {
             commands::open_workspace,
             commands::workspace_git_status,
             git::git_repository_info,
+            git::git_commit_details,
             git::git_read_diff,
             git::blame::git_blame_file,
             git::git_open_source,

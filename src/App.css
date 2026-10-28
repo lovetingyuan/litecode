@@ -849,6 +849,7 @@ body.monaco-component {
 }
 .status-right > .git-line-status {
   min-width: 0;
+  flex-shrink: 1;
   max-width: min(240px, 25vw);
   padding: 0 7px;
 }
@@ -860,8 +861,13 @@ body.monaco-component {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.git-line-status:hover {
+.git-line-status:hover,
+.git-line-status[data-popup-open] {
   background: #ffffff14;
+}
+.git-line-status:focus-visible {
+  outline: 1px solid #0078d4;
+  outline-offset: -1px;
 }
 .status-right > button {
   flex-shrink: 0;

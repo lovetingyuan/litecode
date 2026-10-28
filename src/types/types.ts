@@ -152,6 +152,7 @@ export type GitDiffResource = {
 export type GitDiffContent = { before: string; after: string; source: string | null; summary: string | null };
 export type GitBlameRange = { startLine: number; lineCount: number; commit: string | null };
 export type GitBlameCommit = { author: string; authorTime: number; summary: string };
+export type GitCommitDetails = { sha: string; message: string; author: string; authorEmail: string; authorTime: number };
 export type GitFileBlame = {
   head: string | null;
   ranges: GitBlameRange[];

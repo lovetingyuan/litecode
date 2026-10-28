@@ -416,6 +416,50 @@ pub async fn git_repository_info(
         .map_err(git_error)?
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitDetails {
+    sha: String,
+    message: String,
+    author: String,
+    author_email: String,
+    author_time: i64,
+}
+
+fn commit_details(root: &Path, sha: &str) -> Result<CommitDetails> {
+    if sha.len() != 40 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(git_error("A full commit SHA is required"));
+    }
+    let id = git2::Oid::from_str(sha).map_err(git_error)?;
+    let repo = Repository::open(root).map_err(git_error)?;
+    let commit = repo.find_commit(id).map_err(git_error)?;
+    let author = commit.author();
+    Ok(CommitDetails {
+        sha: commit.id().to_string(),
+        message: String::from_utf8_lossy(commit.message_bytes()).into_owned(),
+        author: author.name().unwrap_or_default().into(),
+        author_email: author.email().unwrap_or_default().into(),
+        author_time: author.when().seconds(),
+    })
+}
+
+#[tauri::command]
+pub async fn git_commit_details(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    expected_root: String,
+    session: u64,
+    repository: String,
+    sha: String,
+) -> Result<CommitDetails> {
+    let root = context(&state, window.label(), &expected_root, session, &repository)?;
+    let result = tauri::async_runtime::spawn_blocking(move || commit_details(&root, &sha))
+        .await
+        .map_err(git_error)??;
+    context(&state, window.label(), &expected_root, session, &repository)?;
+    Ok(result)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Diff {

@@ -234,6 +234,52 @@ fn staged_rename_then_worktree_rename_keeps_each_layer() {
 }
 
 #[test]
+fn commit_details_reads_the_requested_commit_with_full_metadata() {
+    let (_temp, root) = fixture();
+    let repo = Repository::open(&root).unwrap();
+    let tree = repo
+        .find_tree(repo.treebuilder(None).unwrap().write().unwrap())
+        .unwrap();
+    let signature = git2::Signature::new(
+        "提交作者",
+        "author@example.invalid",
+        &git2::Time::new(1_700_000_000, 480),
+    )
+    .unwrap();
+    let message = "提交标题\n\n完整说明第一行。\n第二行。\n";
+    let id = repo
+        .commit(Some("HEAD"), &signature, &signature, message, &tree, &[])
+        .unwrap();
+    let parent = repo.find_commit(id).unwrap();
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        "later commit",
+        &tree,
+        &[&parent],
+    )
+    .unwrap();
+    let details = commit_details(&root, &id.to_string()).unwrap();
+    assert_eq!(details.sha, id.to_string());
+    assert_eq!(details.message, message);
+    assert_eq!(details.author, "提交作者");
+    assert_eq!(details.author_email, "author@example.invalid");
+    assert_eq!(details.author_time, 1_700_000_000);
+}
+
+#[test]
+fn commit_details_rejects_invalid_missing_and_non_commit_objects() {
+    let (_temp, root) = fixture();
+    for sha in ["", "HEAD", "abc12345", &"z".repeat(40), &"f".repeat(40)] {
+        assert!(commit_details(&root, sha).is_err(), "{sha}");
+    }
+    let repo = Repository::open(&root).unwrap();
+    let blob = repo.blob(b"not a commit").unwrap();
+    assert!(commit_details(&root, &blob.to_string()).is_err());
+}
+
+#[test]
 fn paths_and_repository_scope_are_authorized() {
     let (_temp, root) = fixture();
     let state = AppState::default();
