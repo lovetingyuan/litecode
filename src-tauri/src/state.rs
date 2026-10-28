@@ -82,6 +82,7 @@ impl Mirror {
 #[derive(Default)]
 pub struct WindowState {
     pub root: Option<PathBuf>,
+    pub workspace_restricted: bool,
     pub formatter_trust: HashSet<(Option<PathBuf>, PathBuf)>,
     pub grants: HashSet<PathBuf>,
     pub documents: HashMap<String, Mirror>,
@@ -209,15 +210,15 @@ impl AppState {
     }
 
     pub fn require_workspace_trust(&self, label: &str) -> Result<Option<PathBuf>> {
-        let root = self
-            .windows
-            .lock_recover()
-            .get(label)
-            .ok_or_else(|| AppError::new("window", "Window is not initialized"))?
-            .root
-            .clone();
+        let (root, restricted) = {
+            let windows = self.windows.lock_recover();
+            let window = windows
+                .get(label)
+                .ok_or_else(|| AppError::new("window", "Window is not initialized"))?;
+            (window.root.clone(), window.workspace_restricted)
+        };
         if let Some(root) = &root
-            && !self.trusted_roots()?.contains(root)
+            && (restricted || !self.workspace_is_trusted(root)?)
         {
             return Err(AppError::new(
                 "workspaceTrust",
@@ -233,6 +234,23 @@ impl AppState {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
             Err(e) => Err(e.into()),
         }
+    }
+
+    pub(crate) fn workspace_is_trusted(&self, root: &Path) -> Result<bool> {
+        Ok(self.trusted_roots()?.iter().any(|path| path == root))
+    }
+
+    // Callers hold disk_lock and validate the selected root before recording consent.
+    pub(crate) fn save_workspace_trust(&self, root: &Path, trusted: bool) -> Result<()> {
+        let mut roots = self.trusted_roots()?;
+        roots.retain(|path| path != root);
+        if trusted {
+            roots.push(root.to_path_buf());
+        }
+        files::atomic_write(
+            &self.data_dir.join("trusted-workspaces.json"),
+            &serde_json::to_vec(&roots)?,
+        )
     }
 
     pub fn set_workspace_trust(
@@ -251,19 +269,15 @@ impl AppState {
             ));
         }
         drop(windows);
-        let mut roots = self.trusted_roots()?;
-        roots.retain(|root| root != &expected);
-        if trusted {
-            roots.push(expected.clone());
+        self.save_workspace_trust(&expected, trusted)?;
+        if let Some(window) = self.windows.lock_recover().get_mut(label) {
+            window.workspace_restricted = !trusted;
         }
-        files::atomic_write(
-            &self.data_dir.join("trusted-workspaces.json"),
-            &serde_json::to_vec(&roots)?,
-        )?;
         if !trusted {
             let mut windows = self.windows.lock_recover();
             for (label, w) in windows.iter_mut() {
                 if w.root.as_ref() == Some(&expected) {
+                    w.workspace_restricted = true;
                     self.cancel_git(label);
                     w.formatter_trust.clear();
                     self.terminals.close_window(label);
@@ -655,6 +669,41 @@ mod tests {
             state.require_workspace_trust("unknown").unwrap_err().code,
             "window"
         );
+    }
+
+    #[test]
+    fn opening_restricted_mode_overrides_saved_trust_until_explicitly_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(dir.path()).unwrap();
+        let state = AppState {
+            data_dir: dir.path().join("data"),
+            ..Default::default()
+        };
+        state.save_workspace_trust(&root, true).unwrap();
+        state.windows.lock_recover().insert(
+            "new-window".into(),
+            WindowState {
+                root: Some(root.clone()),
+                workspace_restricted: true,
+                ..Default::default()
+            },
+        );
+        assert!(state.workspace_is_trusted(&root).unwrap());
+        assert_eq!(
+            state
+                .require_workspace_trust("new-window")
+                .unwrap_err()
+                .code,
+            "workspaceTrust"
+        );
+        state
+            .set_workspace_trust("new-window", root.to_str().unwrap(), true)
+            .unwrap();
+        assert_eq!(
+            state.require_workspace_trust("new-window").unwrap(),
+            Some(root)
+        );
+        assert!(!state.windows.lock_recover()["new-window"].workspace_restricted);
     }
 
     #[test]

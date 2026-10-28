@@ -28,6 +28,65 @@ mod path_tests {
     use super::*;
 
     #[test]
+    fn workspace_preflight_checks_directory_access_without_loading_or_trusting_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("project");
+        fs::create_dir(&root).unwrap();
+        let file = root.join("file.txt");
+        fs::write(&file, "text").unwrap();
+        let state = AppState {
+            data_dir: dir.path().join("data"),
+            ..Default::default()
+        };
+        state
+            .windows
+            .lock_recover()
+            .insert("main".into(), WindowState::default());
+        assert_eq!(
+            workspace_open_root(&state, "main", root.to_str().unwrap())
+                .unwrap_err()
+                .code,
+            "access"
+        );
+        state.grant("main", &root).unwrap();
+        let canonical = fs::canonicalize(&root).unwrap();
+        assert_eq!(
+            workspace_open_root(&state, "main", root.to_str().unwrap()).unwrap(),
+            canonical
+        );
+        assert!(!state.workspace_is_trusted(&canonical).unwrap());
+        assert!(!state.data_dir.exists());
+        let windows = state.windows.lock_recover();
+        let window = windows.get("main").unwrap();
+        assert!(window.root.is_none());
+        assert!(window.watcher.is_none());
+        drop(windows);
+        assert_eq!(
+            workspace_open_root(&state, "main", file.to_str().unwrap())
+                .unwrap_err()
+                .code,
+            "path"
+        );
+        remember(&state, root.to_str().unwrap()).unwrap();
+        assert!(workspace_open_root(&state, "another", root.to_str().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn opening_consent_only_applies_to_the_reviewed_canonical_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(dir.path()).unwrap();
+        let consent = WorkspaceTrustDecision {
+            root: visible_path(&root),
+            trusted: true,
+        };
+        assert!(consent.validate(&root).is_ok());
+        assert_eq!(
+            consent.validate(&root.join("other")).unwrap_err().code,
+            "workspace"
+        );
+    }
+
+    #[test]
     fn returned_paths_keep_unc_roots_and_agree_with_move_paths() {
         for (input, expected) in [
             (
@@ -56,6 +115,7 @@ mod path_tests {
 #[serde(rename_all = "camelCase")]
 pub struct Bootstrap {
     pub root: Option<String>,
+    pub workspace_restricted: bool,
     pub documents: Vec<Mirror>,
     pub session: serde_json::Value,
     pub recent: Vec<String>,
@@ -162,6 +222,7 @@ pub async fn bootstrap(window: WebviewWindow) -> Result<Bootstrap> {
             .ok_or_else(|| AppError::new("window", "Window is not initialized"))?;
         Ok(Bootstrap {
             root: root.as_deref().map(visible_path),
+            workspace_restricted: w.workspace_restricted,
             documents: w.documents.values().cloned().collect(),
             session: w.session.clone(),
             recent: recent(&state),
@@ -181,16 +242,21 @@ pub async fn pick_path(
     kind: String,
 ) -> Result<Option<String>> {
     let app = window.app_handle().clone();
+    let picker_window = window.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let dialog = app.dialog().file();
-        match kind.as_str() {
+        #[cfg(windows)]
+        if kind == "folder" {
+            return crate::folder_picker::pick(&picker_window).map(|path| path.map(Into::into));
+        }
+        let dialog = app.dialog().file().set_parent(&picker_window);
+        Ok(match kind.as_str() {
             "folder" => dialog.blocking_pick_folder(),
             "save" => dialog.blocking_save_file(),
             _ => dialog.blocking_pick_file(),
-        }
+        })
     })
     .await
-    .map_err(|e| AppError::new("dialog", e.to_string()))?;
+    .map_err(|e| AppError::new("dialog", e.to_string()))??;
     result
         .map(|p| {
             let path = p
@@ -259,22 +325,79 @@ pub(crate) fn create_editor_window(
     result
 }
 
+fn workspace_open_root(state: &AppState, label: &str, path: &str) -> Result<PathBuf> {
+    let root = canonical(Path::new(path))?;
+    if !root.is_dir() {
+        return Err(AppError::new("path", "Not a directory"));
+    }
+    let known = recent(state)
+        .iter()
+        .any(|p| canonical(Path::new(p)).ok().as_ref() == Some(&root));
+    let allowed = state.authorize(label, path).is_ok();
+    if !known && !allowed {
+        return Err(AppError::new(
+            "access",
+            "Select the directory with Open Folder first",
+        ));
+    }
+    Ok(root)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceOpenInfo {
+    path: String,
+    trusted: bool,
+    already_open: bool,
+}
+
 #[tauri::command]
-pub async fn open_workspace(window: WebviewWindow, path: String, new_window: bool) -> Result<bool> {
+pub async fn workspace_open_info(window: WebviewWindow, path: String) -> Result<WorkspaceOpenInfo> {
     crate::state::blocking(window, move |window, state| {
-        let root = canonical(Path::new(&path))?;
-        if !root.is_dir() {
-            return Err(AppError::new("path", "Not a directory"));
-        }
-        let known = recent(&state)
-            .iter()
-            .any(|p| canonical(Path::new(p)).ok().as_ref() == Some(&root));
-        let allowed = state.authorize(window.label(), &path).is_ok();
-        if !known && !allowed {
+        let root = workspace_open_root(state, window.label(), &path)?;
+        let already_open = state
+            .windows
+            .lock_recover()
+            .values()
+            .any(|w| w.root.as_ref() == Some(&root));
+        Ok(WorkspaceOpenInfo {
+            path: visible_path(&root),
+            trusted: state.workspace_is_trusted(&root)?,
+            already_open,
+        })
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+pub struct WorkspaceTrustDecision {
+    root: String,
+    trusted: bool,
+}
+
+impl WorkspaceTrustDecision {
+    fn validate(&self, root: &Path) -> Result<()> {
+        if visible_path(root) != self.root {
             return Err(AppError::new(
-                "access",
-                "Select the directory with Open Folder first",
+                "workspace",
+                "The selected directory changed. Open the folder again to review trust.",
             ));
+        }
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn open_workspace(
+    window: WebviewWindow,
+    path: String,
+    new_window: bool,
+    trust: Option<WorkspaceTrustDecision>,
+) -> Result<bool> {
+    crate::state::blocking(window, move |window, state| {
+        let root = workspace_open_root(state, window.label(), &path)?;
+        if let Some(trust) = &trust {
+            trust.validate(&root)?;
         }
         {
             let windows = state.windows.lock_recover();
@@ -290,17 +413,23 @@ pub async fn open_workspace(window: WebviewWindow, path: String, new_window: boo
             crate::transactions::ensure_no_pending(&state, window.label())?;
         }
         remember(&state, &visible_path(&root))?;
+        if trust.as_ref().is_some_and(|choice| choice.trusted) {
+            state.save_workspace_trust(&root, true)?;
+        }
+        let restricted = trust.as_ref().is_some_and(|choice| !choice.trusted);
         if new_window {
             let label = format!(
                 "editor-{}",
                 &files::hash(root.to_string_lossy().as_bytes())[..12]
             );
-            state
-                .windows
-                .lock_recover()
-                .entry(label.clone())
-                .or_default()
-                .root = Some(root);
+            state.windows.lock_recover().insert(
+                label.clone(),
+                WindowState {
+                    root: Some(root),
+                    workspace_restricted: restricted,
+                    ..Default::default()
+                },
+            );
             create_editor_window(window.app_handle(), &state, &label)?;
             Ok(false)
         } else {
@@ -316,6 +445,7 @@ pub async fn open_workspace(window: WebviewWindow, path: String, new_window: boo
             }
             state.cancel_git(window.label());
             w.root = Some(root.clone());
+            w.workspace_restricted = restricted;
             state.terminals.close_window(window.label());
             drop(windows);
             workspace::watch(window.app_handle(), window.label(), root)?;

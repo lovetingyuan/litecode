@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  state: { root: "C:/project" as string | null },
+  state: { root: "C:/project" as string | null, openingWorkspace: null as string | null },
   call: vi.fn(),
   ask: vi.fn(),
 }));
@@ -15,6 +15,54 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   mocks.state.root = "C:/project";
+  mocks.state.openingWorkspace = null;
+});
+
+it.each([true, false])("asks before opening and returns a path-bound trust decision (%s)", async trusted => {
+  const { prepareWorkspaceOpen } = await import("./workspaceTrust");
+  mocks.call.mockResolvedValue({ path: "C:/canonical", trusted: false, alreadyOpen: false });
+  let answer!: (choice: string) => void;
+  mocks.ask.mockReturnValue(new Promise<string>(resolve => { answer = resolve; }));
+  const pending = prepareWorkspaceOpen("C:/selected");
+  await vi.waitFor(() => expect(mocks.ask).toHaveBeenCalledOnce());
+  expect(mocks.call).toHaveBeenCalledExactlyOnceWith("workspace_open_info", { path: "C:/selected" });
+  answer(trusted ? "Trust Workspace" : "Restricted Mode");
+  expect(await pending).toEqual({ path: "C:/canonical", trusted: false, alreadyOpen: false, trust: { root: "C:/canonical", trusted } });
+});
+
+it.each([
+  { trusted: true, alreadyOpen: false },
+  { trusted: false, alreadyOpen: true },
+])("skips opening prompts when trust or the existing window can be reused (%j)", async flags => {
+  const { prepareWorkspaceOpen } = await import("./workspaceTrust");
+  const info = { path: "C:/project", ...flags };
+  mocks.call.mockResolvedValue(info);
+  expect(await prepareWorkspaceOpen(info.path)).toEqual(info);
+  expect(mocks.ask).not.toHaveBeenCalled();
+});
+
+it("cancels opening when the trust dialog is dismissed", async () => {
+  const { prepareWorkspaceOpen } = await import("./workspaceTrust");
+  mocks.call.mockResolvedValue({ path: "C:/next", trusted: false, alreadyOpen: false });
+  mocks.ask.mockResolvedValue(null);
+  expect(await prepareWorkspaceOpen("C:/next")).toBeNull();
+  expect(mocks.call).toHaveBeenCalledOnce();
+});
+
+it("restores restricted-mode consent without prompting or allowing protected commands", async () => {
+  const { rememberWorkspaceTrust, trustedCall } = await import("./workspaceTrust");
+  rememberWorkspaceTrust("C:/project", true);
+  mocks.call.mockRejectedValue(denied);
+  await expect(trustedCall("lsp_start")).rejects.toBe(denied);
+  expect(mocks.ask).not.toHaveBeenCalled();
+});
+
+it.each(["", "C:/next"])("does not let old background services prompt while picking or opening a workspace (%s)", async opening => {
+  const { trustedCall } = await import("./workspaceTrust");
+  mocks.state.openingWorkspace = opening;
+  mocks.call.mockRejectedValue(denied);
+  await expect(trustedCall("lsp_start")).rejects.toBe(denied);
+  expect(mocks.ask).not.toHaveBeenCalled();
 });
 
 it("shares concurrent trust prompts and retries only after explicit approval", async () => {

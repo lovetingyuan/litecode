@@ -35,6 +35,7 @@ import { DiffViewer } from "./DiffViewer";
 import { Icon, IconButton } from "./ui";
 import "../App.css";
 import { initializeLanguages } from "../editor/languages";
+import { rememberWorkspaceTrust } from "../core/workspaceTrust";
 import { isTextView } from "../utils/media";
 import { MediaStatus } from "./MediaStatus";
 import { GitLineStatus } from "./GitLineStatus";
@@ -54,6 +55,7 @@ function start() {
     await initializeEditor();
     initializeLanguages();
     const boot = await bootstrap();
+    if (boot.root) { rememberWorkspaceTrust(boot.root, boot.workspaceRestricted === true); }
     setApp({
       root: boot.root,
       settings: boot.settings,
@@ -130,6 +132,7 @@ function start() {
 
 export default function App() {
   const s = useApp();
+  const openingWorkspace = s.openingWorkspace !== null;
   const locked = useUpdates((s) => updateLocked(s.phase));
   const [fatal, setFatal] = useState<string | null>(null);
   const [maximized, setMaximized] = useState(false);
@@ -274,7 +277,7 @@ export default function App() {
         <div className="app-mark">
           <img src="/litecode.svg" alt="LiteCode" width={32} height={32} draggable={false} />
         </div>
-        <nav className="menubar" aria-label="Application menu">
+        <nav className="menubar" aria-label="Application menu" inert={openingWorkspace}>
           {["File", "Edit", "Selection", "View", "Go", "Help"].map((menu) => (
             <Menu.Root key={menu}>
               <Menu.Trigger>{menu}</Menu.Trigger>
@@ -296,8 +299,8 @@ export default function App() {
           ))}
         </nav>
         <div className="title-center" data-tauri-drag-region />
-        <div className="title-updates"><UpdateButton /></div>
-        <div className="title-layout">
+        <div className="title-updates" inert={openingWorkspace}><UpdateButton /></div>
+        <div className="title-layout" inert={openingWorkspace}>
           <IconButton
             icon="arrow-left"
             label="Go Back (Alt+Left)"
@@ -347,7 +350,7 @@ export default function App() {
           </button>
         </div>
       </header>
-      <div className="workbench-body">
+      <div className="workbench-body" inert={openingWorkspace} aria-busy={openingWorkspace}>
         <nav className="activitybar" aria-label="Views">
           <div>
             <button
@@ -458,7 +461,14 @@ export default function App() {
           </div>
         )}
       </div>
-      <footer className="statusbar">
+      {openingWorkspace && (
+        <div className="workspace-opening startup" role="status" aria-live="polite">
+          <span className="spinner" aria-hidden="true" />
+          <p>Opening folder…</p>
+          {s.openingWorkspace && <p className="workspace-opening-path">{pathTitle(s.openingWorkspace)}</p>}
+        </div>
+      )}
+      <footer className="statusbar" inert={openingWorkspace}>
         <div className="status-left">
           <span className="remote-indicator" title="Local window">
             <Icon name="remote" />

@@ -44,7 +44,7 @@ export function useExternalDrop(ready: boolean) {
       event: DragEvent,
     ): { tree: ExplorerDropTarget | null; group: string; element: HTMLElement; terminal?: string } | null {
       const path = event.composedPath();
-      if (document.querySelector('[role="dialog"]')) {
+      if (useApp.getState().openingWorkspace !== null || document.querySelector('[role="dialog"]')) {
         return null;
       }
       const terminal = path.find(

@@ -2400,6 +2400,7 @@ dependencies = [
  "walkdir",
  "webview2-com",
  "windows",
+ "windows-core",
  "zip 9.0.4",
 ]
 

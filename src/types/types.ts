@@ -88,6 +88,7 @@ export type QuickPick = {
   items: { id: string; label: string; description?: string; run: () => unknown }[];
 };
 export type Bootstrap = {
+  workspaceRestricted?: boolean;
   root: string | null;
   documents: Mirror[];
   session: Partial<Session> | null;

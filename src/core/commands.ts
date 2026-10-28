@@ -29,7 +29,7 @@ import { createSearchTab, activateSearchTab, focusSearch, undoReplacement, nextS
 import { changeLanguage } from "../editor/editorStatus";
 import { acceptInlineConflict, navigateInlineConflict } from "../editor/mergeConflictEditor";
 import { restartLanguages, stopLanguages, languageReport } from "../editor/languages";
-import { manageWorkspaceTrust } from "./workspaceTrust";
+import { manageWorkspaceTrust, prepareWorkspaceOpen, rememberWorkspaceTrust } from "./workspaceTrust";
 import { checkForUpdates } from "./updates";
 import {
   matchesWhen,
@@ -117,46 +117,64 @@ function pinEditor(context: EditorContext | undefined, sticky: boolean) {
 export function quick(value: string) {
   setApp({ quick: value });
 }
+let openingFolder = false;
 export async function openFolder(newWindow = false, recentPath?: string) {
-  const path = recentPath ?? (await call<string | null>("pick_path", { kind: "folder" }));
-  if (!path) {
-    return;
-  }
-  const root = useApp.getState().root;
-  const switching =
-    !newWindow &&
-    (!root || normalize(root).replace(/\/$/, "") !== normalize(path).replace(/\/$/, ""));
-  if (switching) {
-    for (const id of Object.keys(useApp.getState().docs)) {
+  if (openingFolder) { return; }
+  openingFolder = true;
+  try {
+    setApp({ openingWorkspace: recentPath ?? "", quick: null });
+    if (!recentPath) {
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    }
+    const selected = recentPath ?? (await call<string | null>("pick_path", { kind: "folder" }));
+    if (!selected) { return; }
+    setApp({ openingWorkspace: selected, quick: null });
+    const info = await prepareWorkspaceOpen(selected);
+    if (!info) { return; }
+    const path = info.path;
+    setApp({ openingWorkspace: path });
+    const root = useApp.getState().root;
+    const switching =
+      !newWindow &&
+      (!root || normalize(root).replace(/\/$/, "") !== normalize(path).replace(/\/$/, ""));
+    if (switching) {
+      for (const id of Object.keys(useApp.getState().docs)) {
         if (useApp.getState().docs[id]?.gitDiff) { continue; }
-      if (!(await confirmDocumentClose(id))) {
-        return;
+        if (!(await confirmDocumentClose(id))) {
+          return;
+        }
       }
     }
-  }
-  await checkpoint();
-  const same = await call<boolean>("open_workspace", { path, newWindow });
-  if (same) {
-    if (switching) {
-      await stopLanguages();
+    await checkpoint();
+    const same = await call<boolean>("open_workspace", { path, newWindow, ...(info.trust ? { trust: info.trust } : {}) });
+    if (same) {
+      if (switching) {
+        await stopLanguages();
+      }
+      const config = await call<{
+        settings: Record<string, unknown>;
+        keybindings: import("../types/types").Keybinding[] | null;
+      }>("configuration");
+      if (switching) {
+        await resetEditors();
+      }
+      if (!info.alreadyOpen) {
+        rememberWorkspaceTrust(path, info.trust?.trusted === false);
+      }
+      setApp({
+        ...(switching ? { view: "editor" as const } : {}),
+        root: path,
+        settings: config.settings,
+        keybindings: config.keybindings ?? [],
+      });
+      if (switching) {
+        await checkpoint();
+      }
+      await refreshTree();
     }
-    const config = await call<{
-      settings: Record<string, unknown>;
-      keybindings: import("../types/types").Keybinding[] | null;
-    }>("configuration");
-    if (switching) {
-      await resetEditors();
-    }
-    setApp({
-      ...(switching ? { view: "editor" as const } : {}),
-      root: path,
-      settings: config.settings,
-      keybindings: config.keybindings ?? [],
-    });
-    if (switching) {
-      await checkpoint();
-    }
-    await refreshTree();
+  } finally {
+    setApp({ openingWorkspace: null });
+    openingFolder = false;
   }
 }
 export async function openFile() {
@@ -858,6 +876,7 @@ export const commands: Command[] = [
   },
 ];
 export async function execute(id: string, context?: EditorContext) {
+  if (useApp.getState().openingWorkspace !== null) { return; }
   const command = commands.find((c) => c.id === id);
   if (!command) {
     notify(`Unknown command: ${id}`);
@@ -940,6 +959,17 @@ let chord = "";
 export function installKeys() {
   function handler(e: KeyboardEvent) {
     if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
+      return;
+    }
+    if (useApp.getState().openingWorkspace !== null) {
+      chord = "";
+      const target = e.target instanceof Element ? e.target : null;
+      const allowed = e.key === "Tab" || target?.closest('[role="dialog"]') ||
+        (["Enter", " "].includes(e.key) && target?.closest(".window-controls"));
+      if (!allowed) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
       return;
     }
     if (

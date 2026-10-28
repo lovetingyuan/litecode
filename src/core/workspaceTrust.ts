@@ -5,6 +5,26 @@ import { useApp } from "../store/store";
 const restricted = new Set<string>();
 const prompts = new Map<string, { controller: AbortController; pending: Promise<boolean> }>();
 
+export type WorkspaceOpenInfo = { path: string; trusted: boolean; alreadyOpen: boolean };
+export type WorkspaceTrustDecision = { root: string; trusted: boolean };
+
+export function rememberWorkspaceTrust(root: string, isRestricted: boolean) {
+  if (isRestricted) { restricted.add(root); } else { restricted.delete(root); }
+}
+
+export async function prepareWorkspaceOpen(path: string): Promise<(WorkspaceOpenInfo & { trust?: WorkspaceTrustDecision }) | null> {
+  cancelWorkspaceTrustPrompt();
+  const info = await call<WorkspaceOpenInfo>("workspace_open_info", { path });
+  if (info.trusted || info.alreadyOpen) { return info; }
+  const choice = await ask(
+    "Do you trust the authors of this folder?",
+    `Terminals, language services and formatters can execute code from this folder. Restricted Mode keeps text editing available.\n\n${info.path}`,
+    ["Restricted Mode", "Trust Workspace"],
+  );
+  if (!choice) { return null; }
+  return { ...info, trust: { root: info.path, trusted: choice === "Trust Workspace" } };
+}
+
 export function cancelWorkspaceTrustPrompt() {
   for (const { controller } of prompts.values()) {
     controller.abort();
@@ -105,6 +125,7 @@ export async function trustedCall<T>(
         attempted.add(trustPath);
         if (!(await requestFormatterTrust(root, trustPath, currentArgs?.path))) { throw error; }
       } else if (code === "workspaceTrust" && root && !attempted.has("workspace")) {
+        if (useApp.getState().openingWorkspace != null) { throw error; }
         attempted.add("workspace");
         if (!(await requestTrust(root))) { throw error; }
       } else {

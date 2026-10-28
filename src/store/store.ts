@@ -32,6 +32,7 @@ export const initialSearch = (id = primarySearchId, number = 1): SearchSession =
 });
 type State = {
   ready: boolean;
+  openingWorkspace: string | null; // Empty until the native picker returns a path.
   root: string | null;
   docs: Record<string, Doc>;
   groups: Group[];
@@ -71,6 +72,7 @@ type State = {
 };
 export const useApp = create<State>((set) => ({
   ready: false,
+  openingWorkspace: null,
   root: null,
   docs: {},
   groups: [group],

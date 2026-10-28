@@ -9,6 +9,8 @@ mod file_delete;
 mod file_moves;
 mod files;
 mod formatter_trust;
+#[cfg(windows)]
+mod folder_picker;
 mod git;
 #[cfg(windows)]
 mod instance;
@@ -149,6 +151,7 @@ pub fn run() {
             commands::pick_path,
             commands::new_window,
             commands::open_workspace,
+            commands::workspace_open_info,
             commands::workspace_git_status,
             git::git_repository_info,
             git::git_commit_details,

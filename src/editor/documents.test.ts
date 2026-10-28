@@ -18,6 +18,9 @@ vi.mock("../core/bridge", () => ({
 }));
 vi.mock("../components/dialog", () => ({ ask: vi.fn() }));
 vi.mock("../components/Explorer", () => ({ refreshTree: vi.fn(), revealInTree: vi.fn() }));
+vi.mock("../core/workspaceTrust", () => ({
+  prepareWorkspaceOpen: vi.fn(), rememberWorkspaceTrust: vi.fn(), manageWorkspaceTrust: vi.fn(),
+}));
 vi.mock("../search/search", () => ({
   createSearchTab: vi.fn(), activateSearchTab: vi.fn(), focusSearch: vi.fn(), undoReplacement: vi.fn(), nextSearchResult: vi.fn(), retryReplacement: vi.fn(), recoverInterruptedReplacements: vi.fn(),
 }));
@@ -37,6 +40,7 @@ import { monaco, languageFor } from "./monaco";
 import { canFormat, formatModel, releaseLanguageDocument, ensureLanguage, stopLanguages } from "./languages";
 import { commands, commandShortcut, execute, openFolder } from "../core/commands";
 import { refreshTree } from "../components/Explorer";
+import { prepareWorkspaceOpen, rememberWorkspaceTrust } from "../core/workspaceTrust";
 import {
   attachDocument,
   autoSave,
@@ -176,6 +180,7 @@ beforeEach(() => {
   });
   setApp({
     docs: {},
+    openingWorkspace: null,
     groups: [],
     tabRevealRequests: {},
     settings: { "files.autoSave": "onFocusChange" },
@@ -658,6 +663,7 @@ describe("Workspace switches", () => {
   const configuration = { settings: {}, keybindings: [] };
   beforeEach(() => {
     setApp({ root: "C:/workspace", history: [], historyIndex: -1 });
+    vi.mocked(prepareWorkspaceOpen).mockImplementation(async path => ({ path, trusted: true, alreadyOpen: false }));
     vi.mocked(call).mockImplementation(async (command) => {
       if (command === "open_workspace") {
         return true as never;
@@ -688,6 +694,106 @@ describe("Workspace switches", () => {
 
   const commandCalls = (command: string) =>
     vi.mocked(call).mock.calls.filter(([name]) => name === command);
+
+  it("shows loading while the native picker is returning and clears it on cancellation", async () => {
+    setup();
+    const picked = deferred<string | null>();
+    vi.mocked(call).mockImplementation(async command => command === "pick_path" ? picked.promise as never : undefined as never);
+    const opening = openFolder();
+    expect(useApp.getState().openingWorkspace).toBe("");
+    expect(prepareWorkspaceOpen).not.toHaveBeenCalled();
+    await execute("workbench.action.newWindow");
+    await openFolder();
+    expect(commandCalls("pick_path")).toHaveLength(1);
+    expect(commandCalls("new_window")).toHaveLength(0);
+    picked.resolve(null);
+    await opening;
+    expect(useApp.getState().openingWorkspace).toBeNull();
+    expect(useApp.getState().root).toBe("C:/workspace");
+  });
+
+  it("shows loading before trust and keeps it through opening, configuration and the first tree load", async () => {
+    setup();
+    const consent = deferred<Awaited<ReturnType<typeof prepareWorkspaceOpen>>>();
+    const opened = deferred<boolean>();
+    const configured = deferred<typeof configuration>();
+    const tree = deferred<void>();
+    vi.mocked(prepareWorkspaceOpen).mockReturnValueOnce(consent.promise);
+    vi.mocked(call).mockImplementation(async command => {
+      if (command === "open_workspace") { return opened.promise as never; }
+      if (command === "configuration") { return configured.promise as never; }
+      return undefined as never;
+    });
+    vi.mocked(refreshTree).mockReturnValueOnce(tree.promise);
+    const opening = openFolder(false, "C:/next");
+    expect(useApp.getState().openingWorkspace).toBe("C:/next");
+    expect(commandCalls("open_workspace")).toHaveLength(0);
+    expect(commandCalls("sync_documents")).toHaveLength(0);
+    consent.resolve({ path: "C:/canonical", trusted: false, alreadyOpen: false, trust: { root: "C:/canonical", trusted: false } });
+    await vi.waitFor(() => expect(commandCalls("open_workspace")).toHaveLength(1));
+    expect(commandCalls("open_workspace")[0][1]).toEqual({ path: "C:/canonical", newWindow: false, trust: { root: "C:/canonical", trusted: false } });
+    expect(useApp.getState().openingWorkspace).toBe("C:/canonical");
+    opened.resolve(true);
+    await vi.waitFor(() => expect(commandCalls("configuration")).toHaveLength(1));
+    expect(useApp.getState().openingWorkspace).toBe("C:/canonical");
+    configured.resolve(configuration);
+    await vi.waitFor(() => expect(refreshTree).toHaveBeenCalledOnce());
+    expect(useApp.getState().openingWorkspace).toBe("C:/canonical");
+    expect(rememberWorkspaceTrust).toHaveBeenCalledWith("C:/canonical", true);
+    expect(session()).not.toHaveProperty("openingWorkspace");
+    tree.resolve();
+    await opening;
+    expect(useApp.getState().openingWorkspace).toBeNull();
+  });
+
+  it("clears loading and retains editors when trust confirmation is dismissed", async () => {
+    setup(true);
+    const before = useApp.getState();
+    vi.mocked(prepareWorkspaceOpen).mockResolvedValueOnce(null);
+    await openFolder(false, "C:/next");
+    expect(useApp.getState()).toMatchObject({ root: before.root, docs: before.docs, groups: before.groups, openingWorkspace: null });
+    expect(commandCalls("open_workspace")).toHaveLength(0);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("ignores repeated opens and commands while a workspace is opening", async () => {
+    setup();
+    const pending = deferred<Awaited<ReturnType<typeof prepareWorkspaceOpen>>>();
+    vi.mocked(prepareWorkspaceOpen).mockReturnValueOnce(pending.promise);
+    const opening = openFolder(false, "C:/next");
+    await openFolder(false, "C:/other");
+    await execute("workbench.action.newWindow");
+    expect(prepareWorkspaceOpen).toHaveBeenCalledOnce();
+    expect(commandCalls("new_window")).toHaveLength(0);
+    pending.resolve(null);
+    await opening;
+    expect(useApp.getState().openingWorkspace).toBeNull();
+  });
+
+  it.each([true, false])("passes consent to new windows without resetting the current editors (%s)", async trusted => {
+    setup(true);
+    const before = useApp.getState();
+    vi.mocked(prepareWorkspaceOpen).mockResolvedValueOnce({ path: "C:/next", trusted: false, alreadyOpen: false, trust: { root: "C:/next", trusted } });
+    vi.mocked(call).mockResolvedValue(false);
+    await openFolder(true, "C:/next");
+    expect(commandCalls("open_workspace")[0][1]).toEqual({ path: "C:/next", newWindow: true, trust: { root: "C:/next", trusted } });
+    expect(useApp.getState()).toMatchObject({ docs: before.docs, groups: before.groups, root: before.root, openingWorkspace: null });
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it.each(["preflight", "open_workspace", "configuration", "tree"])("clears loading after %s fails", async stage => {
+    setup();
+    if (stage === "preflight") { vi.mocked(prepareWorkspaceOpen).mockRejectedValueOnce(new Error("Open failed")); }
+    else if (stage === "tree") { vi.mocked(refreshTree).mockRejectedValueOnce(new Error("Open failed")); }
+    else {
+      vi.mocked(call).mockImplementation(async command => {
+        if (command === stage) { throw new Error("Open failed"); }
+        return (command === "open_workspace" ? true : command === "configuration" ? configuration : undefined) as never;
+      });
+    }
+    await expect(openFolder(false, "C:/next")).rejects.toThrow("Open failed");
+    expect(useApp.getState().openingWorkspace).toBeNull();
+  });
 
   it("closes fixed tabs, previews, shared split views and media, then persists an empty session", async () => {
     const { id, buffer } = setup();

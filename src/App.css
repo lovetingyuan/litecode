@@ -428,6 +428,7 @@ kbd {
   gap: 8px;
 }
 .workbench {
+  position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -812,6 +813,27 @@ body.monaco-component {
   border-top-color: #0078d4;
   border-radius: 50%;
   animation: spin 1s linear infinite;
+}
+.workspace-opening {
+  position: absolute;
+  inset: 35px 0 22px;
+  z-index: 100;
+  background: #1f1f1f;
+  gap: 12px;
+}
+.workspace-opening p {
+  margin: 0;
+}
+.workspace-opening-path {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+  color: #aaa;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-opening .spinner {
+    animation: none;
+  }
 }
 @keyframes spin {
   to {
