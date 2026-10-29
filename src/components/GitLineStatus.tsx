@@ -20,6 +20,8 @@ export function GitLineStatus({ doc }: { doc?: Doc }) {
     const file = doc.path && blameRepository(doc.path, snapshot.repositories ?? []);
     if (!root || snapshot.root !== root || snapshot.session === null || !file || doc.deleted || doc.large) { return null; }
     return {
+      key: JSON.stringify([root, snapshot.session, file.repository.path, file.repository.branch,
+        file.repository.detached, doc.id, doc.path, file.oldPath, activeGroup, doc.version, doc.revision, doc.encoding]),
       read: () => {
         const state = useApp.getState();
         const model = models.get(doc.id);
@@ -35,15 +37,13 @@ export function GitLineStatus({ doc }: { doc?: Doc }) {
       },
     };
   }, [root, snapshot, doc, activeGroup]);
-  useEffect(() => {
-    loader.update(task);
-    return () => loader.update(null);
-  }, [loader, task]);
+  useEffect(() => { loader.update(task); }, [loader, task]);
+  useEffect(() => () => loader.update(null), [loader]);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(timer);
   }, []);
-  const data = result?.task === task ? result?.data : null;
+  const data = task && result?.task.key === task.key ? result.data : null;
   const range = data && blameRange(data.ranges, line);
   const repository = doc?.path ? blameRepository(doc.path, snapshot.repositories ?? [])?.repository.path : null;
   if (!range || !root || snapshot.session === null || !repository || !doc) { return null; }

@@ -75,11 +75,19 @@ try {
   await mkdir(output, { recursive: true });
   await page.goto("http://localhost:1420", { timeout: 60000 });
   await status.filter({ hasText: "Alice" }).waitFor();
-  const calls = await page.evaluate(() => window.blameFixture.calls.length);
+  let calls = await page.evaluate(() => window.blameFixture.calls.length);
   assert.equal(await page.evaluate(() => window.blameFixture.detailsCalls.length), 0, "Details are lazy");
   assert.equal(await status.evaluate((el) => el.tagName), "BUTTON");
   await status.click();
   await popup.getByText("Full commit description.", { exact: false }).waitFor();
+  await status.evaluate((element) => { window.blameFixture.statusElement = element; });
+  await action((_documents, { setApp, useApp }) => setApp({ gitState: { ...useApp.getState().gitState } }));
+  await page.waitForFunction((previous) => window.blameFixture.calls.length > previous, calls);
+  await status.filter({ hasText: "Alice" }).waitFor();
+  assert.equal(await status.evaluate((element) => element === window.blameFixture.statusElement), true,
+    "Background Git refresh keeps the commit button mounted");
+  assert.equal(await popup.isVisible(), true, "Background Git refresh keeps commit details open");
+  calls = await page.evaluate(() => window.blameFixture.calls.length);
   assert.match(await popup.innerText(), /Alice[\s\S]*alice@example.invalid/);
   assert.equal(await popup.getByText("Alice(alice@example.invalid)", { exact: true }).count(), 1);
   assert.equal(await popup.locator("code").innerText(), alice.slice(0, 8));

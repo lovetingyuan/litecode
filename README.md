@@ -1,20 +1,20 @@
 # ![LiteCode logo](src-tauri/icons/32x32.png) LiteCode
 
-LiteCode is a local code editor for Windows 11, built with Tauri, React, and Monaco, with a dark interface inspired by VS Code.
+[Watch the feature demo (MP4)](docs/images/demo.mp4)
 
-![LiteCode editor screenshot](docs/images/screenshot.png)
+## Why LiteCode
+
+In the age of AI coding, a lightweight editor still has a place. LiteCode keeps the familiar feel of VS Code and the essentials close at hand, so you can open a local project, understand generated code, review changes, and refine the details yourself.
+
+## Main features
 
 - File and folder management, quick open, and full-text search and replace.
 - Tabbed editing, split views, a command palette, and custom keyboard shortcuts.
-- [Integrated terminals](docs/terminal.md) with independent tabs, nested split panes, and live settings.
 - Syntax highlighting, code completion, navigation, diagnostics, and formatting.
+- Integrated terminals with multiple tabs and split panes.
+- Git source control, diff views, staging, and commits.
 - Live Markdown preview, plus image, audio, and video previews.
-- User and workspace settings, session restoration, and backups of unsaved changes.
 
-Open **Preferences: Open User Settings (JSON)** to see supported settings with descriptions and defaults. Settings are grouped and sorted when opened; comments and custom values are preserved. Workspace `.litecode/settings.json` files are also organized when opened, without adding defaults. Saving does not reorder settings.
+## Tech stack
 
-Launching LiteCode again with the same user data directory activates the existing window. Portable copies with separate `data` directories can run independently.
-
-**Help → Check for Updates…** checks the latest official GitHub release. Installed editions can download and install signed updates in the app; startup checks show an update button without interrupting your work. See [local release and signing instructions](docs/releases.md) for `npm run release`.
-
-Interrupted workspace replacements are detected on startup. **Search: Recover Interrupted Replacements** lets you restore an operation's starting state or keep current contents; backups are retained, and externally changed files are never overwritten automatically. **Search: Retry Interrupted Replacement** resumes an unfinished operation from the current session.
+Built with Tauri 2 and Rust, React and TypeScript, Monaco Editor, and xterm.js.

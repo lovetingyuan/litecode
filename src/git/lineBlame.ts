@@ -43,7 +43,7 @@ export function blameAge(seconds: number, now = Date.now()): string {
   return relativeTime.format(Math.trunc(elapsed / duration), unit);
 }
 
-export type BlameTask = { read: () => Promise<GitFileBlame | null> };
+export type BlameTask = { key: string; read: () => Promise<GitFileBlame | null> };
 export type BlameResult = { task: BlameTask; data: GitFileBlame } | null;
 
 // One request at a time. Pending edits replace each other while history is read.
@@ -70,11 +70,13 @@ export function createBlameLoader(publish: (result: BlameResult) => void) {
   }
   return {
     update(task: BlameTask | null) {
+      // A Git watcher refresh can replace the request without changing the
+      // document being attributed. Keep its label until the new result arrives.
+      if (!task || task.key !== latest?.key) { publish(null); }
       latest = task;
       generation++;
       ready = false;
       clearTimeout(timer);
-      publish(null);
       if (task) {
         timer = setTimeout(() => { ready = true; void run(); }, 200);
       }
