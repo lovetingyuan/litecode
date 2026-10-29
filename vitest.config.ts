@@ -6,10 +6,14 @@ export default defineConfig(async (env) =>
   mergeConfig(await (typeof viteConfig === "function" ? viteConfig(env) : viteConfig), {
     test: { exclude: [...configDefaults.exclude, ".verification/**", "artifacts/**"] },
     resolve: {
-      alias: [{
-        find: /^vscode-jsonrpc\/browser$/,
-        replacement: fileURLToPath(new URL("./node_modules/vscode-jsonrpc/lib/browser/main.js", import.meta.url)),
-      }],
+      alias: [
+        {
+          find: /^vscode-jsonrpc\/browser$/,
+          replacement: fileURLToPath(
+            new URL("./node_modules/vscode-jsonrpc/lib/browser/main.js", import.meta.url),
+          ),
+        },
+      ],
     },
   }),
 );

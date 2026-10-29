@@ -28,20 +28,13 @@ describe("Git changes", () => {
       change("new.txt", { worktreeStatus: "untracked" }),
       change("deleted.txt", { indexStatus: "deleted" }),
     ]);
-    expect(result.staged.map((c) => c.path)).toEqual([
-      "deleted.txt",
-      "src/dual.ts",
-    ]);
+    expect(result.staged.map((c) => c.path)).toEqual(["deleted.txt", "src/dual.ts"]);
     expect(result.changes).toEqual([dual]);
     expect(result.conflicts).toEqual([conflict]);
     expect(result.untracked.map((c) => c.path)).toEqual(["new.txt"]);
   });
   it("directory actions only include actual descendants", () => {
-    const changes = [
-      change("src/a.txt"),
-      change("src/deep/b.txt"),
-      change("src-other/c.txt"),
-    ];
+    const changes = [change("src/a.txt"), change("src/deep/b.txt"), change("src-other/c.txt")];
     expect(filesUnder(changes, "src/")).toEqual(changes.slice(0, 2));
     expect(filesUnder(changes, "src/a.txt")).toEqual([changes[0]]);
   });

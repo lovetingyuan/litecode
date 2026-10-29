@@ -64,7 +64,12 @@ export function MarkdownPreview({ doc, group }: { doc: Doc; group: Group }) {
         }
       }}
     >
-      <MarkdownContent key={`${doc.id}:${doc.path}`} text={text} path={doc.path} groupId={group.id} />
+      <MarkdownContent
+        key={`${doc.id}:${doc.path}`}
+        text={text}
+        path={doc.path}
+        groupId={group.id}
+      />
     </div>
   );
 }
@@ -141,15 +146,17 @@ const MarkdownContent = memo(function MarkdownContent({
   };
   return (
     <article className="markdown-body">
-      {text.trim().length > 0 && <button
-        type="button"
-        className="btn btn-xs"
-        aria-pressed={allowRemote}
-        title="Loading remote images shares your IP address with their hosts. Only HTTPS images are allowed."
-        onClick={() => setAllowRemote((allowed) => !allowed)}
-      >
-        {allowRemote ? "Block remote images" : "Load remote images"}
-      </button>}
+      {text.trim().length > 0 && (
+        <button
+          type="button"
+          className="btn btn-xs"
+          aria-pressed={allowRemote}
+          title="Loading remote images shares your IP address with their hosts. Only HTTPS images are allowed."
+          onClick={() => setAllowRemote((allowed) => !allowed)}
+        >
+          {allowRemote ? "Block remote images" : "Load remote images"}
+        </button>
+      )}
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[markdownHeadingIds]}
@@ -158,7 +165,7 @@ const MarkdownContent = memo(function MarkdownContent({
         urlTransform={(url, key) => {
           if (key === "src") {
             const image = markdownImageTarget(url, path, allowRemote);
-            return image?.kind === "file" ? mediaSource(image.path) : image?.url ?? "";
+            return image?.kind === "file" ? mediaSource(image.path) : (image?.url ?? "");
           }
           const target = resolveMarkdownUrl(url, path);
           if (!target) {
@@ -246,5 +253,13 @@ function PreviewImage({ src, alt, title }: { src?: string; alt?: string; title?:
       </span>
     );
   }
-  return <img src={src} alt={alt ?? ""} title={title} referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
+  return (
+    <img
+      src={src}
+      alt={alt ?? ""}
+      title={title}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  );
 }

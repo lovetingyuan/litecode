@@ -30,9 +30,7 @@ export function selectedRepository(): GitRepository | undefined {
   const repositories = state.gitState.repositories ?? [];
   return (
     repositories.find((r) => r.path === state.gitRepository) ??
-    repositories.find(
-      (r) => state.root && normalize(state.root).startsWith(normalize(r.path)),
-    ) ??
+    repositories.find((r) => state.root && normalize(state.root).startsWith(normalize(r.path))) ??
     repositories[0]
   );
 }
@@ -121,10 +119,7 @@ export async function attachGitSource(id: string, content: GitDiffContent) {
   if (!initial?.gitDiff) {
     return;
   }
-  if (
-    normalize(useApp.getState().root ?? "") !==
-    normalize(initial.gitDiff.workspace)
-  ) {
+  if (normalize(useApp.getState().root ?? "") !== normalize(initial.gitDiff.workspace)) {
     return;
   }
   let source = Object.values(useApp.getState().docs).find(
@@ -171,9 +166,7 @@ useApp.subscribe((state, previous) => {
 export function changePaths(changes: GitChange[]): string[] {
   return [
     ...new Set(
-      changes.flatMap((change) =>
-        change.oldPath ? [change.path, change.oldPath] : [change.path],
-      ),
+      changes.flatMap((change) => (change.oldPath ? [change.path, change.oldPath] : [change.path])),
     ),
   ];
 }
@@ -185,10 +178,7 @@ export async function cancelGitOperation(repository: string): Promise<boolean> {
   return requestId ? call<boolean>("git_cancel", { requestId }) : false;
 }
 
-export async function runGitOperation(
-  repository: string,
-  request: GitOperation,
-): Promise<boolean> {
+export async function runGitOperation(repository: string, request: GitOperation): Promise<boolean> {
   if (useApp.getState().gitBusy[repository]) {
     return false;
   }
@@ -197,7 +187,11 @@ export async function runGitOperation(
   const validBranchContext = () => {
     const state = useApp.getState();
     const selected = selectedRepository();
-    return state.gitState.session === context.session && selected?.path === repository && !selected.operation;
+    return (
+      state.gitState.session === context.session &&
+      selected?.path === repository &&
+      !selected.operation
+    );
   };
   if (branchOperation && !validBranchContext()) {
     return false;
@@ -206,13 +200,9 @@ export async function runGitOperation(
   const busy = request.kind === "pull" && request.rebase ? "pullRebase" : request.kind;
   setApp((s) => ({ gitBusy: { ...s.gitBusy, [repository]: busy } }));
   try {
-    const changesWorktree = [
-      "pull",
-      "switch",
-      "createBranch",
-      "continue",
-      "abort",
-    ].includes(request.kind);
+    const changesWorktree = ["pull", "switch", "createBranch", "continue", "abort"].includes(
+      request.kind,
+    );
     const affected =
       request.kind === "stage"
         ? request.paths.map((path) => normalize(join(repository, path)))
@@ -276,7 +266,10 @@ export async function runGitOperation(
     ) {
       return false;
     }
-    if (useApp.getState().root !== context.expectedRoot || (branchOperation && !validBranchContext())) {
+    if (
+      useApp.getState().root !== context.expectedRoot ||
+      (branchOperation && !validBranchContext())
+    ) {
       return false;
     }
     const versions = new Map(
@@ -287,15 +280,9 @@ export async function runGitOperation(
     activeGitOperations.set(repository, requestId);
     await trustedCall<string>("git_operate", { ...context, requestId, request });
     if (request.kind === "discard") {
-      const paths = new Set(
-        request.files.map((f) => normalize(join(repository, f.path))),
-      );
+      const paths = new Set(request.files.map((f) => normalize(join(repository, f.path))));
       for (const doc of Object.values(useApp.getState().docs)) {
-        if (
-          doc.path &&
-          paths.has(normalize(doc.path)) &&
-          versions.get(doc.id) === doc.version
-        ) {
+        if (doc.path && paths.has(normalize(doc.path)) && versions.get(doc.id) === doc.version) {
           patchDoc(doc.id, { dirty: false, conflict: false });
         }
       }
@@ -310,9 +297,7 @@ export async function runGitOperation(
     activeGitOperations.delete(repository);
     if (started && useApp.getState().root === context.expectedRoot) {
       await Promise.allSettled([refreshGitPanel(), refreshDocuments()]);
-      window.dispatchEvent(
-        new CustomEvent("git-operation-finished", { detail: repository }),
-      );
+      window.dispatchEvent(new CustomEvent("git-operation-finished", { detail: repository }));
     }
     setApp((s) => {
       const gitBusy = { ...s.gitBusy };

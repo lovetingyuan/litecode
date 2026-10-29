@@ -1,4 +1,12 @@
-import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import {
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { Allotment, LayoutPriority, type AllotmentHandle, type AllotmentProps } from "allotment";
 import "allotment/dist/style.css";
 import { EditorGroup } from "./EditorGroup";
@@ -24,10 +32,14 @@ export function PaneLayout({
   const handle = useRef<AllotmentHandle>(null);
   const sizes = useRef<number[]>(props.defaultSizes ?? []);
   const mounted = useRef(false);
-  useImperativeHandle(ref, () => ({
-    resize: (next) => handle.current?.resize(next),
-    reset: () => handle.current?.reset(),
-  }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      resize: (next) => handle.current?.resize(next),
+      reset: () => handle.current?.reset(),
+    }),
+    [],
+  );
   function sashes() {
     return Array.from(host.current?.querySelectorAll<HTMLElement>(".sash") ?? []).filter(
       (el) => el.closest(".pane-layout") === host.current,
@@ -183,11 +195,7 @@ export function WorkbenchLayout({
         proportionalLayout={false}
         defaultSizes={[sidebarWidth, Math.max(160, width - sidebarWidth)]}
         onChange={(sizes) => {
-          if (
-            useApp.getState().sidebar &&
-            useApp.getState().view === "editor" &&
-            sizes[0] >= 170
-          ) {
+          if (useApp.getState().sidebar && useApp.getState().view === "editor" && sizes[0] >= 170) {
             setApp({ sidebarWidth: sizes[0] });
             scheduleBackup();
           }
@@ -203,9 +211,7 @@ export function WorkbenchLayout({
           {sidebar}
         </Allotment.Pane>
         <Allotment.Pane
-          minSize={
-            terminal ? 160 : layout ? minimumLayoutSize(layout).width : 160
-          }
+          minSize={terminal ? 160 : layout ? minimumLayoutSize(layout).width : 160}
           priority={LayoutPriority.High}
         >
           {children}

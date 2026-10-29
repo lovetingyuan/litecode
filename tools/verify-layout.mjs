@@ -29,7 +29,9 @@ const docs = ["long.txt", "README.md", "image.png"].map((name, i) => ({
 }));
 let restored;
 page.on("request", (request) => {
-  const match = new URL(request.url()).pathname.match(/^\/src\/(?:editor|core|store)\/(documents|commands|store)\.ts$/);
+  const match = new URL(request.url()).pathname.match(
+    /^\/src\/(?:editor|core|store)\/(documents|commands|store)\.ts$/,
+  );
   if (match) {
     urls[match[1]] = request.url();
   }
@@ -463,16 +465,14 @@ try {
   console.log("PASS: no browser page errors");
 } catch (error) {
   console.error(
-    await page
-      .locator(".markdown-preview, .image-viewport")
-      .evaluateAll((elements) =>
-        elements.map((el) => ({
-          group: el.closest("[data-group-id]").dataset.groupId,
-          height: el.clientHeight,
-          scrollHeight: el.scrollHeight,
-          top: el.scrollTop,
-        })),
-      ),
+    await page.locator(".markdown-preview, .image-viewport").evaluateAll((elements) =>
+      elements.map((el) => ({
+        group: el.closest("[data-group-id]").dataset.groupId,
+        height: el.clientHeight,
+        scrollHeight: el.scrollHeight,
+        top: el.scrollTop,
+      })),
+    ),
   );
   console.error((await state()).groups.map((g) => ({ id: g.id, mediaViews: g.mediaViews })));
   await page.screenshot({ path: ".verification/layout/failure.png" });

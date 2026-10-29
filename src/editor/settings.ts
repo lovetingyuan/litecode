@@ -3,7 +3,10 @@ import schema from "../config/settings-schema.json";
 import { settingValue } from "../utils/settings";
 import { editorFontOptions } from "./font";
 
-export function editorOptions(settings: Record<string, unknown>, large = false): editor.IEditorConstructionOptions {
+export function editorOptions(
+  settings: Record<string, unknown>,
+  large = false,
+): editor.IEditorConstructionOptions {
   const get = <T>(key: keyof typeof schema.properties) => settingValue(settings, key) as T;
   return {
     ...editorFontOptions(settings),
@@ -15,7 +18,10 @@ export function editorOptions(settings: Record<string, unknown>, large = false):
     renderWhitespace: get("editor.renderWhitespace"),
     rulers: get("editor.rulers"),
     renderLineHighlight: get("editor.renderLineHighlight"),
-    guides: { indentation: get("editor.guides.indentation"), bracketPairs: get("editor.guides.bracketPairs") },
+    guides: {
+      indentation: get("editor.guides.indentation"),
+      bracketPairs: get("editor.guides.bracketPairs"),
+    },
     bracketPairColorization: { enabled: get("editor.bracketPairColorization.enabled") },
     minimap: { enabled: !large && get<boolean>("editor.minimap.enabled") },
     folding: !large && get<boolean>("editor.folding"),
@@ -41,7 +47,10 @@ export function editorOptions(settings: Record<string, unknown>, large = false):
 }
 
 export const modelSettingKeys = [
-  "editor.tabSize", "editor.insertSpaces", "editor.detectIndentation", "editor.bracketPairColorization.enabled",
+  "editor.tabSize",
+  "editor.insertSpaces",
+  "editor.detectIndentation",
+  "editor.bracketPairColorization.enabled",
 ] as const;
 
 export function applyModelSettings(model: editor.ITextModel, settings: Record<string, unknown>) {

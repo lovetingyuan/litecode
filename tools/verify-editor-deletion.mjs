@@ -7,7 +7,16 @@ import { workspaceFixtureCommands } from "./explorer-fixture.mjs";
 // Run against npm run dev. No real files are deleted or recycled.
 const root = "C:/deletion-fixture";
 const output = ".verification/editor-deletion";
-const files = ["internal.txt", "external.js", "keep.txt", "folder/child.txt", "failed.txt", "a-success.txt", "b-failed.txt", "c-retained.txt"];
+const files = [
+  "internal.txt",
+  "external.js",
+  "keep.txt",
+  "folder/child.txt",
+  "failed.txt",
+  "a-success.txt",
+  "b-failed.txt",
+  "c-retained.txt",
+];
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
 page.setDefaultTimeout(15000);
@@ -15,17 +24,23 @@ const errors = [];
 const checks = [];
 const moduleURLs = {};
 const pendingRequests = new Set();
-page.on("pageerror", error => errors.push(String(error)));
-page.on("request", request => {
+page.on("pageerror", (error) => errors.push(String(error)));
+page.on("request", (request) => {
   pendingRequests.add(request.url());
   const pathname = new URL(request.url()).pathname;
-  if (["/src/editor/documents.ts", "/src/explorer/workspaceTree.ts"].includes(pathname)) { moduleURLs[pathname] = request.url(); }
+  if (["/src/editor/documents.ts", "/src/explorer/workspaceTree.ts"].includes(pathname)) {
+    moduleURLs[pathname] = request.url();
+  }
 });
-page.on("requestfinished", request => pendingRequests.delete(request.url()));
-page.on("requestfailed", request => { pendingRequests.delete(request.url()); errors.push(`${request.url()}: ${request.failure()?.errorText}`); });
-await page.route("**/src/core/bridge.ts*", route => route.fulfill({
-  contentType: "application/javascript",
-  body: `
+page.on("requestfinished", (request) => pendingRequests.delete(request.url()));
+page.on("requestfailed", (request) => {
+  pendingRequests.delete(request.url());
+  errors.push(`${request.url()}: ${request.failure()?.errorText}`);
+});
+await page.route("**/src/core/bridge.ts*", (route) =>
+  route.fulfill({
+    contentType: "application/javascript",
+    body: `
 export const desktop = false;
 export const mediaSource = path => path;
 export const errorMessage = e => e?.message ?? String(e);
@@ -65,20 +80,42 @@ ${workspaceFixtureCommands}
   throw new Error('Unexpected fixture command: '+command);
 }
 `,
-}));
-const row = path => page.locator("file-tree-container").first().locator(`[data-item-path="${path}"]:not([data-file-tree-sticky-row]):not([data-item-parked="true"])`);
+  }),
+);
+const row = (path) =>
+  page
+    .locator("file-tree-container")
+    .first()
+    .locator(
+      `[data-item-path="${path}"]:not([data-file-tree-sticky-row]):not([data-item-parked="true"])`,
+    );
 const dialog = page.getByRole("dialog");
-const tab = name => page.locator(".editor-tab").filter({ has: page.getByText(name, { exact: true }) });
+const tab = (name) =>
+  page.locator(".editor-tab").filter({ has: page.getByText(name, { exact: true }) });
 async function externalChange(path, deleted) {
-  await page.evaluate(async ({ path, deleted, root, moduleURLs }) => {
-    const fixture = window.deletionFixture;
-    fixture.paths = fixture.paths.filter(candidate => candidate !== path);
-    if (!deleted) { fixture.paths.push(path); fixture.revisions[path] = 'restored'; }
-    await (await import(moduleURLs['/src/explorer/workspaceTree.ts'])).handleWorkspaceChanges({
-      root, session: 1, changes: [{ path, structural: true }], rescan: false, gitChanged: false,
-    });
-    await (await import(moduleURLs['/src/editor/documents.ts'])).refreshDocuments([root + '/' + path]);
-  }, { path, deleted, root, moduleURLs });
+  await page.evaluate(
+    async ({ path, deleted, root, moduleURLs }) => {
+      const fixture = window.deletionFixture;
+      fixture.paths = fixture.paths.filter((candidate) => candidate !== path);
+      if (!deleted) {
+        fixture.paths.push(path);
+        fixture.revisions[path] = "restored";
+      }
+      await (
+        await import(moduleURLs["/src/explorer/workspaceTree.ts"])
+      ).handleWorkspaceChanges({
+        root,
+        session: 1,
+        changes: [{ path, structural: true }],
+        rescan: false,
+        gitChanged: false,
+      });
+      await (
+        await import(moduleURLs["/src/editor/documents.ts"])
+      ).refreshDocuments([root + "/" + path]);
+    },
+    { path, deleted, root, moduleURLs },
+  );
 }
 async function requestDelete(path, keyboard = false) {
   await row(path).waitFor();
@@ -97,37 +134,65 @@ async function confirmDelete() {
 }
 try {
   await mkdir(output, { recursive: true });
-  await page.goto(process.env.LITECODE_TEST_URL ?? "http://localhost:1420", { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.goto(process.env.LITECODE_TEST_URL ?? "http://localhost:1420", {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
   await row("internal.txt").waitFor({ timeout: 60000 });
-  await page.waitForFunction(() => document.querySelectorAll('.editor-tab').length === 9, undefined, { timeout: 60000 });
+  await page.waitForFunction(
+    () => document.querySelectorAll(".editor-tab").length === 9,
+    undefined,
+    { timeout: 60000 },
+  );
 
   await externalChange("external.js", true);
   await tab("external.js").locator(".deleted-file-name").waitFor();
   const breadcrumb = page.locator('[data-group-id="one"] .breadcrumbs .deleted-file-name');
   await breadcrumb.waitFor();
-  assert.equal(await tab("external.js").getAttribute("title"), `${root.replace(/\//g, "\\")}\\external.js\n文件已从磁盘删除`);
+  assert.equal(
+    await tab("external.js").getAttribute("title"),
+    `${root.replace(/\//g, "\\")}\\external.js\n文件已从磁盘删除`,
+  );
   assert.match(await breadcrumb.locator("..").getAttribute("title"), /文件已从磁盘删除/);
-  const decoration = await tab("external.js").evaluate(element => ({
-    label: getComputedStyle(element.querySelector('.editor-tab-label')).textDecorationLine,
-    color: getComputedStyle(element.querySelector('.editor-tab-label')).color,
+  const decoration = await tab("external.js").evaluate((element) => ({
+    label: getComputedStyle(element.querySelector(".editor-tab-label")).textDecorationLine,
+    color: getComputedStyle(element.querySelector(".editor-tab-label")).color,
     icon: getComputedStyle(element.firstElementChild).textDecorationLine,
-    close: getComputedStyle(element.querySelector('.tab-close')).textDecorationLine,
-    warning: !!element.querySelector('.codicon-warning'),
+    close: getComputedStyle(element.querySelector(".tab-close")).textDecorationLine,
+    warning: !!element.querySelector(".codicon-warning"),
   }));
-  assert.deepEqual(decoration, { label: "line-through", color: "rgb(140, 140, 140)", icon: "none", close: "none", warning: false });
+  assert.deepEqual(decoration, {
+    label: "line-through",
+    color: "rgb(140, 140, 140)",
+    icon: "none",
+    close: "none",
+    warning: false,
+  });
   assert.equal(await page.locator(".conflict-banner").count(), 0);
   await page.screenshot({ path: `${output}/external-deleted.png` });
-  checks.push("External deletion retains Monaco content and shows gray strike-through on file text only, with accessible deletion hints and no conflict warning.");
+  checks.push(
+    "External deletion retains Monaco content and shows gray strike-through on file text only, with accessible deletion hints and no conflict warning.",
+  );
 
-  await page.evaluate(async url => {
-    (await import(url)).models.get('external.js').setValue('const importantUnsaved = true;');
-  }, moduleURLs['/src/editor/documents.ts']);
+  await page.evaluate(async (url) => {
+    (await import(url)).models.get("external.js").setValue("const importantUnsaved = true;");
+  }, moduleURLs["/src/editor/documents.ts"]);
   await externalChange("external.js", false);
-  await page.waitForFunction(() => !document.querySelector('[data-group-id="one"] .breadcrumbs .deleted-file-name'));
+  await page.waitForFunction(
+    () => !document.querySelector('[data-group-id="one"] .breadcrumbs .deleted-file-name'),
+  );
   assert.equal(await tab("external.js").locator(".deleted-file-name").count(), 0);
-  assert.equal(await page.evaluate(async url => (await import(url)).models.get('external.js').getValue(), moduleURLs['/src/editor/documents.ts']), "const importantUnsaved = true;");
+  assert.equal(
+    await page.evaluate(
+      async (url) => (await import(url)).models.get("external.js").getValue(),
+      moduleURLs["/src/editor/documents.ts"],
+    ),
+    "const importantUnsaved = true;",
+  );
   await page.locator(".conflict-banner").waitFor();
-  checks.push("Restoration clears deletion decoration and preserves unsaved content and genuine disk conflict protection.");
+  checks.push(
+    "Restoration clears deletion decoration and preserves unsaved content and genuine disk conflict protection.",
+  );
 
   await requestDelete("internal.txt", true);
   assert.match(await dialog.textContent(), /包含未保存修改/);
@@ -137,9 +202,17 @@ try {
   await requestDelete("internal.txt");
   await confirmDelete();
   await tab("internal.txt").waitFor({ state: "detached" });
-  await page.waitForFunction(() => document.querySelectorAll('.editor-group').length === 1);
-  assert.equal(await page.evaluate(async url => (await import(url)).models.has('internal.txt'), moduleURLs['/src/editor/documents.ts']), false);
-  checks.push("Delete key and context menu share a single dirty warning; cancel preserves both splits, while confirmed deletion closes dirty pinned tabs and the empty split.");
+  await page.waitForFunction(() => document.querySelectorAll(".editor-group").length === 1);
+  assert.equal(
+    await page.evaluate(
+      async (url) => (await import(url)).models.has("internal.txt"),
+      moduleURLs["/src/editor/documents.ts"],
+    ),
+    false,
+  );
+  checks.push(
+    "Delete key and context menu share a single dirty warning; cancel preserves both splits, while confirmed deletion closes dirty pinned tabs and the empty split.",
+  );
 
   await requestDelete("folder/");
   assert.match(await dialog.textContent(), /包含未保存修改/);
@@ -148,7 +221,9 @@ try {
   assert.equal(await tab("keep.txt").count(), 1);
   checks.push("Deleting a folder closes its open descendants and preserves unrelated tabs.");
 
-  await page.evaluate(() => { window.deletionFixture.fail = 'b-failed.txt'; });
+  await page.evaluate(() => {
+    window.deletionFixture.fail = "b-failed.txt";
+  });
   await row("a-success.txt").click();
   await row("b-failed.txt").click({ modifiers: ["Control"] });
   await row("c-retained.txt").click({ modifiers: ["Control"] });
@@ -160,8 +235,15 @@ try {
   await page.getByText("Recycle failed: Permission denied", { exact: true }).waitFor();
   assert.equal(await tab("b-failed.txt").count(), 1);
   assert.equal(await tab("c-retained.txt").count(), 1);
-  assert.deepEqual(await page.evaluate(() => window.deletionFixture.calls), ['internal.txt', 'folder', 'a-success.txt', 'b-failed.txt']);
-  checks.push("Multi-selection closes successful deletions only; failed and unattempted files remain open, and clean deletions have no dirty warning.");
+  assert.deepEqual(await page.evaluate(() => window.deletionFixture.calls), [
+    "internal.txt",
+    "folder",
+    "a-success.txt",
+    "b-failed.txt",
+  ]);
+  checks.push(
+    "Multi-selection closes successful deletions only; failed and unattempted files remain open, and clean deletions have no dirty warning.",
+  );
 
   await externalChange("external.js", true);
   await tab("external.js").locator(".deleted-file-name").waitFor();

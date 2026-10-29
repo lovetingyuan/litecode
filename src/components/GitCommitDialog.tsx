@@ -6,7 +6,10 @@ import { runGitOperation, selectedRepository } from "../git/git";
 import { notify, setApp, useApp } from "../store/store";
 import type { GitRepository } from "../types/types";
 
-export function GitCommitDialog({ repository, workspace }: {
+export function GitCommitDialog({
+  repository,
+  workspace,
+}: {
   repository: GitRepository;
   workspace: string;
 }) {
@@ -22,10 +25,13 @@ export function GitCommitDialog({ repository, workspace }: {
   const canCommit = hasCommittableChanges && !!message.trim() && !busy && !submitting;
 
   async function commit() {
-    if (!canCommit || working.current ||
-        useApp.getState().gitBusy[repository.path] ||
-        useApp.getState().root !== workspace ||
-        selectedRepository()?.path !== repository.path) {
+    if (
+      !canCommit ||
+      working.current ||
+      useApp.getState().gitBusy[repository.path] ||
+      useApp.getState().root !== workspace ||
+      selectedRepository()?.path !== repository.path
+    ) {
       return;
     }
     working.current = true;
@@ -35,8 +41,10 @@ export function GitCommitDialog({ repository, workspace }: {
         setApp((s) => ({
           gitMessages: {
             ...s.gitMessages,
-            [repository.path]: s.gitMessages[repository.path] === message
-              ? "" : (s.gitMessages[repository.path] ?? ""),
+            [repository.path]:
+              s.gitMessages[repository.path] === message
+                ? ""
+                : (s.gitMessages[repository.path] ?? ""),
           },
         }));
         setOpen(false);
@@ -50,11 +58,14 @@ export function GitCommitDialog({ repository, workspace }: {
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => {
-      if (!working.current) {
-        setOpen(next);
-      }
-    }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!working.current) {
+          setOpen(next);
+        }
+      }}
+    >
       <Dialog.Trigger
         ref={trigger}
         className="btn btn-xs btn-primary"
@@ -64,16 +75,24 @@ export function GitCommitDialog({ repository, workspace }: {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Backdrop className="modal-backdrop" />
-        <Dialog.Popup className="modal-panel git-commit-dialog" initialFocus={input} finalFocus={trigger}>
+        <Dialog.Popup
+          className="modal-panel git-commit-dialog"
+          initialFocus={input}
+          finalFocus={trigger}
+        >
           <Dialog.Title>Commit Changes</Dialog.Title>
           <Dialog.Description>
             {repository.name} — {repository.branch ?? "No commits yet"}
             {repository.detached ? " (detached)" : ""}
           </Dialog.Description>
-          <form className="git-commit-form" aria-busy={submitting} onSubmit={(event) => {
-            event.preventDefault();
-            void commit();
-          }}>
+          <form
+            className="git-commit-form"
+            aria-busy={submitting}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void commit();
+            }}
+          >
             <label htmlFor="git-commit-message">Message</label>
             <textarea
               id="git-commit-message"
@@ -83,9 +102,11 @@ export function GitCommitDialog({ repository, workspace }: {
               value={message}
               disabled={!!busy || submitting}
               rows={5}
-              onChange={(event) => setApp((s) => ({
-                gitMessages: { ...s.gitMessages, [repository.path]: event.target.value },
-              }))}
+              onChange={(event) =>
+                setApp((s) => ({
+                  gitMessages: { ...s.gitMessages, [repository.path]: event.target.value },
+                }))
+              }
               onKeyDown={(event) => {
                 if (event.ctrlKey && event.key === "Enter") {
                   event.preventDefault();

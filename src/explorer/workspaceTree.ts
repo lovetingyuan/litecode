@@ -15,7 +15,12 @@ export function resetWorkspaceTree() {
 useApp.subscribe((state, previous) => {
   if (state.root !== previous.root) {
     resetWorkspaceTree();
-    setApp({ treeRoot: null, gitState: { root: null, session: null, git: [], branch: null, warnings: [] }, fileIndexVersion: state.fileIndexVersion + 1, workspaceEpoch: state.workspaceEpoch + 1 });
+    setApp({
+      treeRoot: null,
+      gitState: { root: null, session: null, git: [], branch: null, warnings: [] },
+      fileIndexVersion: state.fileIndexVersion + 1,
+      workspaceEpoch: state.workspaceEpoch + 1,
+    });
   }
 });
 export function workspaceDirectories() {
@@ -24,11 +29,19 @@ export function workspaceDirectories() {
     return null;
   }
   if (!current || current.root !== root || current.disposed) {
-    current = new DirectoryCache(root, (directory, session) => call<DirectorySnapshot>("read_workspace_directory", { directory, expectedRoot: root, session }));
+    current = new DirectoryCache(root, (directory, session) =>
+      call<DirectorySnapshot>("read_workspace_directory", {
+        directory,
+        expectedRoot: root,
+        session,
+      }),
+    );
   }
   return current;
 }
-export function loadedWorkspacePaths() { return [...(workspaceDirectories()?.paths() ?? [])]; }
+export function loadedWorkspacePaths() {
+  return [...(workspaceDirectories()?.paths() ?? [])];
+}
 export function directoryDecoration(path: string) {
   const entry = workspaceDirectories()?.directories.get(directoryPath(path));
   if (entry?.status === "loading") {
@@ -39,14 +52,18 @@ export function directoryDecoration(path: string) {
   }
   return null;
 }
-export async function ensureWorkspacePath(path: string) { return workspaceDirectories()?.ensurePath(path) ?? null; }
+export async function ensureWorkspacePath(path: string) {
+  return workspaceDirectories()?.ensurePath(path) ?? null;
+}
 export async function refreshTree(changedPaths?: readonly string[]): Promise<void> {
   const cache = workspaceDirectories();
   if (!cache) {
     return;
   }
   setApp((state) => ({ fileIndexVersion: state.fileIndexVersion + 1 }));
-  const directories = changedPaths ? new Set(changedPaths.map(parentDirectory)) : new Set(["", ...expanded]);
+  const directories = changedPaths
+    ? new Set(changedPaths.map(parentDirectory))
+    : new Set(["", ...expanded]);
   if (!changedPaths) {
     for (const directory of cache.directories.keys()) {
       cache.invalidate(directory);
@@ -55,12 +72,14 @@ export async function refreshTree(changedPaths?: readonly string[]): Promise<voi
   for (const directory of directories) {
     cache.invalidate(directory);
   }
-  await Promise.all([...directories].map(async (directory) => {
-    const canonical = directory ? await cache.ensurePath(`${directory}/`) : "";
-    if (!cache.disposed && canonical !== null) {
-      await cache.load(directoryPath(canonical));
-    }
-  }));
+  await Promise.all(
+    [...directories].map(async (directory) => {
+      const canonical = directory ? await cache.ensurePath(`${directory}/`) : "";
+      if (!cache.disposed && canonical !== null) {
+        await cache.load(directoryPath(canonical));
+      }
+    }),
+  );
   if (!cache.disposed && useApp.getState().root === cache.root) {
     setApp({ treeRoot: cache.root });
   }
@@ -70,13 +89,19 @@ export async function refreshTree(changedPaths?: readonly string[]): Promise<voi
 }
 export async function handleWorkspaceChanges(event: WorkspaceChanges): Promise<boolean> {
   const cache = workspaceDirectories();
-  if (!cache || directoryPath(event.root).toLowerCase() !== directoryPath(cache.root).toLowerCase() || (cache.session !== null && cache.session !== event.session)) {
+  if (
+    !cache ||
+    directoryPath(event.root).toLowerCase() !== directoryPath(cache.root).toLowerCase() ||
+    (cache.session !== null && cache.session !== event.session)
+  ) {
     return false;
   }
   // A watcher can report before the initial directory request completes.
   cache.session = event.session;
   const structural = event.changes.filter((change) => change.structural);
-  const ignoreChanged = event.changes.some(({ path }) => /(^|\/)(\.gitignore|\.ignore|\.rgignore)$/.test(path));
+  const ignoreChanged = event.changes.some(({ path }) =>
+    /(^|\/)(\.gitignore|\.ignore|\.rgignore)$/.test(path),
+  );
   if (event.rescan || structural.length || ignoreChanged || event.fileIndexChanged) {
     setApp((state) => ({ fileIndexVersion: state.fileIndexVersion + 1 }));
   }
@@ -88,11 +113,12 @@ export async function handleWorkspaceChanges(event: WorkspaceChanges): Promise<b
         affected.add(directory);
       }
     }
-  }
-  else {
+  } else {
     for (const { path } of structural) {
       const parent = parentDirectory(path);
-      const existingParent = [...cache.directories.keys()].find((directory) => directory.toLowerCase() === parent.toLowerCase());
+      const existingParent = [...cache.directories.keys()].find(
+        (directory) => directory.toLowerCase() === parent.toLowerCase(),
+      );
       if (existingParent !== undefined) {
         cache.invalidate(existingParent);
         if (existingParent === "" || expanded.has(existingParent)) {
@@ -101,7 +127,10 @@ export async function handleWorkspaceChanges(event: WorkspaceChanges): Promise<b
       }
       // Replacements can keep the directory name while changing all its children.
       for (const directory of cache.directories.keys()) {
-        if (directory.toLowerCase() === directoryPath(path).toLowerCase() || directory.toLowerCase().startsWith(directoryPath(path).toLowerCase() + "/")) {
+        if (
+          directory.toLowerCase() === directoryPath(path).toLowerCase() ||
+          directory.toLowerCase().startsWith(directoryPath(path).toLowerCase() + "/")
+        ) {
           cache.invalidate(directory);
           if (expanded.has(directory)) {
             affected.add(directory);
@@ -120,7 +149,7 @@ export function attachWorkspaceTree(model: FileTree, changed: () => void) {
   const cache = workspaceDirectories();
   model.resetPaths([]);
   if (!cache) {
-    return () => { };
+    return () => {};
   }
   const sync = createDirectorySync(model);
   let stopped = false;
@@ -130,7 +159,9 @@ export function attachWorkspaceTree(model: FileTree, changed: () => void) {
   const knownDirectories = new Set<string>();
   const rememberDirectories = (paths: readonly string[]) => {
     for (const path of paths) {
-      if (path.endsWith("/")) { knownDirectories.add(directoryPath(path)); }
+      if (path.endsWith("/")) {
+        knownDirectories.add(directoryPath(path));
+      }
     }
   };
   const inspect = () => {
@@ -147,19 +178,31 @@ export function attachWorkspaceTree(model: FileTree, changed: () => void) {
       // Inspect directory handles, not every file row in a large expanded folder.
       for (const path of knownDirectories) {
         const item = model.getItem(path);
-        if (!item) { knownDirectories.delete(path); continue; }
+        if (!item) {
+          knownDirectories.delete(path);
+          continue;
+        }
         if (!("isExpanded" in item) || !item.isExpanded()) {
           continue;
         }
         let visible = true;
         for (let slash = path.indexOf("/"); slash >= 0; slash = path.indexOf("/", slash + 1)) {
           const ancestor = model.getItem(path.slice(0, slash));
-          if (!ancestor || !("isExpanded" in ancestor) || !ancestor.isExpanded()) { visible = false; break; }
+          if (!ancestor || !("isExpanded" in ancestor) || !ancestor.isExpanded()) {
+            visible = false;
+            break;
+          }
         }
-        if (!visible) { continue; }
+        if (!visible) {
+          continue;
+        }
         next.add(path);
         const entry = cache.entry(path);
-        if (entry.status === "unloaded" || entry.status === "stale" || (entry.status === "failed" && !previousExpanded.has(path))) {
+        if (
+          entry.status === "unloaded" ||
+          entry.status === "stale" ||
+          (entry.status === "failed" && !previousExpanded.has(path))
+        ) {
           void cache.load(path);
         }
       }
@@ -173,7 +216,11 @@ export function attachWorkspaceTree(model: FileTree, changed: () => void) {
     }
     if (directory !== undefined && paths) {
       rememberDirectories(paths);
-      await sync.update(directory, paths, () => !cache.disposed && cache.directories.get(directory)?.paths === paths);
+      await sync.update(
+        directory,
+        paths,
+        () => !cache.disposed && cache.directories.get(directory)?.paths === paths,
+      );
     }
     if (stopped || cache.disposed) {
       return;
@@ -195,10 +242,12 @@ export function attachWorkspaceTree(model: FileTree, changed: () => void) {
   const recordMove = (event: FileTreeMutationEvent) => {
     if (event.operation === "batch") {
       event.events.forEach(recordMove);
-    }
-    else if (event.operation === "move") {
+    } else if (event.operation === "move") {
       cache.relocate(event.from, event.to);
-      const movedDirectories = [...knownDirectories].filter((path) => path + "/" === event.from || (event.from.endsWith("/") && path.startsWith(event.from)));
+      const movedDirectories = [...knownDirectories].filter(
+        (path) =>
+          path + "/" === event.from || (event.from.endsWith("/") && path.startsWith(event.from)),
+      );
       for (const path of movedDirectories) {
         knownDirectories.delete(path);
         knownDirectories.add(directoryPath(event.to + (path + "/").slice(event.from.length)));
@@ -225,5 +274,11 @@ export function attachWorkspaceTree(model: FileTree, changed: () => void) {
       inspect();
     }
   })();
-  return () => { stopped = true; unsubscribeCache(); unsubscribeModel(); unsubscribeMoves(); sync.dispose(); };
+  return () => {
+    stopped = true;
+    unsubscribeCache();
+    unsubscribeModel();
+    unsubscribeMoves();
+    sync.dispose();
+  };
 }

@@ -31,7 +31,12 @@ const treesPatchHash = createHash("sha256")
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  define: { __GIT_HASH__: JSON.stringify(gitHash), __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version) },
+  define: {
+    __GIT_HASH__: JSON.stringify(gitHash),
+    __APP_VERSION__: JSON.stringify(
+      JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version,
+    ),
+  },
   cacheDir: `node_modules/.vite/trees-${treesPatchHash}`,
   plugins: [
     {

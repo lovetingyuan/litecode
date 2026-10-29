@@ -1,20 +1,26 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const registry = vi.hoisted(() => ({
-  languages: new Map<string, {
-    id: string;
-    aliases?: string[];
-    extensions?: string[];
-    filenames?: string[];
-  }>(),
+  languages: new Map<
+    string,
+    {
+      id: string;
+      aliases?: string[];
+      extensions?: string[];
+      filenames?: string[];
+    }
+  >(),
   factories: new Map<string, { create(): Promise<unknown> }>(),
   providers: new Map<string, Promise<unknown>>(),
 }));
 vi.mock("monaco-editor", () => ({
   languages: {
-    register: vi.fn((language) => registry.languages.set(language.id, {
-      ...registry.languages.get(language.id), ...language,
-    })),
+    register: vi.fn((language) =>
+      registry.languages.set(language.id, {
+        ...registry.languages.get(language.id),
+        ...language,
+      }),
+    ),
     getLanguages: vi.fn(() => [...registry.languages.values()]),
     registerTokensProviderFactory: vi.fn((id, factory) => registry.factories.set(id, factory)),
     onLanguageEncountered: vi.fn(),
@@ -111,16 +117,48 @@ describe("Registered file associations", () => {
   });
 
   it.each([
-    "", "README", "java", "ts", "file.unknown", "file.cs.bak", "/folder.php/README",
-    "main.zig", "Main.hs", "main.ml", "main.mli", "main.f90", "App.svelte", "App.astro",
+    "",
+    "README",
+    "java",
+    "ts",
+    "file.unknown",
+    "file.cs.bak",
+    "/folder.php/README",
+    "main.zig",
+    "Main.hs",
+    "main.ml",
+    "main.mli",
+    "main.f90",
+    "App.svelte",
+    "App.astro",
   ])("keeps unrecognized file %s in plain text", (path) => {
     expect(languageFor(path)).toBe("plaintext");
   });
 
   it.each([
-    "csharp", "php", "ruby", "kotlin", "swift", "dart", "lua", "r", "julia", "scala",
-    "perl", "objective-c", "fsharp", "vb", "elixir", "clojure", "cpp", "typescript",
-    "python", "shell", "powershell", "less", "dockerfile",
+    "csharp",
+    "php",
+    "ruby",
+    "kotlin",
+    "swift",
+    "dart",
+    "lua",
+    "r",
+    "julia",
+    "scala",
+    "perl",
+    "objective-c",
+    "fsharp",
+    "vb",
+    "elixir",
+    "clojure",
+    "cpp",
+    "typescript",
+    "python",
+    "shell",
+    "powershell",
+    "less",
+    "dockerfile",
   ])("loads the existing grammar for %s on demand", async (language) => {
     await loadSyntax(language);
     expect(await registry.providers.get(language)).toMatchObject({ tokenizer: expect.any(Object) });
@@ -159,15 +197,25 @@ describe("Vue language mode", () => {
   it("registers Vue syntax with embedded expressions, scripts and styles", async () => {
     await loadSyntax("vue");
     expect(codeLanguage("Vue")).toBe("vue");
-    const syntax = await registry.providers.get("vue") as monaco.languages.IMonarchLanguage;
+    const syntax = (await registry.providers.get("vue")) as monaco.languages.IMonarchLanguage;
     expect(syntax.tokenPostfix).toBe(".vue");
     expect(syntax.tokenizer.interpolation).toBeDefined();
-    expect(syntax.tokenizer.scriptAfterTypeEquals).toEqual(expect.arrayContaining([
-      [expect.any(RegExp), expect.objectContaining({ switchTo: "@scriptWithCustomType.text/typescript" })],
-    ]));
-    expect(syntax.tokenizer.styleAfterTypeEquals).toEqual(expect.arrayContaining([
-      [expect.any(RegExp), expect.objectContaining({ switchTo: "@styleWithCustomType.text/scss" })],
-    ]));
+    expect(syntax.tokenizer.scriptAfterTypeEquals).toEqual(
+      expect.arrayContaining([
+        [
+          expect.any(RegExp),
+          expect.objectContaining({ switchTo: "@scriptWithCustomType.text/typescript" }),
+        ],
+      ]),
+    );
+    expect(syntax.tokenizer.styleAfterTypeEquals).toEqual(
+      expect.arrayContaining([
+        [
+          expect.any(RegExp),
+          expect.objectContaining({ switchTo: "@styleWithCustomType.text/scss" }),
+        ],
+      ]),
+    );
   });
 });
 
@@ -321,9 +369,7 @@ describe("Embedded syntax loading", () => {
   it("shares pending syntax loads", async () => {
     const before = vi.mocked(monaco.editor.colorize).mock.calls.length;
     await Promise.all([loadSyntax("go"), loadSyntax("go"), loadSyntax("go")]);
-    expect(vi.mocked(monaco.editor.colorize).mock.calls.slice(before)).toEqual([
-      ["", "go", {}],
-    ]);
+    expect(vi.mocked(monaco.editor.colorize).mock.calls.slice(before)).toEqual([["", "go", {}]]);
     expect(await registry.providers.get("go")).toMatchObject({ tokenizer: expect.any(Object) });
   });
 });

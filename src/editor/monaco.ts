@@ -184,8 +184,11 @@ function registerSyntaxes() {
               `/node_modules/monaco-languages/esm/vs/languages/definitions/${syntax}/${syntax}.js`
             ]();
           monaco.languages.setLanguageConfiguration(id, module.conf);
-          return id === "vue" ? vueSyntax(module.language)
-            : id === "markdown" ? markdownSyntax(module.language) : module.language;
+          return id === "vue"
+            ? vueSyntax(module.language)
+            : id === "markdown"
+              ? markdownSyntax(module.language)
+              : module.language;
         },
       });
     }

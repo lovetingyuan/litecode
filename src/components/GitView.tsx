@@ -18,7 +18,12 @@ import { openFolder } from "../core/commands";
 import { Icon, IconButton, FileIcon } from "./ui";
 import { GitCommitDialog } from "./GitCommitDialog";
 import { PaneLayout } from "./EditorGrid";
-import { addPaneWeights, changePaneSizes, resizedPaneWeights, type PaneWeights } from "../git/panes";
+import {
+  addPaneWeights,
+  changePaneSizes,
+  resizedPaneWeights,
+  type PaneWeights,
+} from "../git/panes";
 import { remoteWebUrl } from "../git/remotes";
 import {
   branchDifference,
@@ -37,19 +42,9 @@ import {
   runGitOperation,
   selectedRepository,
 } from "../git/git";
-import {
-  filesUnder,
-  groupChanges,
-  visibleRange,
-  type ChangeGroup,
-} from "../git/changes";
+import { filesUnder, groupChanges, visibleRange, type ChangeGroup } from "../git/changes";
 import { languageFor } from "../editor/monaco";
-import type {
-  GitChange,
-  GitInfo,
-  GitOperation,
-  GitRepository,
-} from "../types/types";
+import type { GitChange, GitInfo, GitOperation, GitRepository } from "../types/types";
 import sidebarScrollbarCSS from "../styles/sidebar-scrollbar.css?raw";
 
 const groups: [ChangeGroup, string][] = [
@@ -60,7 +55,11 @@ const groups: [ChangeGroup, string][] = [
 ];
 const report = (error: unknown) => notify(errorMessage(error));
 
-function GitRemoteAddress({ remote, kind, address }: {
+function GitRemoteAddress({
+  remote,
+  kind,
+  address,
+}: {
   remote: string;
   kind: "Fetch" | "Push";
   address: string | null;
@@ -72,7 +71,9 @@ function GitRemoteAddress({ remote, kind, address }: {
   return (
     <div className="git-remote-address">
       <strong title={remote}>{remote}</strong>
-      <code title={address} aria-label={`${kind} URL`}>{address}</code>
+      <code title={address} aria-label={`${kind} URL`}>
+        {address}
+      </code>
       <button
         type="button"
         className="btn btn-xs"
@@ -100,14 +101,20 @@ export function GitView() {
   const active = useApp((s) => s.sidebar === "git" && s.view === "editor");
   const repository = selectedRepository();
   const repositoryPath = repository?.path;
-  const busy = useApp((s) =>
-    repository ? s.gitBusy[repository.path] : undefined,
-  );
+  const busy = useApp((s) => (repository ? s.gitBusy[repository.path] : undefined));
   const [details, setDetails] = useState<{
-    path: string; root: string | null; snapshot: typeof git; info: GitInfo;
+    path: string;
+    root: string | null;
+    snapshot: typeof git;
+    info: GitInfo;
   } | null>(null);
-  const info = details && details.path === repositoryPath && details.root === root && details.snapshot.session === git.session
-    ? details.info : null;
+  const info =
+    details &&
+    details.path === repositoryPath &&
+    details.root === root &&
+    details.snapshot.session === git.session
+      ? details.info
+      : null;
   const currentInfo = details?.snapshot === git && !busy ? info : null;
   const [refreshing, setRefreshing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -215,13 +222,9 @@ export function GitView() {
       if (!info.upstream) {
         const target = await choose(
           "Select Branch to Pull",
-          info.branches
-            .filter((b) => b.remote)
-            .map((b) => ({ id: b.name, label: b.name })),
+          info.branches.filter((b) => b.remote).map((b) => ({ id: b.name, label: b.name })),
         );
-        const remote = info.remotes.find((r) =>
-          target?.startsWith(r.name + "/"),
-        );
+        const remote = info.remotes.find((r) => target?.startsWith(r.name + "/"));
         if (!target || !remote) {
           return;
         }
@@ -251,11 +254,13 @@ export function GitView() {
       setBranchPending(false);
     }
   }
-  const branchDisabled = !!busy || branchPending || !currentInfo || !!info?.operation || !!repository?.operation;
-  const chooseBranch = (branches: GitInfo["branches"]) => choose(
-    "Select Local Tracking Branch",
-    branches.map((b) => ({ id: b.name, label: b.name, description: b.upstream ?? undefined })),
-  );
+  const branchDisabled =
+    !!busy || branchPending || !currentInfo || !!info?.operation || !!repository?.operation;
+  const chooseBranch = (branches: GitInfo["branches"]) =>
+    choose(
+      "Select Local Tracking Branch",
+      branches.map((b) => ({ id: b.name, label: b.name, description: b.upstream ?? undefined })),
+    );
   return (
     <section className="view search-view git-view" aria-label="Source Control">
       <div className="view-title">
@@ -279,16 +284,27 @@ export function GitView() {
       </div>
       {repository && busy && ["fetch", "push", "pull", "pullRebase"].includes(busy) && (
         <div className="git-operation-status" role="status" aria-live="polite">
-          <span>{cancelling ? "Cancelling Git operation…" : `Git ${busy === "pullRebase" ? "pull (rebase)" : busy} in progress…`}</span>
+          <span>
+            {cancelling
+              ? "Cancelling Git operation…"
+              : `Git ${busy === "pullRebase" ? "pull (rebase)" : busy} in progress…`}
+          </span>
           <button
             type="button"
             className="btn btn-xs"
             disabled={cancelling}
             onClick={() => {
               setCancelling(true);
-              void cancelGitOperation(repository.path).then((cancelled) => {
-                if (!cancelled) { setCancelling(false); }
-              }).catch((error) => { setCancelling(false); report(error); });
+              void cancelGitOperation(repository.path)
+                .then((cancelled) => {
+                  if (!cancelled) {
+                    setCancelling(false);
+                  }
+                })
+                .catch((error) => {
+                  setCancelling(false);
+                  report(error);
+                });
             }}
           >
             Cancel Git operation
@@ -299,20 +315,13 @@ export function GitView() {
         <div className="git-empty">
           <Icon name="source-control" />
           <p>Open a folder to use Source Control.</p>
-          <button
-            className="btn btn-sm"
-            onClick={() => void openFolder().catch(report)}
-          >
+          <button className="btn btn-sm" onClick={() => void openFolder().catch(report)}>
             Open Folder
           </button>
         </div>
       ) : !repository ? (
         <div className="git-empty">
-          <p>
-            {git.root
-              ? "No Git repository found."
-              : "Discovering repositories…"}
-          </p>
+          <p>{git.root ? "No Git repository found." : "Discovering repositories…"}</p>
           <button className="btn btn-sm" onClick={() => void refresh()}>
             Refresh
           </button>
@@ -385,9 +394,7 @@ export function GitView() {
               className="btn btn-xs"
               aria-label="Pull"
               aria-busy={busy === "pull"}
-              disabled={
-                !!busy || !currentInfo || repository.detached || !!repository.operation
-              }
+              disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
               onClick={() => void sync("pull").catch(report)}
             >
               <span className="git-sync-label">Pull</span>
@@ -397,9 +404,7 @@ export function GitView() {
               className="btn btn-xs"
               aria-label="Pull (Rebase)"
               aria-busy={busy === "pullRebase"}
-              disabled={
-                !!busy || !currentInfo || repository.detached || !!repository.operation
-              }
+              disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
               onClick={() => void sync("pullRebase").catch(report)}
             >
               <span className="git-sync-label">Pull (Rebase)</span>
@@ -409,9 +414,7 @@ export function GitView() {
               className="btn btn-xs"
               aria-label="Push"
               aria-busy={busy === "push"}
-              disabled={
-                !!busy || !currentInfo || repository.detached || !!repository.operation
-              }
+              disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
               onClick={() => void sync("push").catch(report)}
             >
               <span className="git-sync-label">Push</span>
@@ -476,9 +479,7 @@ export function GitView() {
               className="git-panel-content git-info"
             >
               <h3>Remotes</h3>
-              {info?.remotes.length === 0 && (
-                <p className="muted">No remotes configured.</p>
-              )}
+              {info?.remotes.length === 0 && <p className="muted">No remotes configured.</p>}
               {info?.remotes.map((r) => (
                 <div key={r.name} className="git-info-field">
                   <GitRemoteAddress remote={r.name} kind="Fetch" address={r.fetch} />
@@ -496,64 +497,66 @@ export function GitView() {
                   onClick={() => void branchAction(() => createBranch(repository.path))}
                 />
               </div>
-              {!info && <p className="muted" role="status">Loading branches…</p>}
+              {!info && (
+                <p className="muted" role="status">
+                  Loading branches…
+                </p>
+              )}
               {info?.branches.map((b) => {
                 const target = branchSwitchTarget(b, info.branches);
                 const switchDisabled = branchDisabled || target.kind === "blocked";
-                const switchToBranch = () => branchAction(() => switchBranch(repository.path, b, chooseBranch));
-                return <div key={`${b.remote}:${b.name}`} className="git-branch-row">
-                  <button
-                    title={b.name}
-                    aria-label={b.name}
-                    aria-current={b.current ? "true" : undefined}
-                    disabled={switchDisabled}
-                    onClick={() => void switchToBranch()}
-                  >
-                    <Icon
-                      name={
-                        b.remote ? "cloud" : b.current ? "check" : "git-branch"
-                      }
-                    />
-                    <span>{b.name}</span>
-                    {b.worktree && <small>worktree</small>}
-                  </button>
-                  <div className="git-branch-actions">
-                    <IconButton
-                      icon="add"
-                      label={`Create Branch from ${b.name}`}
-                      disabled={branchDisabled}
-                      onClick={() => void branchAction(() => createBranch(repository.path, b))}
-                    />
-                    <IconButton
-                      icon="copy"
-                      label={`Copy Branch Name ${b.name}`}
-                      onClick={() => void copyBranchName(b).catch(report)}
-                    />
-                    {!b.remote && (
+                const switchToBranch = () =>
+                  branchAction(() => switchBranch(repository.path, b, chooseBranch));
+                return (
+                  <div key={`${b.remote}:${b.name}`} className="git-branch-row">
+                    <button
+                      title={b.name}
+                      aria-label={b.name}
+                      aria-current={b.current ? "true" : undefined}
+                      disabled={switchDisabled}
+                      onClick={() => void switchToBranch()}
+                    >
+                      <Icon name={b.remote ? "cloud" : b.current ? "check" : "git-branch"} />
+                      <span>{b.name}</span>
+                      {b.worktree && <small>worktree</small>}
+                    </button>
+                    <div className="git-branch-actions">
                       <IconButton
-                        icon="trash"
-                        label={`Delete Branch ${b.name}`}
-                        disabled={branchDisabled || b.current || b.worktree}
-                        onClick={() =>
-                          void branchAction(() => runGitOperation(repository.path, {
-                            kind: "deleteBranch",
-                            branch: b.name,
-                          }))
-                        }
+                        icon="add"
+                        label={`Create Branch from ${b.name}`}
+                        disabled={branchDisabled}
+                        onClick={() => void branchAction(() => createBranch(repository.path, b))}
                       />
-                    )}
+                      <IconButton
+                        icon="copy"
+                        label={`Copy Branch Name ${b.name}`}
+                        onClick={() => void copyBranchName(b).catch(report)}
+                      />
+                      {!b.remote && (
+                        <IconButton
+                          icon="trash"
+                          label={`Delete Branch ${b.name}`}
+                          disabled={branchDisabled || b.current || b.worktree}
+                          onClick={() =>
+                            void branchAction(() =>
+                              runGitOperation(repository.path, {
+                                kind: "deleteBranch",
+                                branch: b.name,
+                              }),
+                            )
+                          }
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>;
+                );
               })}
             </div>
           )}
         </>
       )}
       {git.warnings.length > 0 && (
-        <button
-          className="inline-warning"
-          onClick={() => notify(git.warnings.join("\n"))}
-        >
+        <button className="inline-warning" onClick={() => notify(git.warnings.join("\n"))}>
           {git.warnings.length} Git warning(s)
         </button>
       )}
@@ -561,7 +564,11 @@ export function GitView() {
   );
 }
 
-function GitChangePanes({ repository, tree, busy }: {
+function GitChangePanes({
+  repository,
+  tree,
+  busy,
+}: {
   repository: GitRepository;
   tree: boolean;
   busy: boolean;
@@ -575,15 +582,23 @@ function GitChangePanes({ repository, tree, busy }: {
   const [collapsed, setCollapsed] = useState<Partial<Record<ChangeGroup, boolean>>>({});
   const [actions, setActions] = useState<Partial<Record<ChangeGroup, boolean>>>({});
   const onActionsChange = useCallback((kind: ChangeGroup, visible: boolean) => {
-    setActions((previous) => previous[kind] === visible ? previous : { ...previous, [kind]: visible });
+    setActions((previous) =>
+      previous[kind] === visible ? previous : { ...previous, [kind]: visible },
+    );
   }, []);
-  const panes = useMemo(() => groups.filter(([kind]) => grouped[kind].length > 0).map(([kind, title]) => ({
-    kind,
-    title,
-    count: grouped[kind].length,
-    expanded: !collapsed[kind],
-    minimum: collapsed[kind] ? 28 : tree && actions[kind] ? 82 : 54,
-  })), [grouped, collapsed, tree, actions]);
+  const panes = useMemo(
+    () =>
+      groups
+        .filter(([kind]) => grouped[kind].length > 0)
+        .map(([kind, title]) => ({
+          kind,
+          title,
+          count: grouped[kind].length,
+          expanded: !collapsed[kind],
+          minimum: collapsed[kind] ? 28 : tree && actions[kind] ? 82 : 54,
+        })),
+    [grouped, collapsed, tree, actions],
+  );
   const minimum = panes.reduce((sum, pane) => sum + pane.minimum, 0);
   useLayoutEffect(() => {
     const element = host.current;
@@ -599,18 +614,30 @@ function GitChangePanes({ repository, tree, busy }: {
     layout.current?.resize(changePaneSizes(panes, weights.current, height));
   }, [panes, height]);
   return (
-    <div ref={host} className="git-change-panes" style={{ "--git-panes-min-height": `${minimum}px` } as CSSProperties}>
+    <div
+      ref={host}
+      className="git-change-panes"
+      style={{ "--git-panes-min-height": `${minimum}px` } as CSSProperties}
+    >
       {panes.length ? (
         <PaneLayout
           ref={layout}
           vertical
           label="Git change group height"
           defaultSizes={panes.map((pane) => pane.count)}
-          onChange={(next) => { sizes.current = next; }}
-          onCommit={() => { weights.current = resizedPaneWeights(panes, weights.current, sizes.current); }}
+          onChange={(next) => {
+            sizes.current = next;
+          }}
+          onCommit={() => {
+            weights.current = resizedPaneWeights(panes, weights.current, sizes.current);
+          }}
         >
           {panes.map((pane) => (
-            <Allotment.Pane key={pane.kind} minSize={pane.minimum} maxSize={pane.expanded ? Infinity : 28}>
+            <Allotment.Pane
+              key={pane.kind}
+              minSize={pane.minimum}
+              maxSize={pane.expanded ? Infinity : 28}
+            >
               <GitChangeSection
                 repository={repository}
                 kind={pane.kind}
@@ -619,14 +646,19 @@ function GitChangePanes({ repository, tree, busy }: {
                 tree={tree}
                 busy={busy}
                 expanded={pane.expanded}
-                onToggle={() => setCollapsed((previous) => ({ ...previous, [pane.kind]: !previous[pane.kind] }))}
+                onToggle={() =>
+                  setCollapsed((previous) => ({ ...previous, [pane.kind]: !previous[pane.kind] }))
+                }
                 onActionsChange={onActionsChange}
               />
             </Allotment.Pane>
           ))}
         </PaneLayout>
       ) : (
-        <div className="git-empty"><Icon name="check" /><p>No changes.</p></div>
+        <div className="git-empty">
+          <Icon name="check" />
+          <p>No changes.</p>
+        </div>
       )}
     </div>
   );
@@ -667,11 +699,7 @@ function GitChangeSection({
   return (
     <section className="git-change-section" aria-label={title}>
       <div className="git-section-heading">
-        <button
-          className="git-section-toggle"
-          aria-expanded={expanded}
-          onClick={onToggle}
-        >
+        <button className="git-section-toggle" aria-expanded={expanded} onClick={onToggle}>
           <Icon name={expanded ? "chevron-down" : "chevron-right"} />
           <span>{title}</span>
           <span className="git-count">{changes.length}</span>
@@ -721,10 +749,7 @@ type ChangesProps = {
   kind: ChangeGroup;
   changes: GitChange[];
   busy: boolean;
-  run: (
-    action: "stage" | "unstage" | "discard",
-    files?: GitChange[],
-  ) => Promise<unknown>;
+  run: (action: "stage" | "unstage" | "discard", files?: GitChange[]) => Promise<unknown>;
 };
 function FileActions({
   repository,
@@ -734,17 +759,12 @@ function FileActions({
   run,
 }: Omit<ChangesProps, "changes"> & { change: GitChange }) {
   return (
-    <div
-      className="actions git-file-actions"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="actions git-file-actions" onClick={(e) => e.stopPropagation()}>
       <IconButton
         icon="go-to-file"
         label={`Open Source ${change.path}`}
         disabled={kind !== "staged" && change.worktreeStatus === "deleted"}
-        onClick={() =>
-          void openGitSource(repository, change.path).catch(report)
-        }
+        onClick={() => void openGitSource(repository, change.path).catch(report)}
       />
       {kind !== "staged" && kind !== "conflicts" && (
         <IconButton
@@ -758,9 +778,7 @@ function FileActions({
         icon={kind === "staged" ? "remove" : "add"}
         label={`${kind === "staged" ? "Unstage" : "Stage"} ${change.path}`}
         disabled={busy}
-        onClick={() =>
-          void run(kind === "staged" ? "unstage" : "stage", [change])
-        }
+        onClick={() => void run(kind === "staged" ? "unstage" : "stage", [change])}
       />
     </div>
   );
@@ -801,10 +819,7 @@ function GitChangesList(props: ChangesProps) {
           e.preventDefault();
           const index = Math.max(
             0,
-            Math.min(
-              changes.length - 1,
-              selected + (e.key === "ArrowDown" ? 1 : -1),
-            ),
+            Math.min(changes.length - 1, selected + (e.key === "ArrowDown" ? 1 : -1)),
           );
           setSelected(index);
           const top = host.current?.scrollTop ?? 0;
@@ -816,12 +831,7 @@ function GitChangesList(props: ChangesProps) {
         }
         if (e.key === "Enter" && changes[selected]) {
           e.preventDefault();
-          void openGitDiff(
-            repository,
-            changes[selected],
-            kind === "staged",
-            true,
-          ).catch(report);
+          void openGitDiff(repository, changes[selected], kind === "staged", true).catch(report);
         }
       }}
     >
@@ -842,33 +852,20 @@ function GitChangesList(props: ChangesProps) {
               role="option"
               aria-selected={selected === index}
               aria-label={change.path}
-              title={
-                change.oldPath
-                  ? `${change.oldPath} → ${change.path}`
-                  : change.path
-              }
+              title={change.oldPath ? `${change.oldPath} → ${change.path}` : change.path}
               data-git-path={change.path}
               style={{ top: index * 26 }}
               onClick={() => {
                 setSelected(index);
                 host.current?.focus();
-                void openGitDiff(repository, change, kind === "staged").catch(
-                  report,
-                );
+                void openGitDiff(repository, change, kind === "staged").catch(report);
               }}
               onDoubleClick={() =>
-                void openGitDiff(
-                  repository,
-                  change,
-                  kind === "staged",
-                  true,
-                ).catch(report)
+                void openGitDiff(repository, change, kind === "staged", true).catch(report)
               }
             >
               <FileIcon language={languageFor(change.path)} />
-              <span
-                className={`git-file-name${status === "D" ? " deleted" : ""}`}
-              >
+              <span className={`git-file-name${status === "D" ? " deleted" : ""}`}>
                 {basename(change.path)}
               </span>
               <span className="git-file-directory">
@@ -877,9 +874,7 @@ function GitChangesList(props: ChangesProps) {
                   : ""}
               </span>
               <FileActions {...props} change={change} />
-              <span className={`git-status git-status-${status}`}>
-                {status}
-              </span>
+              <span className={`git-status git-status-${status}`}>{status}</span>
             </div>
           );
         })}
@@ -888,13 +883,12 @@ function GitChangesList(props: ChangesProps) {
   );
 }
 
-function GitChangesTree(props: ChangesProps & { onActionsChange: (kind: ChangeGroup, visible: boolean) => void }) {
+function GitChangesTree(
+  props: ChangesProps & { onActionsChange: (kind: ChangeGroup, visible: boolean) => void },
+) {
   const { changes, repository, kind, run, busy, onActionsChange } = props;
   const [selected, setSelected] = useState<string>("");
-  const changeIndex = useMemo(
-    () => new Map(changes.map((c) => [c.path, c])),
-    [changes],
-  );
+  const changeIndex = useMemo(() => new Map(changes.map((c) => [c.path, c])), [changes]);
   const latestIndex = useRef(changeIndex);
   latestIndex.current = changeIndex;
   const { model } = useFileTree({
@@ -908,9 +902,7 @@ function GitChangesTree(props: ChangesProps & { onActionsChange: (kind: ChangeGr
     onSelectionChange: (paths) => setSelected(paths[0] ?? ""),
     renderRowDecoration: ({ row }) => {
       const change = latestIndex.current.get(row.path);
-      return change?.conflicted
-        ? { text: "!", title: "Unmerged changes" }
-        : null;
+      return change?.conflicted ? { text: "!", title: "Unmerged changes" } : null;
     },
     unsafeCSS: sidebarScrollbarCSS,
   });
@@ -919,15 +911,11 @@ function GitChangesTree(props: ChangesProps & { onActionsChange: (kind: ChangeGr
     model.setGitStatus(
       changes.map((c) => ({
         path: c.path,
-        status:
-          (kind === "staged" ? c.indexStatus : c.worktreeStatus) ?? "modified",
+        status: (kind === "staged" ? c.indexStatus : c.worktreeStatus) ?? "modified",
       })) as GitStatusEntry[],
     );
   }, [model, changes, kind]);
-  const selectedFiles = useMemo(
-    () => filesUnder(changes, selected),
-    [changes, selected],
-  );
+  const selectedFiles = useMemo(() => filesUnder(changes, selected), [changes, selected]);
   const hasActions = selectedFiles.length > 0;
   useLayoutEffect(() => {
     onActionsChange(kind, hasActions);
@@ -936,17 +924,13 @@ function GitChangesTree(props: ChangesProps & { onActionsChange: (kind: ChangeGr
   function open(event: Event, pinned = false) {
     const row = event
       .composedPath()
-      .find(
-        (target) =>
-          target instanceof HTMLElement &&
-          target.hasAttribute("data-item-path"),
-      ) as HTMLElement | undefined;
+      .find((target) => target instanceof HTMLElement && target.hasAttribute("data-item-path")) as
+      | HTMLElement
+      | undefined;
     const path = row?.dataset.itemPath ?? model.getFocusedPath();
     const change = changes.find((c) => c.path === path);
     if (change) {
-      void openGitDiff(repository, change, kind === "staged", pinned).catch(
-        report,
-      );
+      void openGitDiff(repository, change, kind === "staged", pinned).catch(report);
     }
   }
   return (
@@ -994,9 +978,7 @@ function GitChangesTree(props: ChangesProps & { onActionsChange: (kind: ChangeGr
               <IconButton
                 icon="go-to-file"
                 label={`Open Source ${selected}`}
-                onClick={() =>
-                  void openGitSource(repository, selected).catch(report)
-                }
+                onClick={() => void openGitSource(repository, selected).catch(report)}
               />
             )}
             {kind !== "staged" && kind !== "conflicts" && (
@@ -1011,9 +993,7 @@ function GitChangesTree(props: ChangesProps & { onActionsChange: (kind: ChangeGr
               icon={kind === "staged" ? "remove" : "add"}
               label={`${kind === "staged" ? "Unstage" : "Stage"} ${selected}`}
               disabled={busy}
-              onClick={() =>
-                void run(kind === "staged" ? "unstage" : "stage", selectedFiles)
-              }
+              onClick={() => void run(kind === "staged" ? "unstage" : "stage", selectedFiles)}
             />
           </div>
         </div>

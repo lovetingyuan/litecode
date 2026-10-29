@@ -20,7 +20,9 @@ describe("Git change panes", () => {
     expect(changePaneSizes(panes, weights, 582)).toEqual([204, 164, 214]);
     const refreshed = panes.map((pane) => ({ ...pane, count: 100 }));
     expect(addPaneWeights(refreshed, weights)).toEqual(weights);
-    const collapsed = panes.map((pane, index) => index === 0 ? { ...pane, expanded: false, minimum: 28 } : pane);
+    const collapsed = panes.map((pane, index) =>
+      index === 0 ? { ...pane, expanded: false, minimum: 28 } : pane,
+    );
     const sizes = changePaneSizes(collapsed, weights, 582);
     expect(sizes[0]).toBe(28);
     expect(sizes.reduce((sum, size) => sum + size, 0)).toBeCloseTo(582);
@@ -36,7 +38,9 @@ describe("Git change panes", () => {
 
   it("retains a collapsed pane's weight while resizing the other panes", () => {
     const weights = addPaneWeights(panes, {});
-    const collapsed = panes.map((pane, index) => index === 0 ? { ...pane, expanded: false, minimum: 28 } : pane);
+    const collapsed = panes.map((pane, index) =>
+      index === 0 ? { ...pane, expanded: false, minimum: 28 } : pane,
+    );
     const next = resizedPaneWeights(collapsed, weights, [28, 200, 354]);
     expect(next.staged).toBe(27);
     expect(next.changes! + next.untracked!).toBeCloseTo(15);
@@ -50,6 +54,8 @@ describe("Git change panes", () => {
     expect(resizedPaneWeights(panes, weights, [54, 54, 54])).toEqual(weights);
     const tree = panes.map((pane, index) => ({ ...pane, minimum: index === 0 ? 82 : 54 }));
     expect(changePaneSizes(tree, weights, 100)).toEqual([82, 54, 54]);
-    expect(changePaneSizes(panes, { staged: 0, changes: 0, untracked: 0 }, 582)).toEqual([194, 194, 194]);
+    expect(changePaneSizes(panes, { staged: 0, changes: 0, untracked: 0 }, 582)).toEqual([
+      194, 194, 194,
+    ]);
   });
 });

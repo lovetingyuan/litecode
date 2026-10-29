@@ -173,7 +173,10 @@ try {
       .evaluateAll((rows) => rows.map((row) => row.dataset.itemPath).sort());
   async function checkSelected(paths) {
     for (const item of paths) {
-      await tree.locator(`[data-item-path="${item}"][aria-selected="true"]:visible`).first().waitFor();
+      await tree
+        .locator(`[data-item-path="${item}"][aria-selected="true"]:visible`)
+        .first()
+        .waitFor();
     }
     assert.deepEqual(await selected(), [...paths].sort());
   }
@@ -269,9 +272,7 @@ try {
   await checkSelected(["alternate/internal.txt"]);
   await checkDisk(path.join(root, "alternate/internal.txt"), "internal source");
   await checkDisk(path.join(root, "internal.txt"), "internal source");
-  checks.push(
-    "Rename inputs retain native text paste; internal file copy runs immediately",
-  );
+  checks.push("Rename inputs retain native text paste; internal file copy runs immediately");
 
   await row("alternate/").click();
   await pasteKey();
@@ -288,11 +289,16 @@ try {
   await checkSelected(["internal copy 2.txt"]);
   await checkDisk(path.join(root, "internal copy 2.txt"), "internal source");
   assert.equal(await dialog.count(), 0);
-  checks.push("Internal copies resolve cross-directory and same-directory conflicts and select the actual new path");
+  checks.push(
+    "Internal copies resolve cross-directory and same-directory conflicts and select the actual new path",
+  );
 
   await row("中文 文件夹/").click();
   await page.keyboard.press("Control+c");
-  await page.locator(".section-heading").getByRole("button", { name: "PROJECT", exact: true }).press("Control+v");
+  await page
+    .locator(".section-heading")
+    .getByRole("button", { name: "PROJECT", exact: true })
+    .press("Control+v");
   await row("中文 文件夹 copy/").waitFor();
   await checkSelected(["中文 文件夹 copy/"]);
   await checkDisk(path.join(root, "中文 文件夹 copy/deep.txt"), "unicode directory");
@@ -320,9 +326,13 @@ try {
   await setFiles("b.txt");
   const stale = await invoke("read_file_clipboard");
   await setFiles("a.txt");
-  await assert.rejects(invoke("paste_file_clipboard", {
-    expectedSequence: stale.sequence, expectedRoot: root, targetDirectory: path.join(root, "alternate"),
-  }));
+  await assert.rejects(
+    invoke("paste_file_clipboard", {
+      expectedSequence: stale.sequence,
+      expectedRoot: root,
+      targetDirectory: path.join(root, "alternate"),
+    }),
+  );
   await missing(path.join(root, "alternate/b.txt"));
   await missing(path.join(root, "alternate/a.txt"));
   checks.push("Changing the native clipboard rejects stale copy requests");
@@ -355,9 +365,7 @@ try {
   await row("a.txt").waitFor();
   await checkSelected(["a.txt"]);
   await checkDisk(path.join(emptyRoot, "a.txt"), "native a");
-  checks.push(
-    "Empty-tree context menu targets its workspace root after a workspace change",
-  );
+  checks.push("Empty-tree context menu targets its workspace root after a workspace change");
 
   const snapshot = await invoke("read_file_clipboard");
   await assert.rejects(

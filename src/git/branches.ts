@@ -39,8 +39,15 @@ export function branchSwitchTarget(branch: GitBranch, branches: GitBranch[]): Sw
 }
 
 export function branchDifference(info: GitInfo | null, repository: GitRepository): string {
-  if (!info || repository.detached || info.detached || !info.upstream ||
-      info.branch !== repository.branch || info.ahead === null || info.behind === null) {
+  if (
+    !info ||
+    repository.detached ||
+    info.detached ||
+    !info.upstream ||
+    info.branch !== repository.branch ||
+    info.ahead === null ||
+    info.behind === null
+  ) {
     return "";
   }
   return `(↓${info.behind} behind · ↑${info.ahead} ahead)`;
@@ -52,8 +59,13 @@ function branchContext(repository: string) {
   return () => {
     const state = useApp.getState();
     const selected = selectedRepository();
-    return state.root === context.expectedRoot && state.gitState.session === context.session &&
-      selected?.path === repository && !selected.operation && !state.gitBusy[repository];
+    return (
+      state.root === context.expectedRoot &&
+      state.gitState.session === context.session &&
+      selected?.path === repository &&
+      !selected.operation &&
+      !state.gitBusy[repository]
+    );
   };
 }
 
@@ -75,7 +87,8 @@ export async function createBranch(repository: string, source?: GitBranch) {
     return;
   }
   await runGitOperation(repository, {
-    kind: "createBranch", name,
+    kind: "createBranch",
+    name,
     ...(source ? { start: branchReference(source) } : {}),
   });
 }
@@ -115,7 +128,9 @@ export async function switchBranch(
     if (!valid() || info.operation) {
       return;
     }
-    const local = info.branches.find((b) => !b.remote && b.name === name && b.upstream === branch.name);
+    const local = info.branches.find(
+      (b) => !b.remote && b.name === name && b.upstream === branch.name,
+    );
     if (!local || branchSwitchTarget(local, info.branches).kind !== "switch") {
       return;
     }

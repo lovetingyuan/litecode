@@ -94,13 +94,18 @@ export function EditorGroup({ group }: { group: Group }) {
       theme: "dark-modern",
       model: null,
       automaticLayout: true,
-      ...editorOptions(state.settings, currentGroup?.active ? state.docs[currentGroup.active]?.large : false),
+      ...editorOptions(
+        state.settings,
+        currentGroup?.active ? state.docs[currentGroup.active]?.large : false,
+      ),
       padding: { top: 8 },
       fixedOverflowWidgets: true,
       unicodeHighlight: { ambiguousCharacters: false },
     });
     instance.current = e;
-    if (!state.docs[currentGroup?.active ?? ""]?.gitDiff) { editors.set(group.id, e); }
+    if (!state.docs[currentGroup?.active ?? ""]?.gitDiff) {
+      editors.set(group.id, e);
+    }
     const subscriptions = [
       installMergeConflictEditor(e, setMergeConflictCount),
       e.onDidFocusEditorText(() => {
@@ -163,7 +168,9 @@ export function EditorGroup({ group }: { group: Group }) {
     ];
     return () => {
       subscriptions.forEach((s) => s.dispose());
-      if (editors.get(group.id) === e) { editors.delete(group.id); }
+      if (editors.get(group.id) === e) {
+        editors.delete(group.id);
+      }
       e.dispose();
       instance.current = null;
     };
@@ -184,7 +191,9 @@ export function EditorGroup({ group }: { group: Group }) {
       }
     }
     e.setModel(textView && group.active ? (models.get(group.active) ?? null) : null);
-    if (!gitDiff) { editors.set(group.id, e); }
+    if (!gitDiff) {
+      editors.set(group.id, e);
+    }
     if (
       textView &&
       group.active &&
@@ -202,7 +211,9 @@ export function EditorGroup({ group }: { group: Group }) {
     previousTextView.current = textView;
   }, [group.id, group.active, group.views, doc?.path, textView, gitDiff]);
   useEffect(() => {
-    if (textView && instance.current) { syncCursor(instance.current, group.id); }
+    if (textView && instance.current) {
+      syncCursor(instance.current, group.id);
+    }
   }, [activeGroup, group.active, group.id, textView]);
   useEffect(() => {
     instance.current?.updateOptions(editorOptions(settings, doc?.large));
@@ -346,7 +357,11 @@ export function EditorGroup({ group }: { group: Group }) {
                     {tab.name}
                   </span>
                   {tab.conflict && !tab.deleted && <Icon name="warning" />}
-                  {isGitConflicted(tab.path, root, treeRoot, git) && <span className="git-conflict-badge" title="Git: Unmerged changes">!</span>}
+                  {isGitConflicted(tab.path, root, treeRoot, git) && (
+                    <span className="git-conflict-badge" title="Git: Unmerged changes">
+                      !
+                    </span>
+                  )}
                   <button
                     className={`tab-close ${tab.dirty ? "dirty" : ""} ${sticky ? "tab-unpin" : ""}`}
                     title={`${sticky ? "Unpin" : "Close"} ${tab.name}`}
@@ -369,11 +384,31 @@ export function EditorGroup({ group }: { group: Group }) {
         </div>
         <EditorTabsScrollbar viewportRef={tabs} tabIds={group.tabs} />
         <div className="actions">
-          {mergeConflictCount > 0 && textView && <>
-            <IconButton icon="arrow-up" label="Previous Conflict" onClick={() => { if (instance.current) { navigateInlineConflict(instance.current, "previous"); } }} />
-            <IconButton icon="arrow-down" label="Next Conflict" onClick={() => { if (instance.current) { navigateInlineConflict(instance.current, "next"); } }} />
-            <span className="sr-only" role="status">{mergeConflictCount} merge conflicts remaining</span>
-          </>}
+          {mergeConflictCount > 0 && textView && (
+            <>
+              <IconButton
+                icon="arrow-up"
+                label="Previous Conflict"
+                onClick={() => {
+                  if (instance.current) {
+                    navigateInlineConflict(instance.current, "previous");
+                  }
+                }}
+              />
+              <IconButton
+                icon="arrow-down"
+                label="Next Conflict"
+                onClick={() => {
+                  if (instance.current) {
+                    navigateInlineConflict(instance.current, "next");
+                  }
+                }}
+              />
+              <span className="sr-only" role="status">
+                {mergeConflictCount} merge conflicts remaining
+              </span>
+            </>
+          )}
           <IconButton
             icon={splitDown ? "split-vertical" : "split-horizontal"}
             label={`Split Editor ${splitDown ? "Down" : "Right"} (Ctrl+\\)`}
@@ -412,9 +447,7 @@ export function EditorGroup({ group }: { group: Group }) {
       {doc?.conflict && !doc.deleted && models.has(doc.id) && (
         <div className="conflict-banner">
           <Icon name="warning" />
-          <span>
-            The file changed on disk. Your edits are preserved.
-          </span>
+          <span>The file changed on disk. Your edits are preserved.</span>
           <button onClick={() => void compareDisk(doc.id).catch((e) => notify(errorMessage(e)))}>
             Compare
           </button>
@@ -458,14 +491,20 @@ export function EditorGroup({ group }: { group: Group }) {
 }
 
 function syncCursor(editor: monaco.editor.IStandaloneCodeEditor, groupId: string) {
-  if (useApp.getState().activeGroup !== groupId) { return; }
+  if (useApp.getState().activeGroup !== groupId) {
+    return;
+  }
   const selection = editor.getSelection();
-  if (!selection) { return; }
-  setApp({ cursor: {
-    line: selection.positionLineNumber,
-    column: selection.positionColumn,
-    selected: editor.getModel()?.getValueLengthInRange(selection) ?? 0,
-  } });
+  if (!selection) {
+    return;
+  }
+  setApp({
+    cursor: {
+      line: selection.positionLineNumber,
+      column: selection.positionColumn,
+      selected: editor.getModel()?.getValueLengthInRange(selection) ?? 0,
+    },
+  });
 }
 
 export function EditorTabsScrollbar({

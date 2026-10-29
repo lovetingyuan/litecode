@@ -9,7 +9,12 @@ import type {
   QuickPick,
 } from "../types/types";
 import { defaultQuery } from "../types/types";
-import { layoutGroups, removeLayoutGroup, restoreLayout, type EditorLayout } from "../editor/editorLayout";
+import {
+  layoutGroups,
+  removeLayoutGroup,
+  restoreLayout,
+  type EditorLayout,
+} from "../editor/editorLayout";
 
 const initialGroup = (): Group => ({
   id: crypto.randomUUID(),
@@ -149,7 +154,9 @@ export const searchSession = (id = useApp.getState().activeSearchId) =>
   useApp.getState().searchSessions.find((search) => search.id === id);
 export function patchSearch(id: string, patch: Partial<SearchSession>) {
   setApp((s) => ({
-    searchSessions: s.searchSessions.map((search) => search.id === id ? { ...search, ...patch } : search),
+    searchSessions: s.searchSessions.map((search) =>
+      search.id === id ? { ...search, ...patch } : search,
+    ),
   }));
 }
 export const activeDoc = () => {

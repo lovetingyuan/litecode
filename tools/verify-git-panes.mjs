@@ -4,14 +4,20 @@ import { chromium } from "playwright";
 
 // Real Git components, Allotment and tree virtualization; only desktop IPC is mocked.
 const output = ".verification/git-panes";
-const browser = await chromium.launch({ channel: "msedge", headless: true, ignoreDefaultArgs: ["--hide-scrollbars"] });
+const browser = await chromium.launch({
+  channel: "msedge",
+  headless: true,
+  ignoreDefaultArgs: ["--hide-scrollbars"],
+});
 const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
 page.setDefaultTimeout(15000);
-const errors = [], checks = [];
+const errors = [],
+  checks = [];
 page.on("pageerror", (error) => errors.push(String(error)));
-await page.route("**/src/core/bridge.ts*", (route) => route.fulfill({
-  contentType: "application/javascript",
-  body: `
+await page.route("**/src/core/bridge.ts*", (route) =>
+  route.fulfill({
+    contentType: "application/javascript",
+    body: `
     export const desktop = false;
     export const mediaSource = path => path;
     export const errorMessage = error => error?.message ?? String(error);
@@ -27,26 +33,58 @@ await page.route("**/src/core/bridge.ts*", (route) => route.fulfill({
       throw new Error('Unexpected fixture command: ' + command);
     }
   `,
-}));
-const settle = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-const state = (patch) => page.evaluate(async (patch) => (await import("/src/store/store.ts")).setApp(patch), patch);
+  }),
+);
+const settle = () =>
+  page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
+const state = (patch) =>
+  page.evaluate(async (patch) => (await import("/src/store/store.ts")).setApp(patch), patch);
 const section = (title) => page.getByRole("region", { name: title, exact: true });
 const sashes = () => page.getByRole("separator", { name: "Git change group height", exact: true });
-const near = (a, b, tolerance = 3) => assert.ok(Math.abs(a - b) <= tolerance, `${a} should be near ${b}`);
-const heights = () => page.locator(".git-change-section").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+const near = (a, b, tolerance = 3) =>
+  assert.ok(Math.abs(a - b) <= tolerance, `${a} should be near ${b}`);
+const heights = () =>
+  page
+    .locator(".git-change-section")
+    .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
 async function fixture(counts = [27, 6, 9], layout = "list", repository = "C:/git-panes") {
-  await page.evaluate(async ({ counts, layout, repository }) => {
-    const { setApp } = await import("/src/store/store.ts");
-    const changes = counts.flatMap((count, group) => Array.from({ length: count }, (_, i) => ({
-      path: `src/group-${group}-${String(i).padStart(5, "0")}.ts`, oldPath: null,
-      indexStatus: group === 0 ? "added" : null,
-      worktreeStatus: group === 1 ? "modified" : group === 2 ? "untracked" : null,
-      conflicted: group === 3, stamp: "fixture",
-    })));
-    window.gitPaneSnapshot = { root: repository, session: 1, git: [], branch: "main", warnings: [], repositories: [{ path: repository, name: "git-panes", branch: "main", detached: false, operation: null, changes }] };
-    setApp({ root: repository });
-    setApp({ sidebar: "git", gitLayout: layout, gitState: window.gitPaneSnapshot });
-  }, { counts, layout, repository });
+  await page.evaluate(
+    async ({ counts, layout, repository }) => {
+      const { setApp } = await import("/src/store/store.ts");
+      const changes = counts.flatMap((count, group) =>
+        Array.from({ length: count }, (_, i) => ({
+          path: `src/group-${group}-${String(i).padStart(5, "0")}.ts`,
+          oldPath: null,
+          indexStatus: group === 0 ? "added" : null,
+          worktreeStatus: group === 1 ? "modified" : group === 2 ? "untracked" : null,
+          conflicted: group === 3,
+          stamp: "fixture",
+        })),
+      );
+      window.gitPaneSnapshot = {
+        root: repository,
+        session: 1,
+        git: [],
+        branch: "main",
+        warnings: [],
+        repositories: [
+          {
+            path: repository,
+            name: "git-panes",
+            branch: "main",
+            detached: false,
+            operation: null,
+            changes,
+          },
+        ],
+      };
+      setApp({ root: repository });
+      setApp({ sidebar: "git", gitLayout: layout, gitState: window.gitPaneSnapshot });
+    },
+    { counts, layout, repository },
+  );
   await page.locator(".git-change-section").first().waitFor();
   await settle();
 }
@@ -61,13 +99,18 @@ async function drag(index, distance) {
   const bounds = await sashes().nth(index).boundingBox();
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();
-  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2 + distance, { steps: 12 });
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2 + distance, {
+    steps: 12,
+  });
   await page.mouse.up();
   await settle();
 }
 try {
   await mkdir(output, { recursive: true });
-  await page.goto(process.env.LITECODE_TEST_URL ?? "http://localhost:1420", { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.goto(process.env.LITECODE_TEST_URL ?? "http://localhost:1420", {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
   await page.locator(".git-view").waitFor();
   await fixture();
   assert.equal(await sashes().count(), 2);
@@ -76,7 +119,9 @@ try {
   near((initial[2] - 54) / (initial[1] - 54), 9 / 6, 0.1);
   await page.locator(".git-view").screenshot({ path: `${output}/01-default.png` });
   await page.waitForTimeout(500); // Drain existing workbench startup backups before checking Git dragging.
-  await page.evaluate(() => { window.backups = []; });
+  await page.evaluate(() => {
+    window.backups = [];
+  });
   await drag(0, -90);
   const dragged = await heights();
   assert.ok(dragged[0] < initial[0] - 60 && dragged[1] > initial[1] + 60);
@@ -92,8 +137,14 @@ try {
   near(balanced[0], balanced[1]);
   near(balanced[2], keyboard[2]);
   await page.waitForTimeout(500);
-  assert.equal(await page.evaluate(() => window.backups.length), 0, "Git resizing must not trigger session backups");
-  checks.push("27/6/9 defaults; both sashes drag; keyboard adjustment; adjacent pair balance; no backup writes");
+  assert.equal(
+    await page.evaluate(() => window.backups.length),
+    0,
+    "Git resizing must not trigger session backups",
+  );
+  checks.push(
+    "27/6/9 defaults; both sashes drag; keyboard adjustment; adjacent pair balance; no backup writes",
+  );
 
   const toggle = section("Staged Changes").locator(".git-section-toggle");
   await toggle.click();
@@ -107,28 +158,48 @@ try {
   await fixture([54, 12, 18, 8]);
   assert.equal(await sashes().count(), 3);
   const withConflict = await heights();
-  near((withConflict[1] - 54) / (withConflict[2] - 54), (balanced[0] - 54) / (balanced[1] - 54), 0.1);
+  near(
+    (withConflict[1] - 54) / (withConflict[2] - 54),
+    (balanced[0] - 54) / (balanced[1] - 54),
+    0.1,
+  );
   await fixture([27, 6, 9]);
   (await heights()).forEach((height, i) => near(height, balanced[i]));
-  checks.push("Collapse restores prior sizes; refreshed counts preserve manual proportions; Merge Changes appears and disappears");
+  checks.push(
+    "Collapse restores prior sizes; refreshed counts preserve manual proportions; Merge Changes appears and disappears",
+  );
 
   await state({ gitLayout: "tree" });
   await section("Staged Changes").locator("file-tree-container").waitFor();
   await settle();
   (await heights()).forEach((height, i) => near(height, balanced[i]));
-  await section("Staged Changes").locator('[data-item-path="src/"] [data-item-section="content"]').click();
+  await section("Staged Changes")
+    .locator('[data-item-path="src/"] [data-item-section="content"]')
+    .click();
   const actions = section("Staged Changes").locator(".git-tree-selection-actions");
   await actions.waitFor();
   await page.setViewportSize({ width: 1280, height: 380 });
   await settle();
-  assert.equal(await actions.evaluate((element) => element.getBoundingClientRect().bottom <= element.closest(".git-change-section").getBoundingClientRect().bottom + 1), true);
+  assert.equal(
+    await actions.evaluate(
+      (element) =>
+        element.getBoundingClientRect().bottom <=
+        element.closest(".git-change-section").getBoundingClientRect().bottom + 1,
+    ),
+    true,
+  );
   await page.setViewportSize({ width: 1280, height: 240 });
   await settle();
   const panel = page.locator("#git-panel-changes");
-  await panel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await panel.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
   const bounds = await panel.boundingBox();
   const last = await section("Untracked Files").boundingBox();
-  assert.ok(last.y + last.height <= bounds.y + bounds.height + 1, "Small windows keep all groups reachable");
+  assert.ok(
+    last.y + last.height <= bounds.y + bounds.height + 1,
+    "Small windows keep all groups reachable",
+  );
   await page.setViewportSize({ width: 1280, height: 820 });
   await fixture();
   await reopen();
@@ -136,29 +207,47 @@ try {
   await drag(0, -50);
   await fixture([27, 6, 9], "list", "C:/git-other");
   (await heights()).forEach((height, i) => near(height, initial[i]));
-  checks.push("Tree shares pane sizes; selection toolbar fits; small windows scroll; reopening and repository switching reset defaults");
+  checks.push(
+    "Tree shares pane sizes; selection toolbar fits; small windows scroll; reopening and repository switching reset defaults",
+  );
 
   for (const layout of ["list", "tree"]) {
     await fixture([1000, 1000, 1000], layout);
     for (const [index, title] of ["Staged Changes", "Changes", "Untracked Files"].entries()) {
       const group = section(title);
-      const scroller = layout === "list" ? group.locator(".git-changes-list") : group.locator("[data-file-tree-virtualized-scroll]");
+      const scroller =
+        layout === "list"
+          ? group.locator(".git-changes-list")
+          : group.locator("[data-file-tree-virtualized-scroll]");
       await scroller.waitFor();
-      await scroller.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+      await scroller.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
       await settle();
-      await group.locator(layout === "list" ? `[data-git-path="src/group-${index}-00999.ts"]` : `[data-item-path="src/group-${index}-00999.ts"]`).waitFor();
+      await group
+        .locator(
+          layout === "list"
+            ? `[data-git-path="src/group-${index}-00999.ts"]`
+            : `[data-item-path="src/group-${index}-00999.ts"]`,
+        )
+        .waitFor();
     }
-    const rendered = await page.locator(layout === "list" ? ".git-file-row" : "[data-item-path]").count();
+    const rendered = await page
+      .locator(layout === "list" ? ".git-file-row" : "[data-item-path]")
+      .count();
     assert.ok(rendered < 150, `${layout} rendered ${rendered} rows`);
     await page.locator(".git-view").screenshot({ path: `${output}/02-${layout}-bottom.png` });
   }
   await fixture([0, 0, 100]);
   assert.equal(await sashes().count(), 0);
   await fixture([27, 6, 9]);
-  for (const title of ["Staged Changes", "Changes", "Untracked Files"]) await section(title).locator(".git-section-toggle").click();
+  for (const title of ["Staged Changes", "Changes", "Untracked Files"])
+    await section(title).locator(".git-section-toggle").click();
   await settle();
   (await heights()).forEach((height) => near(height, 28, 0.5));
-  checks.push("All three lists independently reach their final file in both modes; virtualization; single group; all collapsed");
+  checks.push(
+    "All three lists independently reach their final file in both modes; virtualization; single group; all collapsed",
+  );
 
   await page.evaluate(async () => {
     window.__TAURI_INTERNALS__ = { transformCallback: () => 1 };
@@ -166,17 +255,30 @@ try {
     const top = addTab();
     addSplit(top, "down");
     const { setApp, useApp } = await import("/src/store/store.ts");
-    setApp({ view: "terminal", settings: { ...useApp.getState().settings, "terminal.integrated.gpuAcceleration": "off" } });
+    setApp({
+      view: "terminal",
+      settings: { ...useApp.getState().settings, "terminal.integrated.gpuAcceleration": "off" },
+    });
   });
   const terminalSash = page.getByRole("separator", { name: "Terminal pane size", exact: true });
   await terminalSash.waitFor();
   await settle();
-  const terminalHeights = () => page.locator("[data-terminal-pane]").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
+  const terminalHeights = () =>
+    page
+      .locator("[data-terminal-pane]")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height));
   const beforeTerminal = await terminalHeights();
   const terminalBounds = await terminalSash.boundingBox();
-  await page.mouse.move(terminalBounds.x + terminalBounds.width / 2, terminalBounds.y + terminalBounds.height / 2);
+  await page.mouse.move(
+    terminalBounds.x + terminalBounds.width / 2,
+    terminalBounds.y + terminalBounds.height / 2,
+  );
   await page.mouse.down();
-  await page.mouse.move(terminalBounds.x + terminalBounds.width / 2, terminalBounds.y + terminalBounds.height / 2 + 65, { steps: 12 });
+  await page.mouse.move(
+    terminalBounds.x + terminalBounds.width / 2,
+    terminalBounds.y + terminalBounds.height / 2 + 65,
+    { steps: 12 },
+  );
   await page.mouse.up();
   await settle();
   assert.ok((await terminalHeights())[0] > beforeTerminal[0] + 40);
@@ -186,9 +288,14 @@ try {
   await terminalSash.dblclick();
   const balancedTerminal = await terminalHeights();
   near(balancedTerminal[0], balancedTerminal[1]);
-  checks.push("Existing terminal vertical panes still drag, resize by keyboard and balance on double-click");
+  checks.push(
+    "Existing terminal vertical panes still drag, resize by keyboard and balance on double-click",
+  );
   assert.deepEqual(errors, []);
-  await writeFile(`${output}/report.json`, JSON.stringify({ passed: true, checks, errors }, null, 2));
+  await writeFile(
+    `${output}/report.json`,
+    JSON.stringify({ passed: true, checks, errors }, null, 2),
+  );
   console.log(JSON.stringify({ passed: true, checks }, null, 2));
 } catch (error) {
   console.error({ errors, checks });

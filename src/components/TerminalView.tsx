@@ -83,20 +83,11 @@ export default function TerminalView() {
   return (
     <section className="terminal-view" aria-label="Terminal" hidden={!visible}>
       <div className="terminal-toolbar">
-        <div
-          ref={tabBar}
-          className="terminal-tabs"
-          role="tablist"
-          aria-label="Terminal tabs"
-        >
+        <div ref={tabBar} className="terminal-tabs" role="tablist" aria-label="Terminal tabs">
           {tabs.map((tab) => (
             <ContextMenu.Root key={tab.id}>
               <ContextMenu.Trigger
-                render={
-                  <div
-                    className={`terminal-tab${tab.id === selected ? " active" : ""}`}
-                  />
-                }
+                render={<div className={`terminal-tab${tab.id === selected ? " active" : ""}`} />}
               >
                 <button
                   role="tab"
@@ -108,35 +99,22 @@ export default function TerminalView() {
                   onClick={() => selectTab(tab.id)}
                   onDoubleClick={() => safe(rename(tab.id))}
                   onDragStart={(event) =>
-                    event.dataTransfer.setData(
-                      "application/x-litecode-terminal-tab",
-                      tab.id,
-                    )
+                    event.dataTransfer.setData("application/x-litecode-terminal-tab", tab.id)
                   }
                   onDragOver={(event) => {
-                    if (
-                      event.dataTransfer.types.includes(
-                        "application/x-litecode-terminal-tab",
-                      )
-                    ) {
+                    if (event.dataTransfer.types.includes("application/x-litecode-terminal-tab")) {
                       event.preventDefault();
                     }
                   }}
                   onDrop={(event) => {
                     event.preventDefault();
-                    const id = event.dataTransfer.getData(
-                      "application/x-litecode-terminal-tab",
-                    );
+                    const id = event.dataTransfer.getData("application/x-litecode-terminal-tab");
                     if (id && id !== tab.id) {
                       reorderTab(id, tab.id);
                     }
                   }}
                   onKeyDown={(event) => {
-                    if (
-                      ["ArrowLeft", "ArrowRight", "Home", "End"].includes(
-                        event.key,
-                      )
-                    ) {
+                    if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
                       event.preventDefault();
                       const index = tabs.indexOf(tab);
                       selectTab(
@@ -145,9 +123,7 @@ export default function TerminalView() {
                             ? 0
                             : event.key === "End"
                               ? tabs.length - 1
-                              : (index +
-                                  (event.key === "ArrowRight" ? 1 : -1) +
-                                  tabs.length) %
+                              : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
                                 tabs.length
                         ].id,
                       );
@@ -156,10 +132,7 @@ export default function TerminalView() {
                 >
                   <Icon name="terminal" />
                   <span>
-                    {tab.name ??
-                      panes[tab.activePane]?.profile ??
-                      currentDefault ??
-                      "Terminal"}
+                    {tab.name ?? panes[tab.activePane]?.profile ?? currentDefault ?? "Terminal"}
                   </span>
                   {layoutGroups(tab.layout).length > 1 && (
                     <small>{layoutGroups(tab.layout).length}</small>
@@ -178,24 +151,14 @@ export default function TerminalView() {
                     <ContextMenu.Item onClick={() => safe(rename(tab.id))}>
                       Rename…
                     </ContextMenu.Item>
-                    <ContextMenu.Item
-                      onClick={() =>
-                        safe(splitTerminal("right", tab.activePane))
-                      }
-                    >
+                    <ContextMenu.Item onClick={() => safe(splitTerminal("right", tab.activePane))}>
                       Split Right
                     </ContextMenu.Item>
-                    <ContextMenu.Item
-                      onClick={() =>
-                        safe(splitTerminal("down", tab.activePane))
-                      }
-                    >
+                    <ContextMenu.Item onClick={() => safe(splitTerminal("down", tab.activePane))}>
                       Split Down
                     </ContextMenu.Item>
                     <ContextMenu.Separator className="menu-separator" />
-                    <ContextMenu.Item onClick={() => closeTab(tab.id)}>
-                      Close Tab
-                    </ContextMenu.Item>
+                    <ContextMenu.Item onClick={() => closeTab(tab.id)}>Close Tab</ContextMenu.Item>
                   </ContextMenu.Popup>
                 </ContextMenu.Positioner>
               </ContextMenu.Portal>
@@ -216,32 +179,20 @@ export default function TerminalView() {
             }}
           >
             <Menu.Trigger
-              render={
-                <IconButton
-                  icon="chevron-down"
-                  label="Select Terminal Profile"
-                />
-              }
+              render={<IconButton icon="chevron-down" label="Select Terminal Profile" />}
             />
             <Menu.Portal>
               <Menu.Positioner className="z-90" side="bottom" align="end">
                 <Menu.Popup className="context-menu">
                   {profiles.map((profile) => (
-                    <Menu.Item
-                      key={profile.name}
-                      onClick={() => newTerminal(profile.name)}
-                    >
+                    <Menu.Item key={profile.name} onClick={() => newTerminal(profile.name)}>
                       <span>{profile.name}</span>
                       {profile.name === currentDefault && <Icon name="check" />}
                     </Menu.Item>
                   ))}
                   <Menu.Separator className="menu-separator" />
                   <Menu.Item
-                    onClick={() =>
-                      void execute(
-                        "workbench.action.terminal.selectDefaultProfile",
-                      )
-                    }
+                    onClick={() => void execute("workbench.action.terminal.selectDefaultProfile")}
                   >
                     Select Default Profile…
                   </Menu.Item>
@@ -322,9 +273,7 @@ function TerminalLayout({
       onChange={(sizes) =>
         useTerminal.setState((s) => ({
           tabs: s.tabs.map((tab) =>
-            tab.id === tabId
-              ? { ...tab, layout: resizeLayout(tab.layout, node.id, sizes) }
-              : tab,
+            tab.id === tabId ? { ...tab, layout: resizeLayout(tab.layout, node.id, sizes) } : tab,
           ),
         }))
       }
@@ -346,9 +295,7 @@ function TerminalLayout({
 
 function TerminalPane({ id, visible }: { id: string; visible: boolean }) {
   const pane = useTerminal((s) => s.panes[id]);
-  const focused = useTerminal(
-    (s) => s.tabs.find((t) => t.id === s.activeTab)?.activePane === id,
-  );
+  const focused = useTerminal((s) => s.tabs.find((t) => t.id === s.activeTab)?.activePane === id);
   const settings = useApp((s) => s.settings);
   const host = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -415,7 +362,9 @@ function TerminalPane({ id, visible }: { id: string; visible: boolean }) {
           <div className="terminal-exit" role="status">
             <span>{pane.error}</span>
             <button onClick={() => safe(restartPane(id))}>
-              {pane.errorCode === "workspaceTrust" ? "Trust Workspace and Retry" : "Restart Terminal"}
+              {pane.errorCode === "workspaceTrust"
+                ? "Trust Workspace and Retry"
+                : "Restart Terminal"}
             </button>
           </div>
         )}
@@ -423,12 +372,8 @@ function TerminalPane({ id, visible }: { id: string; visible: boolean }) {
       <ContextMenu.Portal>
         <ContextMenu.Positioner className="z-90">
           <ContextMenu.Popup className="context-menu">
-            <ContextMenu.Item onClick={() => safe(copyTerminal(id))}>
-              Copy
-            </ContextMenu.Item>
-            <ContextMenu.Item onClick={() => safe(pasteTerminal(id))}>
-              Paste
-            </ContextMenu.Item>
+            <ContextMenu.Item onClick={() => safe(copyTerminal(id))}>Copy</ContextMenu.Item>
+            <ContextMenu.Item onClick={() => safe(pasteTerminal(id))}>Paste</ContextMenu.Item>
             <ContextMenu.Item
               onClick={() => {
                 focusTerminal(id);
@@ -444,9 +389,7 @@ function TerminalPane({ id, visible }: { id: string; visible: boolean }) {
             <ContextMenu.Item onClick={() => safe(splitTerminal("down", id))}>
               Split Down
             </ContextMenu.Item>
-            <ContextMenu.Item onClick={() => closePane(id)}>
-              Close Pane
-            </ContextMenu.Item>
+            <ContextMenu.Item onClick={() => closePane(id)}>Close Pane</ContextMenu.Item>
           </ContextMenu.Popup>
         </ContextMenu.Positioner>
       </ContextMenu.Portal>
@@ -459,9 +402,7 @@ function TerminalFind() {
   const [regex, setRegex] = useState(false);
   const [matchCase, setMatchCase] = useState(false);
   const [found, setFound] = useState(true);
-  const pane = useTerminal(
-    (s) => s.tabs.find((t) => t.id === s.activeTab)?.activePane,
-  );
+  const pane = useTerminal((s) => s.tabs.find((t) => t.id === s.activeTab)?.activePane);
   useEffect(() => {
     setFound(findTerminal(text, false, regex, matchCase));
   }, [text, regex, matchCase, pane]);
@@ -487,18 +428,10 @@ function TerminalFind() {
           }
         }}
       />
-      <button
-        title="Match Case"
-        aria-pressed={matchCase}
-        onClick={() => setMatchCase(!matchCase)}
-      >
+      <button title="Match Case" aria-pressed={matchCase} onClick={() => setMatchCase(!matchCase)}>
         Aa
       </button>
-      <button
-        title="Use Regular Expression"
-        aria-pressed={regex}
-        onClick={() => setRegex(!regex)}
-      >
+      <button title="Use Regular Expression" aria-pressed={regex} onClick={() => setRegex(!regex)}>
         .*
       </button>
       <span role="status">{text && !found ? "No results" : ""}</span>

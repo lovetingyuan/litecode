@@ -22,8 +22,12 @@ const urls = {};
 const errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));
 page.on("request", (request) => {
-  if (new URL(request.url()).pathname === "/src/explorer/workspaceTree.ts") { urls.workspaceTree = request.url(); }
-  const name = new URL(request.url()).pathname.match(/^\/src\/(?:editor|store)\/(documents|store)\.tsx?$/)?.[1];
+  if (new URL(request.url()).pathname === "/src/explorer/workspaceTree.ts") {
+    urls.workspaceTree = request.url();
+  }
+  const name = new URL(request.url()).pathname.match(
+    /^\/src\/(?:editor|store)\/(documents|store)\.tsx?$/,
+  )?.[1];
   if (name && !urls[name]) {
     urls[name] = request.url();
   }
@@ -91,7 +95,8 @@ ${workspaceFixtureCommands}
 );
 
 const tree = page.locator("file-tree-container");
-const row = (path) => tree.locator(`[data-item-path="${path}"]:not([data-file-tree-sticky-row])`).first();
+const row = (path) =>
+  tree.locator(`[data-item-path="${path}"]:not([data-file-tree-sticky-row])`).first();
 const dialog = page.getByRole("dialog");
 const selected = () =>
   tree.locator('[aria-selected="true"]').evaluateAll((rows) => rows.map((r) => r.dataset.itemPath));

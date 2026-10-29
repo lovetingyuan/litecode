@@ -12,7 +12,9 @@ const urls = {};
 const measurements = [];
 page.on("pageerror", (error) => errors.push(String(error)));
 page.on("request", (request) => {
-  const match = new URL(request.url()).pathname.match(/^\/src\/(?:store|editor)\/(store|documents)\.ts$/);
+  const match = new URL(request.url()).pathname.match(
+    /^\/src\/(?:store|editor)\/(store|documents)\.ts$/,
+  );
   if (match) {
     urls[match[1]] = request.url();
   }
@@ -207,19 +209,17 @@ async function workspace(count, opened) {
       );
       paths.push("src/Alpha.ts", "src/Beta.ts", "src/中文.ts");
       const docs = Object.fromEntries(
-        paths
-          .slice(0, opened)
-          .map((path, i) => [
-            String(i),
-            {
-              id: String(i),
-              path: `C:/quick-fixture/${path}`,
-              name: path.split("/").at(-1),
-              language: "typescript",
-              version: 1,
-              dirty: false,
-            },
-          ]),
+        paths.slice(0, opened).map((path, i) => [
+          String(i),
+          {
+            id: String(i),
+            path: `C:/quick-fixture/${path}`,
+            name: path.split("/").at(-1),
+            language: "typescript",
+            version: 1,
+            dirty: false,
+          },
+        ]),
       );
       window.__quickStore = await import(url);
       window.__fixturePaths = paths;

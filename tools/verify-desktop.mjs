@@ -196,11 +196,14 @@ try {
   checks.push("Real Tauri bootstrap, portable data directory and Trees mounting");
   for (const selector of [".titlebar", ".title-center", ".window-controls button:nth-child(2)"]) {
     for (const maximized of [true, false]) {
-      await exec(`const el = document.querySelector(arguments[0]);
+      await exec(
+        `const el = document.querySelector(arguments[0]);
         if (el.matches('button')) { el.click(); } else {
           el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, detail: 2 }));
           el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, button: 0, detail: 2 }));
-        }`, [selector]);
+        }`,
+        [selector],
+      );
       await wait(
         `return !!document.querySelector('.window-controls [aria-label="${maximized ? "Restore" : "Maximize"}"] .codicon-chrome-${maximized ? "restore" : "maximize"}');`,
         `Window icon did not follow ${selector} (${maximized})`,
@@ -213,15 +216,17 @@ try {
   await request("POST", url("/window/maximize"), {});
   await exec("location.reload();");
   await wait(
-    'return !!document.querySelector(\'.window-controls [aria-label="Restore"] .codicon-chrome-restore\');',
+    "return !!document.querySelector('.window-controls [aria-label=\"Restore\"] .codicon-chrome-restore');",
     "Maximized state was not initialized after reload",
   );
   await request("POST", url("/window/rect"), { width: 1280, height: 820, x: 40, y: 40 });
   await wait(
-    'return !!document.querySelector(\'.window-controls [aria-label="Maximize"] .codicon-chrome-maximize\');',
+    "return !!document.querySelector('.window-controls [aria-label=\"Maximize\"] .codicon-chrome-maximize');",
     "Window icon did not follow native restore",
   );
-  checks.push("Titlebar double-click, window button, native resize and reload synchronize maximize icons");
+  checks.push(
+    "Titlebar double-click, window button, native resize and reload synchronize maximize icons",
+  );
   await screenshot("01-explorer");
   await openFile("README");
   await wait(

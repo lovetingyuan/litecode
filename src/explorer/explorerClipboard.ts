@@ -91,8 +91,9 @@ export function createExplorerClipboard(services: ClipboardServices) {
             (parent) => parent !== path && path.startsWith(parent.replace(/\/$/, "") + "/"),
           ),
       );
-      const moves = sources.map(path => ({ from: path, to:
-        directory.replace(/\/$/, "") + "/" + path.replace(/\/$/, "").split("/").pop()!,
+      const moves = sources.map((path) => ({
+        from: path,
+        to: directory.replace(/\/$/, "") + "/" + path.replace(/\/$/, "").split("/").pop()!,
       }));
       const report = await services.pasteInternal(moves, source.cut, signal);
       // Keep failed cut sources available for retry; completed moves must not run again.

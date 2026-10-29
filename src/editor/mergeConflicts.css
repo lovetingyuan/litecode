@@ -2,10 +2,24 @@
   --vscode-editorCodeLens-fontFamily: "Segoe WPC", "Segoe UI";
   --vscode-editorCodeLens-fontFamilyDefault: sans-serif;
 }
-.monaco-editor .merge-conflict-current-header { background: var(--vscode-merge-currentHeaderBackground, rgba(64, 200, 174, .5)); }
-.monaco-editor .merge-conflict-current-content { background: var(--vscode-merge-currentContentBackground, rgba(64, 200, 174, .2)); }
-.monaco-editor .merge-conflict-incoming-header { background: var(--vscode-merge-incomingHeaderBackground, rgba(64, 166, 255, .5)); }
-.monaco-editor .merge-conflict-incoming-content { background: var(--vscode-merge-incomingContentBackground, rgba(64, 166, 255, .2)); }
-.monaco-editor .merge-conflict-common-header { background: var(--vscode-merge-commonHeaderBackground, rgba(96, 96, 96, .4)); }
-.monaco-editor .merge-conflict-common-content { background: var(--vscode-merge-commonContentBackground, rgba(96, 96, 96, .16)); }
-.monaco-editor .merge-conflict-label { opacity: .8; }
+.monaco-editor .merge-conflict-current-header {
+  background: var(--vscode-merge-currentHeaderBackground, rgba(64, 200, 174, 0.5));
+}
+.monaco-editor .merge-conflict-current-content {
+  background: var(--vscode-merge-currentContentBackground, rgba(64, 200, 174, 0.2));
+}
+.monaco-editor .merge-conflict-incoming-header {
+  background: var(--vscode-merge-incomingHeaderBackground, rgba(64, 166, 255, 0.5));
+}
+.monaco-editor .merge-conflict-incoming-content {
+  background: var(--vscode-merge-incomingContentBackground, rgba(64, 166, 255, 0.2));
+}
+.monaco-editor .merge-conflict-common-header {
+  background: var(--vscode-merge-commonHeaderBackground, rgba(96, 96, 96, 0.4));
+}
+.monaco-editor .merge-conflict-common-content {
+  background: var(--vscode-merge-commonContentBackground, rgba(96, 96, 96, 0.16));
+}
+.monaco-editor .merge-conflict-label {
+  opacity: 0.8;
+}

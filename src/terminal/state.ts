@@ -57,10 +57,7 @@ export function addTab(profile?: string) {
   const pane = makePane(profile);
   useTerminal.setState((s) => ({
     initialized: true,
-    tabs: [
-      ...s.tabs,
-      { id, activePane: pane.id, layout: { type: "group", id: pane.id } },
-    ],
+    tabs: [...s.tabs, { id, activePane: pane.id, layout: { type: "group", id: pane.id } }],
     activeTab: id,
     panes: { ...s.panes, [pane.id]: pane },
   }));
@@ -100,9 +97,7 @@ export function addSplit(source: string, direction: SplitDirection) {
 }
 export function patchPane(id: string, patch: Partial<Pane>) {
   useTerminal.setState((s) =>
-    s.panes[id]
-      ? { panes: { ...s.panes, [id]: { ...s.panes[id], ...patch } } }
-      : {},
+    s.panes[id] ? { panes: { ...s.panes, [id]: { ...s.panes[id], ...patch } } } : {},
   );
 }
 export function removePane(id: string) {
@@ -133,8 +128,7 @@ export function removePane(id: string) {
       tabs,
       activeTab: tabs.some((t) => t.id === s.activeTab)
         ? s.activeTab
-        : (tabs[Math.min(Math.max(removedTab, 0), tabs.length - 1)]?.id ??
-          null),
+        : (tabs[Math.min(Math.max(removedTab, 0), tabs.length - 1)]?.id ?? null),
     };
   });
 }
@@ -144,9 +138,7 @@ export function activePane() {
 }
 export function selectPane(id: string) {
   useTerminal.setState((s) => ({
-    tabs: s.tabs.map((t) =>
-      layoutGroups(t.layout).includes(id) ? { ...t, activePane: id } : t,
-    ),
+    tabs: s.tabs.map((t) => (layoutGroups(t.layout).includes(id) ? { ...t, activePane: id } : t)),
   }));
 }
 export function reorderTab(id: string, before: string) {

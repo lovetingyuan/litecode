@@ -7,7 +7,11 @@ import { markdownHeadingIds, markdownImageTarget, resolveMarkdownUrl } from "./m
 
 describe("Markdown image privacy", () => {
   it("blocks remote images by default and only opts in HTTPS", () => {
-    for (const url of ["https://example.com/pixel", "http://example.com/pixel", "//example.com/pixel"]) {
+    for (const url of [
+      "https://example.com/pixel",
+      "http://example.com/pixel",
+      "//example.com/pixel",
+    ]) {
       expect(markdownImageTarget(url, null)).toBeUndefined();
     }
     expect(markdownImageTarget("https://example.com/pixel", null, true)?.kind).toBe("external");

@@ -19,7 +19,9 @@ export function DiffViewer() {
   const settings = useApp((s) => s.settings);
   useEffect(() => {
     const handler = (event: Event) => {
-      if (working.current) { return; }
+      if (working.current) {
+        return;
+      }
       setMessage("");
       setDiff((event as CustomEvent<DiffRequest>).detail);
     };
@@ -55,13 +57,17 @@ export function DiffViewer() {
     };
   }, [diff, host]);
   useEffect(() => {
-    instance.current?.updateOptions({ ...editorFontOptions(settings), ...diffOptions(settings),
+    instance.current?.updateOptions({
+      ...editorFontOptions(settings),
+      ...diffOptions(settings),
       ...(diff?.conflict ? { renderSideBySide: true, ignoreTrimWhitespace: false } : {}),
     });
   }, [settings, diff?.conflict]);
 
   async function choose(action?: "reload" | "overwrite") {
-    if (!diff?.conflict || working.current) { return; }
+    if (!diff?.conflict || working.current) {
+      return;
+    }
     working.current = true;
     setBusy(true);
     setMessage("");
@@ -86,7 +92,9 @@ export function DiffViewer() {
   }
 
   function close() {
-    if (!working.current) { setDiff(null); }
+    if (!working.current) {
+      setDiff(null);
+    }
   }
   return (
     <Dialog.Root
@@ -103,10 +111,18 @@ export function DiffViewer() {
           <div className="diff-heading">
             <Dialog.Title>{diff?.title}</Dialog.Title>
             <div className="flex items-center gap-2">
-              <IconButton icon="arrow-up" label="上一个差异" disabled={busy || !!diff?.error}
-                onClick={() => instance.current?.goToDiff("previous")} />
-              <IconButton icon="arrow-down" label="下一个差异" disabled={busy || !!diff?.error}
-                onClick={() => instance.current?.goToDiff("next")} />
+              <IconButton
+                icon="arrow-up"
+                label="上一个差异"
+                disabled={busy || !!diff?.error}
+                onClick={() => instance.current?.goToDiff("previous")}
+              />
+              <IconButton
+                icon="arrow-down"
+                label="下一个差异"
+                disabled={busy || !!diff?.error}
+                onClick={() => instance.current?.goToDiff("next")}
+              />
               <IconButton icon="close" label="Close Compare" disabled={busy} onClick={close} />
             </div>
           </div>
@@ -119,20 +135,43 @@ export function DiffViewer() {
             <span>{diff?.conflict ? "磁盘版本" : "Original"}</span>
             <span>{diff?.conflict ? "当前编辑版本（未保存）" : "Modified"}</span>
           </div>
-          {message && <p role="alert" className="px-4 py-2 text-sm">{message}</p>}
+          {message && (
+            <p role="alert" className="px-4 py-2 text-sm">
+              {message}
+            </p>
+          )}
           {diff?.error ? (
             <div role="alert" className="flex-1 px-4 py-6 text-sm">
               {diff.error} 当前编辑内容已保留，请重试读取磁盘版本。
             </div>
-          ) : <div ref={setHost} className="diff-editor" />}
+          ) : (
+            <div ref={setHost} className="diff-editor" />
+          )}
           {diff?.conflict && (
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-base-300 p-3" aria-busy={busy}>
-              <button className="btn btn-sm" disabled={busy} onClick={() => void choose()}>刷新对比</button>
-              <button className="btn btn-sm" disabled={busy || !!diff.error}
-                onClick={() => void choose("reload")}>使用磁盘版本</button>
-              <button className="btn btn-sm" disabled={busy || !!diff.error}
-                onClick={() => void choose("overwrite")}>保留当前版本</button>
-              <button className="btn btn-sm" disabled={busy} onClick={close}>取消</button>
+            <div
+              className="flex flex-wrap items-center justify-end gap-2 border-t border-base-300 p-3"
+              aria-busy={busy}
+            >
+              <button className="btn btn-sm" disabled={busy} onClick={() => void choose()}>
+                刷新对比
+              </button>
+              <button
+                className="btn btn-sm"
+                disabled={busy || !!diff.error}
+                onClick={() => void choose("reload")}
+              >
+                使用磁盘版本
+              </button>
+              <button
+                className="btn btn-sm"
+                disabled={busy || !!diff.error}
+                onClick={() => void choose("overwrite")}
+              >
+                保留当前版本
+              </button>
+              <button className="btn btn-sm" disabled={busy} onClick={close}>
+                取消
+              </button>
             </div>
           )}
         </Dialog.Popup>

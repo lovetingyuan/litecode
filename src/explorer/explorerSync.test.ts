@@ -5,7 +5,10 @@ const cleanups: (() => void)[] = [];
 function fixture() {
   const model = new FileTree({ paths: [], initialExpansion: 0, flattenEmptyDirectories: false });
   const sync = createDirectorySync(model);
-  cleanups.push(() => { sync.dispose(); model.cleanUp(); });
+  cleanups.push(() => {
+    sync.dispose();
+    model.cleanUp();
+  });
   return { model, sync };
 }
 afterEach(() => cleanups.splice(0).forEach((cleanup) => cleanup()));
@@ -73,7 +76,10 @@ describe("Directory reconciliation", () => {
   });
   it("yields between large batches and stops applying a disposed workspace", async () => {
     const { model, sync } = fixture();
-    const pending = sync.update("", Array.from({ length: 2000 }, (_, index) => `${index}.txt`));
+    const pending = sync.update(
+      "",
+      Array.from({ length: 2000 }, (_, index) => `${index}.txt`),
+    );
     expect(model.getItem("0.txt")).not.toBeNull();
     expect(model.getItem("1999.txt")).toBeNull();
     sync.dispose();

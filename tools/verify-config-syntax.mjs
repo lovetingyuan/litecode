@@ -63,25 +63,28 @@ export async function call(command) { throw new Error('Unexpected fixture comman
 try {
   await page.goto("http://127.0.0.1:1420/");
   await page.locator(".monaco-editor .view-lines").waitFor();
-  const result = await page.evaluate(async ({ ids, urls }) => {
-    const { monaco } = await import(urls.monaco);
-    const { models } = await import(urls.documents);
-    return ids.map((id) => {
-      const model = models.get(id);
-      const text = model.getValue();
-      const lines = text.split("\n");
-      return {
-        language: model.getLanguageId(),
-        text,
-        tokens: monaco.editor.tokenize(text, model.getLanguageId()).map((tokens, line) =>
-          tokens.map((token, i) => ({
-            text: lines[line].slice(token.offset, tokens[i + 1]?.offset),
-            type: token.type,
-          })),
-        ),
-      };
-    });
-  }, { ids, urls });
+  const result = await page.evaluate(
+    async ({ ids, urls }) => {
+      const { monaco } = await import(urls.monaco);
+      const { models } = await import(urls.documents);
+      return ids.map((id) => {
+        const model = models.get(id);
+        const text = model.getValue();
+        const lines = text.split("\n");
+        return {
+          language: model.getLanguageId(),
+          text,
+          tokens: monaco.editor.tokenize(text, model.getLanguageId()).map((tokens, line) =>
+            tokens.map((token, i) => ({
+              text: lines[line].slice(token.offset, tokens[i + 1]?.offset),
+              type: token.type,
+            })),
+          ),
+        };
+      });
+    },
+    { ids, urls },
+  );
   for (let i = 0; i < result.length; i++) {
     assert.equal(result[i].text, documents[i].text, "Restoring preserves unsaved text");
   }
@@ -89,8 +92,10 @@ try {
   assert.equal(ignore.language, "gitignore");
   assert.equal(env.language, "dotenv");
   const has = (doc, line, text, type) =>
-    assert.ok(doc.tokens[line].some((token) => token.text.includes(text) && token.type === type),
-      `Missing ${type} token ${JSON.stringify(text)} on line ${line + 1}`);
+    assert.ok(
+      doc.tokens[line].some((token) => token.text.includes(text) && token.type === type),
+      `Missing ${type} token ${JSON.stringify(text)} on line ${line + 1}`,
+    );
   has(ignore, 0, "# Build output", "comment.gitignore");
   has(ignore, 2, "*", "keyword.gitignore");
   has(ignore, 3, "!", "keyword.gitignore");
@@ -111,14 +116,21 @@ try {
   has(env, 5, "${HOST}", "identifier.dotenv");
   has(env, 7, "NEXT", "identifier.dotenv");
   has(env, 7, "# comment", "comment.dotenv");
-  await page.waitForFunction(() => new Set(
-    [...document.querySelectorAll(".monaco-editor .view-line span")]
-      .filter((span) => span.textContent.trim())
-      .map((span) => getComputedStyle(span).color),
-  ).size >= 4);
-  const colors = await page.locator(".monaco-editor .view-line span").evaluateAll((spans) =>
-    [...new Set(spans.filter((span) => span.textContent.trim()).map((span) => getComputedStyle(span).color))],
+  await page.waitForFunction(
+    () =>
+      new Set(
+        [...document.querySelectorAll(".monaco-editor .view-line span")]
+          .filter((span) => span.textContent.trim())
+          .map((span) => getComputedStyle(span).color),
+      ).size >= 4,
   );
+  const colors = await page
+    .locator(".monaco-editor .view-line span")
+    .evaluateAll((spans) => [
+      ...new Set(
+        spans.filter((span) => span.textContent.trim()).map((span) => getComputedStyle(span).color),
+      ),
+    ]);
   assert.ok(colors.length >= 4, `Expected distinct syntax colors, got ${colors}`);
   await mkdir(".verification/config-syntax", { recursive: true });
   await page.screenshot({ path: ".verification/config-syntax/dotenv.png" });

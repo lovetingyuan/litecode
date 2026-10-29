@@ -92,10 +92,7 @@
           "fingerprint": "78ead3bb416ce180a889891cf637f21ae9f05570ab95ce9a89257b64ff0b3e07",
           "id": "src/components/App.tsx::103:16::react-doctor/no-high-complexity-react-function::f8987ff445c6c7526cbccc4f67cc4318c22bd1e2f3a58b28d01767b4d0abcf22",
           "normalizedFilePath": "src/components/App.tsx",
-          "tags": [
-            "react-jsx-only",
-            "test-noise"
-          ]
+          "tags": ["react-jsx-only", "test-noise"]
         },
         {
           "filePath": "src/components/App.tsx",
@@ -114,10 +111,7 @@
           "fingerprint": "0d04bfeb7d64b71c74fc925cca93d683154e8cc7e6e5838faced498e34c9984d",
           "id": "src/components/App.tsx::103:25::react-doctor/no-giant-component::d88f8114aa0a012339d674098079b875aead8335d5a566e9458c30850b13dedc",
           "normalizedFilePath": "src/components/App.tsx",
-          "tags": [
-            "react-jsx-only",
-            "test-noise"
-          ]
+          "tags": ["react-jsx-only", "test-noise"]
         },
         {
           "filePath": "src/components/EditorGroup.tsx",
@@ -136,10 +130,7 @@
           "fingerprint": "90f299309c840df926d903b3e946e3a4e4d16e159a8fb256a38cd0c763e89e65",
           "id": "src/components/EditorGroup.tsx::41:8::react-doctor/no-high-complexity-react-function::927bf29fce2520ced4b7e6a12a22a97d68eed4de5c92154c6c48a34e99b135bd",
           "normalizedFilePath": "src/components/EditorGroup.tsx",
-          "tags": [
-            "react-jsx-only",
-            "test-noise"
-          ]
+          "tags": ["react-jsx-only", "test-noise"]
         },
         {
           "filePath": "src/components/EditorGroup.tsx",
@@ -158,10 +149,7 @@
           "fingerprint": "e93e553915c6d132a0d74985590bbd634b2d3b55e2c4b1a64883f3f709176dcb",
           "id": "src/components/EditorGroup.tsx::41:17::react-doctor/no-giant-component::957306e8a00ec434f7c1a09a8cc4a378f73f7c05a2df04890f361fbc49314153",
           "normalizedFilePath": "src/components/EditorGroup.tsx",
-          "tags": [
-            "react-jsx-only",
-            "test-noise"
-          ]
+          "tags": ["react-jsx-only", "test-noise"]
         },
         {
           "filePath": "src/components/EditorGroup.tsx",
@@ -218,9 +206,7 @@
           "fingerprint": "e11381b0d5d9a2b7491dc119be80fd427a950fadef4b3a3631aa4c9525b417cd",
           "id": "src/components/EditorGroup.tsx::250:9::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/components/EditorGroup.tsx",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/components/EditorGroup.tsx",
@@ -239,9 +225,7 @@
           "fingerprint": "12ce4510008aff221546e322bee0660863c58db5388583aeb0cdf9921945127a",
           "id": "src/components/EditorGroup.tsx::295:30::react-doctor/no-unsafe-json-parse::860e8f865fd385b55e3d7dbfa49fe0c9b0a863da287330db5ec031bd812e68ac",
           "normalizedFilePath": "src/components/EditorGroup.tsx",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/components/EditorGroup.tsx",
@@ -260,9 +244,7 @@
           "fingerprint": "8c572a1a9bb1c60464698efb36cd7dcda1f173aef76caeb38e451d0c1fab7c57",
           "id": "src/components/EditorGroup.tsx::315:30::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
           "normalizedFilePath": "src/components/EditorGroup.tsx",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/components/EditorGroup.tsx",
@@ -434,10 +416,7 @@
           "fingerprint": "c39d646f10769b078ae82be4da7a0079ca91182b241e749be4276e08c215c654",
           "id": "src/components/Explorer.tsx::57:17::react-doctor/no-giant-component::cb036591c7296ab803e0e8df17dcd820ec4f480d03e94c9d5938d3fa90a97236",
           "normalizedFilePath": "src/components/Explorer.tsx",
-          "tags": [
-            "react-jsx-only",
-            "test-noise"
-          ]
+          "tags": ["react-jsx-only", "test-noise"]
         },
         {
           "filePath": "src/components/Explorer.tsx",
@@ -456,9 +435,7 @@
           "fingerprint": "9b8874eb7ffebcf300217391f3fb4a9d53d078bccf4ed67e3253de0dd1f14116",
           "id": "src/components/Explorer.tsx::85:33::react-doctor/rerender-lazy-ref-init::d5764f60b78d364fafad42a7a391d4044d28b39ebc4e3b428599caeba92aff21",
           "normalizedFilePath": "src/components/Explorer.tsx",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/components/Explorer.tsx",
@@ -607,9 +584,7 @@
           "fingerprint": "a4214d8f48d88671bbce9dca579d2827f75b1e0fcddd46a98529549e82f76220",
           "id": "src/components/Explorer.tsx::550:5::react-doctor/postmessage-origin-risk::b109360a24ec44fb6b8fdf24c9551c0813771ad5ea1865cf27655c1c66960ddd",
           "normalizedFilePath": "src/components/Explorer.tsx",
-          "tags": [
-            "security-scan"
-          ]
+          "tags": ["security-scan"]
         },
         {
           "filePath": "src/components/Explorer.tsx",
@@ -685,9 +660,7 @@
           "fingerprint": "b4d651928e62e97f71e4225b3f994619801a7d5a81a3c75f397ffaf33e31a996",
           "id": "src/components/Explorer.tsx::809:11::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/components/Explorer.tsx",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/components/Explorer.tsx",
@@ -707,9 +680,7 @@
           "fingerprint": "3fb45623cb3075a8af9a2f81ef3beaa4038541cd71f08e4bf6c79c088f7a4026",
           "id": "src/components/Explorer.tsx::848:6::react-doctor/no-noninteractive-element-interactions::3b7b2bb024cb09cb3bda7b3043d8ddcd269eefe630ea1fb55fa4649600630447",
           "normalizedFilePath": "src/components/Explorer.tsx",
-          "tags": [
-            "react-jsx-only"
-          ]
+          "tags": ["react-jsx-only"]
         },
         {
           "filePath": "src/components/MarkdownPreview.tsx",
@@ -728,9 +699,7 @@
           "fingerprint": "8fd3b46b2c985813eb751b691e87c681b6bac043b61832f0e7de08140ae5d94b",
           "id": "src/components/MarkdownPreview.tsx::107:9::react-doctor/no-prevent-default::223b35e33e6949dd06fec24f8da8d2eda99b63f165f0c060cbd643fb4c258d95",
           "normalizedFilePath": "src/components/MarkdownPreview.tsx",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/components/MediaPreview.tsx",
@@ -749,10 +718,7 @@
           "fingerprint": "4472b970155e3533eb158c079a03e136f7958636f430464d2ff5aa87f269dac3",
           "id": "src/components/MediaPreview.tsx::10:8::react-doctor/no-high-complexity-react-function::63a504aed8d768f4500ecba9ea338043d094ed59230e5f338c36c10f860d0eb6",
           "normalizedFilePath": "src/components/MediaPreview.tsx",
-          "tags": [
-            "react-jsx-only",
-            "test-noise"
-          ]
+          "tags": ["react-jsx-only", "test-noise"]
         },
         {
           "filePath": "src/components/MediaPreview.tsx",
@@ -829,9 +795,7 @@
           "fingerprint": "cd35a2426062b7d58fd4a63f813cc506ef87e449087d28d256b8c393f20fa364",
           "id": "src/components/MediaPreview.tsx::211:6::react-doctor/no-static-element-interactions::6ad3563a9809d39648cf2714aadd263b16e1838a34a6b3b0e21238916c9b8ecb",
           "normalizedFilePath": "src/components/MediaPreview.tsx",
-          "tags": [
-            "react-jsx-only"
-          ]
+          "tags": ["react-jsx-only"]
         },
         {
           "filePath": "src/components/MediaPreview.tsx",
@@ -851,9 +815,7 @@
           "fingerprint": "b29814cf5792e684cd75d6a7fce7a67a11887e312f87ca2ac2496d81f365ff72",
           "id": "src/components/MediaPreview.tsx::247:10::react-doctor/click-events-have-key-events::0276b7fa2cce4bf57dcf4c3b08bbc01356320e693896de670cbe6fcfde841bd1",
           "normalizedFilePath": "src/components/MediaPreview.tsx",
-          "tags": [
-            "react-jsx-only"
-          ]
+          "tags": ["react-jsx-only"]
         },
         {
           "filePath": "src/components/MediaPreview.tsx",
@@ -873,9 +835,7 @@
           "fingerprint": "b29814cf5792e684cd75d6a7fce7a67a11887e312f87ca2ac2496d81f365ff72",
           "id": "src/components/MediaPreview.tsx::247:10::react-doctor/no-noninteractive-element-interactions::955c4b9d42988f9fd7553482002c1a4c6e9fad0172d57406f79d7a8740f2b6b3",
           "normalizedFilePath": "src/components/MediaPreview.tsx",
-          "tags": [
-            "react-jsx-only"
-          ]
+          "tags": ["react-jsx-only"]
         },
         {
           "filePath": "src/components/QuickOpen.tsx",
@@ -894,10 +854,7 @@
           "fingerprint": "f6a31432656fbdc31296de8d0a23fd13c10c5c3c4c254416e13c752e779abaa5",
           "id": "src/components/QuickOpen.tsx::36:8::react-doctor/no-high-complexity-react-function::b1f729f681cb22d2316c29b5a0a2e11a53f889e3c1318477922237fc76bf515b",
           "normalizedFilePath": "src/components/QuickOpen.tsx",
-          "tags": [
-            "react-jsx-only",
-            "test-noise"
-          ]
+          "tags": ["react-jsx-only", "test-noise"]
         },
         {
           "filePath": "src/components/QuickOpen.tsx",
@@ -916,10 +873,7 @@
           "fingerprint": "8993a1b5192578c316e57927df572e95b10dd894448e5b9c63c8a5c54d1c3d1c",
           "id": "src/components/QuickOpen.tsx::36:17::react-doctor/no-giant-component::03f28282e10187350fd998c67ae70f86b0e6a70d0ed39d6c9bff56835d9a4c1c",
           "normalizedFilePath": "src/components/QuickOpen.tsx",
-          "tags": [
-            "react-jsx-only",
-            "test-noise"
-          ]
+          "tags": ["react-jsx-only", "test-noise"]
         },
         {
           "filePath": "src/components/QuickOpen.tsx",
@@ -1090,10 +1044,7 @@
           "fingerprint": "de7466b24bb5bd9182072695bea35be8cee847c814830428a003a39f5b13718f",
           "id": "src/components/SearchView.tsx::22:8::react-doctor/no-high-complexity-react-function::2c2315842d04858f7e1bb723bbd10b59cd5fd4d1030f118178d8aff2b3edc80e",
           "normalizedFilePath": "src/components/SearchView.tsx",
-          "tags": [
-            "react-jsx-only",
-            "test-noise"
-          ]
+          "tags": ["react-jsx-only", "test-noise"]
         },
         {
           "filePath": "src/components/SearchView.tsx",
@@ -1112,10 +1063,7 @@
           "fingerprint": "a5901f616c20601678083b320f169ec90f6fbfe56c6a1f555b8d0289f7f7ba15",
           "id": "src/components/SearchView.tsx::22:17::react-doctor/no-giant-component::2f4c2fc44ed389f7536188d5fd04995cd8e134e43bf2dc9a96c7baa6b4defd54",
           "normalizedFilePath": "src/components/SearchView.tsx",
-          "tags": [
-            "react-jsx-only",
-            "test-noise"
-          ]
+          "tags": ["react-jsx-only", "test-noise"]
         },
         {
           "filePath": "src/components/SearchView.tsx",
@@ -1173,9 +1121,7 @@
           "fingerprint": "5827874939a51880e668585c0e2b3f84299c8b8f4c7850fbc7fce90fe7c29625",
           "id": "src/components/SearchView.tsx::427:13::react-doctor/interactive-supports-focus::d5c7965064a78391447a8dc980c1f505289d239c5aa2d49fba27f319ee31d74c",
           "normalizedFilePath": "src/components/SearchView.tsx",
-          "tags": [
-            "react-jsx-only"
-          ]
+          "tags": ["react-jsx-only"]
         },
         {
           "filePath": "src/components/dialog.tsx",
@@ -1232,9 +1178,7 @@
           "fingerprint": "53b6df0dc533ff40d719aeba1e49e53a9a208a24575fc39bb0b228757f924197",
           "id": "src/core/commands.ts::243:54::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
           "normalizedFilePath": "src/core/commands.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/editor/documents.ts",
@@ -1253,9 +1197,7 @@
           "fingerprint": "e35a0f625c4922632da4c7b48e65e4e4117f24daa813f8be589970493e9bf30d",
           "id": "src/editor/documents.ts::371:66::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
           "normalizedFilePath": "src/editor/documents.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/editor/documents.ts",
@@ -1274,9 +1216,7 @@
           "fingerprint": "e1f5db3b8ea0716f6ae01983efdfb4581a8a4d93f96a3dccf89b6d729248070d",
           "id": "src/editor/documents.ts::375:53::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
           "normalizedFilePath": "src/editor/documents.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/editor/documents.ts",
@@ -1295,9 +1235,7 @@
           "fingerprint": "a389d7b8beb0dfdd08448a1f1b6cbd3d7de488db95e16f2e63766303f788cb5e",
           "id": "src/editor/documents.ts::491:7::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/editor/documents.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/editor/documents.ts",
@@ -1316,9 +1254,7 @@
           "fingerprint": "adbba199b6d8b223e862877b2510801d41a31b51d42edf97b43874d7a98a31ff",
           "id": "src/editor/documents.ts::633:7::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/editor/documents.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/editor/documents.ts",
@@ -1337,9 +1273,7 @@
           "fingerprint": "a7bad7ca1d02badf225a1db2267e8afbd441c8d569c9ced7fda53e728ee8e86d",
           "id": "src/editor/documents.ts::706:8::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
           "normalizedFilePath": "src/editor/documents.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/editor/documents.ts",
@@ -1358,9 +1292,7 @@
           "fingerprint": "65a0c40aaae0e141205ecb085c208582bf17a9391088fb724d2197317d19319d",
           "id": "src/editor/documents.ts::931:20::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/editor/documents.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/editor/editorLayout.test.ts",
@@ -1399,9 +1331,7 @@
           "fingerprint": "fb12364eb7f727bdfa8c79781f2d41782a4e32eb343383c97d47029ee0717baf",
           "id": "src/editor/languages.ts::361:7::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/editor/languages.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/editor/languages.ts",
@@ -1420,9 +1350,7 @@
           "fingerprint": "2a1edb6c306387e550a6c0dbeb3084afbe5fb0c96e3450e396839fddc21b7ed4",
           "id": "src/editor/languages.ts::408:5::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/editor/languages.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/editor/languages.ts",
@@ -1441,9 +1369,7 @@
           "fingerprint": "d546de5e1c8dc39931d607f6e9dc52c2b796dd37cda6a3aac3ba4e01d85e8a73",
           "id": "src/editor/languages.ts::448:22::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/editor/languages.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/editor/monaco.ts",
@@ -1462,9 +1388,7 @@
           "fingerprint": "b469dca46f5753499d825d4bcc40805a4aec728cdd5b1adb338c3f41c26e9a00",
           "id": "src/editor/monaco.ts::1:1::react-doctor/prefer-dynamic-import::b843115f3e280641752610522935d4b24b39b4a7555574b7780baf52f8f91d22",
           "normalizedFilePath": "src/editor/monaco.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/explorer/explorerClipboard.ts",
@@ -1483,9 +1407,7 @@
           "fingerprint": "5d971a3d9624b2c327a30ca96e5eaeaed1b549d17830f7ca85f9220fdbe3a3e4",
           "id": "src/explorer/explorerClipboard.ts::108:11::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/explorer/explorerClipboard.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/explorer/externalDrop.ts",
@@ -1504,9 +1426,7 @@
           "fingerprint": "a63270c3ae295d28e465bbf8fd40746197f482e420dfd901a4dbfa6707e442f2",
           "id": "src/explorer/externalDrop.ts::86:9::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/explorer/externalDrop.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/hooks/useExternalDrop.ts",
@@ -1525,9 +1445,7 @@
           "fingerprint": "53e4cbc08c35a27d7f3075db9f92e4129fa8f0a6283e33bdd512514bc0a47cdc",
           "id": "src/hooks/useExternalDrop.ts::21:3::react-doctor/effect-needs-cleanup::69bb8da0a189a7f2491cb3c2a4a3304dccf590b345c74a811a0e6cd0f3ab4410",
           "normalizedFilePath": "src/hooks/useExternalDrop.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/hooks/useExternalDrop.ts",
@@ -1603,9 +1521,7 @@
           "fingerprint": "c6f6a3782679cf4da87d83fed2a1c6840ef3d00477deaf29aa37864d73617899",
           "id": "src/hooks/useQuickFiles.ts::21:12::react-doctor/no-unsafe-json-parse::860e8f865fd385b55e3d7dbfa49fe0c9b0a863da287330db5ec031bd812e68ac",
           "normalizedFilePath": "src/hooks/useQuickFiles.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/hooks/useQuickFiles.ts",
@@ -1643,9 +1559,7 @@
           "fingerprint": "2dcc6c98813900ff5652be9eed080b9dcfad726fcc77cea35c6d497ea7a716c7",
           "id": "src/search/search.ts::338:12::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
           "normalizedFilePath": "src/search/search.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/store/store.ts",
@@ -1664,9 +1578,7 @@
           "fingerprint": "143505fa6bfd907c3f046f827fa3a17661e38a0a2d40da2a5b2263ae41bf1f33",
           "id": "src/store/store.ts::97:18::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
           "normalizedFilePath": "src/store/store.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/store/store.ts",
@@ -1685,9 +1597,7 @@
           "fingerprint": "143505fa6bfd907c3f046f827fa3a17661e38a0a2d40da2a5b2263ae41bf1f33",
           "id": "src/store/store.ts::111:11::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
           "normalizedFilePath": "src/store/store.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "src/utils/keybindings.ts",
@@ -1706,9 +1616,7 @@
           "fingerprint": "3edf24761876c8523772a1be5aa47a5107f96c590dec7083ead1175a188be877",
           "id": "src/utils/keybindings.ts::11:61::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
           "normalizedFilePath": "src/utils/keybindings.ts",
-          "tags": [
-            "test-noise"
-          ]
+          "tags": ["test-noise"]
         },
         {
           "filePath": "tools/notices.mjs",
@@ -1724,9 +1632,7 @@
           "fingerprint": "f6a07314325a27218fad710ebc328a6a4132f40bd58b216d1a8165634bdff9b6",
           "id": "tools/notices.mjs::38:3::react-doctor/import-metadata-execution-risk::430ea3600d39d4768e29754523634c6f3cda92676feb5292fc2ac60e17fa3995",
           "normalizedFilePath": "tools/notices.mjs",
-          "tags": [
-            "security-scan"
-          ]
+          "tags": ["security-scan"]
         },
         {
           "filePath": "tools/package-portable.mjs",
@@ -1742,9 +1648,7 @@
           "fingerprint": "f6a07314325a27218fad710ebc328a6a4132f40bd58b216d1a8165634bdff9b6",
           "id": "tools/package-portable.mjs::34:1::react-doctor/import-metadata-execution-risk::430ea3600d39d4768e29754523634c6f3cda92676feb5292fc2ac60e17fa3995",
           "normalizedFilePath": "tools/package-portable.mjs",
-          "tags": [
-            "security-scan"
-          ]
+          "tags": ["security-scan"]
         },
         {
           "filePath": "tools/verify-explorer-moves-desktop.mjs",
@@ -1760,9 +1664,7 @@
           "fingerprint": "dd7822d67bdf1e8761af3d87a4f4ea3ebb78d0fa79b88513bec6966d25d973cf",
           "id": "tools/verify-explorer-moves-desktop.mjs::31:61::react-doctor/local-rpc-native-bridge-risk::bca81e3cc8b9b6bfd379a89b0de7c15d337447041c5639e151f53b311ce27725",
           "normalizedFilePath": "tools/verify-explorer-moves-desktop.mjs",
-          "tags": [
-            "security-scan"
-          ]
+          "tags": ["security-scan"]
         },
         {
           "filePath": "tools/verify-quick-open.mjs",
@@ -1778,9 +1680,7 @@
           "fingerprint": "cf4404c800b8967bae7e86fe7fcb828df6874c7dab874d54af1e91ec26674c2f",
           "id": "tools/verify-quick-open.mjs::48:7::react-doctor/postmessage-origin-risk::b109360a24ec44fb6b8fdf24c9551c0813771ad5ea1865cf27655c1c66960ddd",
           "normalizedFilePath": "tools/verify-quick-open.mjs",
-          "tags": [
-            "security-scan"
-          ]
+          "tags": ["security-scan"]
         }
       ],
       "score": null,
@@ -1903,10 +1803,7 @@
       "fingerprint": "78ead3bb416ce180a889891cf637f21ae9f05570ab95ce9a89257b64ff0b3e07",
       "id": "src/components/App.tsx::103:16::react-doctor/no-high-complexity-react-function::f8987ff445c6c7526cbccc4f67cc4318c22bd1e2f3a58b28d01767b4d0abcf22",
       "normalizedFilePath": "src/components/App.tsx",
-      "tags": [
-        "react-jsx-only",
-        "test-noise"
-      ]
+      "tags": ["react-jsx-only", "test-noise"]
     },
     {
       "filePath": "src/components/App.tsx",
@@ -1925,10 +1822,7 @@
       "fingerprint": "0d04bfeb7d64b71c74fc925cca93d683154e8cc7e6e5838faced498e34c9984d",
       "id": "src/components/App.tsx::103:25::react-doctor/no-giant-component::d88f8114aa0a012339d674098079b875aead8335d5a566e9458c30850b13dedc",
       "normalizedFilePath": "src/components/App.tsx",
-      "tags": [
-        "react-jsx-only",
-        "test-noise"
-      ]
+      "tags": ["react-jsx-only", "test-noise"]
     },
     {
       "filePath": "src/components/EditorGroup.tsx",
@@ -1947,10 +1841,7 @@
       "fingerprint": "90f299309c840df926d903b3e946e3a4e4d16e159a8fb256a38cd0c763e89e65",
       "id": "src/components/EditorGroup.tsx::41:8::react-doctor/no-high-complexity-react-function::927bf29fce2520ced4b7e6a12a22a97d68eed4de5c92154c6c48a34e99b135bd",
       "normalizedFilePath": "src/components/EditorGroup.tsx",
-      "tags": [
-        "react-jsx-only",
-        "test-noise"
-      ]
+      "tags": ["react-jsx-only", "test-noise"]
     },
     {
       "filePath": "src/components/EditorGroup.tsx",
@@ -1969,10 +1860,7 @@
       "fingerprint": "e93e553915c6d132a0d74985590bbd634b2d3b55e2c4b1a64883f3f709176dcb",
       "id": "src/components/EditorGroup.tsx::41:17::react-doctor/no-giant-component::957306e8a00ec434f7c1a09a8cc4a378f73f7c05a2df04890f361fbc49314153",
       "normalizedFilePath": "src/components/EditorGroup.tsx",
-      "tags": [
-        "react-jsx-only",
-        "test-noise"
-      ]
+      "tags": ["react-jsx-only", "test-noise"]
     },
     {
       "filePath": "src/components/EditorGroup.tsx",
@@ -2029,9 +1917,7 @@
       "fingerprint": "e11381b0d5d9a2b7491dc119be80fd427a950fadef4b3a3631aa4c9525b417cd",
       "id": "src/components/EditorGroup.tsx::250:9::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/components/EditorGroup.tsx",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/components/EditorGroup.tsx",
@@ -2050,9 +1936,7 @@
       "fingerprint": "12ce4510008aff221546e322bee0660863c58db5388583aeb0cdf9921945127a",
       "id": "src/components/EditorGroup.tsx::295:30::react-doctor/no-unsafe-json-parse::860e8f865fd385b55e3d7dbfa49fe0c9b0a863da287330db5ec031bd812e68ac",
       "normalizedFilePath": "src/components/EditorGroup.tsx",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/components/EditorGroup.tsx",
@@ -2071,9 +1955,7 @@
       "fingerprint": "8c572a1a9bb1c60464698efb36cd7dcda1f173aef76caeb38e451d0c1fab7c57",
       "id": "src/components/EditorGroup.tsx::315:30::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
       "normalizedFilePath": "src/components/EditorGroup.tsx",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/components/EditorGroup.tsx",
@@ -2245,10 +2127,7 @@
       "fingerprint": "c39d646f10769b078ae82be4da7a0079ca91182b241e749be4276e08c215c654",
       "id": "src/components/Explorer.tsx::57:17::react-doctor/no-giant-component::cb036591c7296ab803e0e8df17dcd820ec4f480d03e94c9d5938d3fa90a97236",
       "normalizedFilePath": "src/components/Explorer.tsx",
-      "tags": [
-        "react-jsx-only",
-        "test-noise"
-      ]
+      "tags": ["react-jsx-only", "test-noise"]
     },
     {
       "filePath": "src/components/Explorer.tsx",
@@ -2267,9 +2146,7 @@
       "fingerprint": "9b8874eb7ffebcf300217391f3fb4a9d53d078bccf4ed67e3253de0dd1f14116",
       "id": "src/components/Explorer.tsx::85:33::react-doctor/rerender-lazy-ref-init::d5764f60b78d364fafad42a7a391d4044d28b39ebc4e3b428599caeba92aff21",
       "normalizedFilePath": "src/components/Explorer.tsx",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/components/Explorer.tsx",
@@ -2418,9 +2295,7 @@
       "fingerprint": "a4214d8f48d88671bbce9dca579d2827f75b1e0fcddd46a98529549e82f76220",
       "id": "src/components/Explorer.tsx::550:5::react-doctor/postmessage-origin-risk::b109360a24ec44fb6b8fdf24c9551c0813771ad5ea1865cf27655c1c66960ddd",
       "normalizedFilePath": "src/components/Explorer.tsx",
-      "tags": [
-        "security-scan"
-      ]
+      "tags": ["security-scan"]
     },
     {
       "filePath": "src/components/Explorer.tsx",
@@ -2496,9 +2371,7 @@
       "fingerprint": "b4d651928e62e97f71e4225b3f994619801a7d5a81a3c75f397ffaf33e31a996",
       "id": "src/components/Explorer.tsx::809:11::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/components/Explorer.tsx",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/components/Explorer.tsx",
@@ -2518,9 +2391,7 @@
       "fingerprint": "3fb45623cb3075a8af9a2f81ef3beaa4038541cd71f08e4bf6c79c088f7a4026",
       "id": "src/components/Explorer.tsx::848:6::react-doctor/no-noninteractive-element-interactions::3b7b2bb024cb09cb3bda7b3043d8ddcd269eefe630ea1fb55fa4649600630447",
       "normalizedFilePath": "src/components/Explorer.tsx",
-      "tags": [
-        "react-jsx-only"
-      ]
+      "tags": ["react-jsx-only"]
     },
     {
       "filePath": "src/components/MarkdownPreview.tsx",
@@ -2539,9 +2410,7 @@
       "fingerprint": "8fd3b46b2c985813eb751b691e87c681b6bac043b61832f0e7de08140ae5d94b",
       "id": "src/components/MarkdownPreview.tsx::107:9::react-doctor/no-prevent-default::223b35e33e6949dd06fec24f8da8d2eda99b63f165f0c060cbd643fb4c258d95",
       "normalizedFilePath": "src/components/MarkdownPreview.tsx",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/components/MediaPreview.tsx",
@@ -2560,10 +2429,7 @@
       "fingerprint": "4472b970155e3533eb158c079a03e136f7958636f430464d2ff5aa87f269dac3",
       "id": "src/components/MediaPreview.tsx::10:8::react-doctor/no-high-complexity-react-function::63a504aed8d768f4500ecba9ea338043d094ed59230e5f338c36c10f860d0eb6",
       "normalizedFilePath": "src/components/MediaPreview.tsx",
-      "tags": [
-        "react-jsx-only",
-        "test-noise"
-      ]
+      "tags": ["react-jsx-only", "test-noise"]
     },
     {
       "filePath": "src/components/MediaPreview.tsx",
@@ -2640,9 +2506,7 @@
       "fingerprint": "cd35a2426062b7d58fd4a63f813cc506ef87e449087d28d256b8c393f20fa364",
       "id": "src/components/MediaPreview.tsx::211:6::react-doctor/no-static-element-interactions::6ad3563a9809d39648cf2714aadd263b16e1838a34a6b3b0e21238916c9b8ecb",
       "normalizedFilePath": "src/components/MediaPreview.tsx",
-      "tags": [
-        "react-jsx-only"
-      ]
+      "tags": ["react-jsx-only"]
     },
     {
       "filePath": "src/components/MediaPreview.tsx",
@@ -2662,9 +2526,7 @@
       "fingerprint": "b29814cf5792e684cd75d6a7fce7a67a11887e312f87ca2ac2496d81f365ff72",
       "id": "src/components/MediaPreview.tsx::247:10::react-doctor/click-events-have-key-events::0276b7fa2cce4bf57dcf4c3b08bbc01356320e693896de670cbe6fcfde841bd1",
       "normalizedFilePath": "src/components/MediaPreview.tsx",
-      "tags": [
-        "react-jsx-only"
-      ]
+      "tags": ["react-jsx-only"]
     },
     {
       "filePath": "src/components/MediaPreview.tsx",
@@ -2684,9 +2546,7 @@
       "fingerprint": "b29814cf5792e684cd75d6a7fce7a67a11887e312f87ca2ac2496d81f365ff72",
       "id": "src/components/MediaPreview.tsx::247:10::react-doctor/no-noninteractive-element-interactions::955c4b9d42988f9fd7553482002c1a4c6e9fad0172d57406f79d7a8740f2b6b3",
       "normalizedFilePath": "src/components/MediaPreview.tsx",
-      "tags": [
-        "react-jsx-only"
-      ]
+      "tags": ["react-jsx-only"]
     },
     {
       "filePath": "src/components/QuickOpen.tsx",
@@ -2705,10 +2565,7 @@
       "fingerprint": "f6a31432656fbdc31296de8d0a23fd13c10c5c3c4c254416e13c752e779abaa5",
       "id": "src/components/QuickOpen.tsx::36:8::react-doctor/no-high-complexity-react-function::b1f729f681cb22d2316c29b5a0a2e11a53f889e3c1318477922237fc76bf515b",
       "normalizedFilePath": "src/components/QuickOpen.tsx",
-      "tags": [
-        "react-jsx-only",
-        "test-noise"
-      ]
+      "tags": ["react-jsx-only", "test-noise"]
     },
     {
       "filePath": "src/components/QuickOpen.tsx",
@@ -2727,10 +2584,7 @@
       "fingerprint": "8993a1b5192578c316e57927df572e95b10dd894448e5b9c63c8a5c54d1c3d1c",
       "id": "src/components/QuickOpen.tsx::36:17::react-doctor/no-giant-component::03f28282e10187350fd998c67ae70f86b0e6a70d0ed39d6c9bff56835d9a4c1c",
       "normalizedFilePath": "src/components/QuickOpen.tsx",
-      "tags": [
-        "react-jsx-only",
-        "test-noise"
-      ]
+      "tags": ["react-jsx-only", "test-noise"]
     },
     {
       "filePath": "src/components/QuickOpen.tsx",
@@ -2901,10 +2755,7 @@
       "fingerprint": "de7466b24bb5bd9182072695bea35be8cee847c814830428a003a39f5b13718f",
       "id": "src/components/SearchView.tsx::22:8::react-doctor/no-high-complexity-react-function::2c2315842d04858f7e1bb723bbd10b59cd5fd4d1030f118178d8aff2b3edc80e",
       "normalizedFilePath": "src/components/SearchView.tsx",
-      "tags": [
-        "react-jsx-only",
-        "test-noise"
-      ]
+      "tags": ["react-jsx-only", "test-noise"]
     },
     {
       "filePath": "src/components/SearchView.tsx",
@@ -2923,10 +2774,7 @@
       "fingerprint": "a5901f616c20601678083b320f169ec90f6fbfe56c6a1f555b8d0289f7f7ba15",
       "id": "src/components/SearchView.tsx::22:17::react-doctor/no-giant-component::2f4c2fc44ed389f7536188d5fd04995cd8e134e43bf2dc9a96c7baa6b4defd54",
       "normalizedFilePath": "src/components/SearchView.tsx",
-      "tags": [
-        "react-jsx-only",
-        "test-noise"
-      ]
+      "tags": ["react-jsx-only", "test-noise"]
     },
     {
       "filePath": "src/components/SearchView.tsx",
@@ -2984,9 +2832,7 @@
       "fingerprint": "5827874939a51880e668585c0e2b3f84299c8b8f4c7850fbc7fce90fe7c29625",
       "id": "src/components/SearchView.tsx::427:13::react-doctor/interactive-supports-focus::d5c7965064a78391447a8dc980c1f505289d239c5aa2d49fba27f319ee31d74c",
       "normalizedFilePath": "src/components/SearchView.tsx",
-      "tags": [
-        "react-jsx-only"
-      ]
+      "tags": ["react-jsx-only"]
     },
     {
       "filePath": "src/components/dialog.tsx",
@@ -3043,9 +2889,7 @@
       "fingerprint": "53b6df0dc533ff40d719aeba1e49e53a9a208a24575fc39bb0b228757f924197",
       "id": "src/core/commands.ts::243:54::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
       "normalizedFilePath": "src/core/commands.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/editor/documents.ts",
@@ -3064,9 +2908,7 @@
       "fingerprint": "e35a0f625c4922632da4c7b48e65e4e4117f24daa813f8be589970493e9bf30d",
       "id": "src/editor/documents.ts::371:66::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
       "normalizedFilePath": "src/editor/documents.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/editor/documents.ts",
@@ -3085,9 +2927,7 @@
       "fingerprint": "e1f5db3b8ea0716f6ae01983efdfb4581a8a4d93f96a3dccf89b6d729248070d",
       "id": "src/editor/documents.ts::375:53::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
       "normalizedFilePath": "src/editor/documents.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/editor/documents.ts",
@@ -3106,9 +2946,7 @@
       "fingerprint": "a389d7b8beb0dfdd08448a1f1b6cbd3d7de488db95e16f2e63766303f788cb5e",
       "id": "src/editor/documents.ts::491:7::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/editor/documents.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/editor/documents.ts",
@@ -3127,9 +2965,7 @@
       "fingerprint": "adbba199b6d8b223e862877b2510801d41a31b51d42edf97b43874d7a98a31ff",
       "id": "src/editor/documents.ts::633:7::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/editor/documents.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/editor/documents.ts",
@@ -3148,9 +2984,7 @@
       "fingerprint": "a7bad7ca1d02badf225a1db2267e8afbd441c8d569c9ced7fda53e728ee8e86d",
       "id": "src/editor/documents.ts::706:8::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
       "normalizedFilePath": "src/editor/documents.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/editor/documents.ts",
@@ -3169,9 +3003,7 @@
       "fingerprint": "65a0c40aaae0e141205ecb085c208582bf17a9391088fb724d2197317d19319d",
       "id": "src/editor/documents.ts::931:20::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/editor/documents.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/editor/editorLayout.test.ts",
@@ -3210,9 +3042,7 @@
       "fingerprint": "fb12364eb7f727bdfa8c79781f2d41782a4e32eb343383c97d47029ee0717baf",
       "id": "src/editor/languages.ts::361:7::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/editor/languages.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/editor/languages.ts",
@@ -3231,9 +3061,7 @@
       "fingerprint": "2a1edb6c306387e550a6c0dbeb3084afbe5fb0c96e3450e396839fddc21b7ed4",
       "id": "src/editor/languages.ts::408:5::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/editor/languages.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/editor/languages.ts",
@@ -3252,9 +3080,7 @@
       "fingerprint": "d546de5e1c8dc39931d607f6e9dc52c2b796dd37cda6a3aac3ba4e01d85e8a73",
       "id": "src/editor/languages.ts::448:22::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/editor/languages.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/editor/monaco.ts",
@@ -3273,9 +3099,7 @@
       "fingerprint": "b469dca46f5753499d825d4bcc40805a4aec728cdd5b1adb338c3f41c26e9a00",
       "id": "src/editor/monaco.ts::1:1::react-doctor/prefer-dynamic-import::b843115f3e280641752610522935d4b24b39b4a7555574b7780baf52f8f91d22",
       "normalizedFilePath": "src/editor/monaco.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/explorer/explorerClipboard.ts",
@@ -3294,9 +3118,7 @@
       "fingerprint": "5d971a3d9624b2c327a30ca96e5eaeaed1b549d17830f7ca85f9220fdbe3a3e4",
       "id": "src/explorer/explorerClipboard.ts::108:11::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/explorer/explorerClipboard.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/explorer/externalDrop.ts",
@@ -3315,9 +3137,7 @@
       "fingerprint": "a63270c3ae295d28e465bbf8fd40746197f482e420dfd901a4dbfa6707e442f2",
       "id": "src/explorer/externalDrop.ts::86:9::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/explorer/externalDrop.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/hooks/useExternalDrop.ts",
@@ -3336,9 +3156,7 @@
       "fingerprint": "53e4cbc08c35a27d7f3075db9f92e4129fa8f0a6283e33bdd512514bc0a47cdc",
       "id": "src/hooks/useExternalDrop.ts::21:3::react-doctor/effect-needs-cleanup::69bb8da0a189a7f2491cb3c2a4a3304dccf590b345c74a811a0e6cd0f3ab4410",
       "normalizedFilePath": "src/hooks/useExternalDrop.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/hooks/useExternalDrop.ts",
@@ -3414,9 +3232,7 @@
       "fingerprint": "c6f6a3782679cf4da87d83fed2a1c6840ef3d00477deaf29aa37864d73617899",
       "id": "src/hooks/useQuickFiles.ts::21:12::react-doctor/no-unsafe-json-parse::860e8f865fd385b55e3d7dbfa49fe0c9b0a863da287330db5ec031bd812e68ac",
       "normalizedFilePath": "src/hooks/useQuickFiles.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/hooks/useQuickFiles.ts",
@@ -3454,9 +3270,7 @@
       "fingerprint": "2dcc6c98813900ff5652be9eed080b9dcfad726fcc77cea35c6d497ea7a716c7",
       "id": "src/search/search.ts::338:12::react-doctor/async-await-in-loop::31a53adda2fabefa9df5fb2a011dde42634c08e2189ac2970fb0074f3fbe1bf2",
       "normalizedFilePath": "src/search/search.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/store/store.ts",
@@ -3475,9 +3289,7 @@
       "fingerprint": "143505fa6bfd907c3f046f827fa3a17661e38a0a2d40da2a5b2263ae41bf1f33",
       "id": "src/store/store.ts::97:18::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
       "normalizedFilePath": "src/store/store.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/store/store.ts",
@@ -3496,9 +3308,7 @@
       "fingerprint": "143505fa6bfd907c3f046f827fa3a17661e38a0a2d40da2a5b2263ae41bf1f33",
       "id": "src/store/store.ts::111:11::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
       "normalizedFilePath": "src/store/store.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "src/utils/keybindings.ts",
@@ -3517,9 +3327,7 @@
       "fingerprint": "3edf24761876c8523772a1be5aa47a5107f96c590dec7083ead1175a188be877",
       "id": "src/utils/keybindings.ts::11:61::react-doctor/js-set-map-lookups::8ca162272c84d42896a45c0a801007a712bbbc2697f9f8e1c400af6faf47fe70",
       "normalizedFilePath": "src/utils/keybindings.ts",
-      "tags": [
-        "test-noise"
-      ]
+      "tags": ["test-noise"]
     },
     {
       "filePath": "tools/notices.mjs",
@@ -3535,9 +3343,7 @@
       "fingerprint": "f6a07314325a27218fad710ebc328a6a4132f40bd58b216d1a8165634bdff9b6",
       "id": "tools/notices.mjs::38:3::react-doctor/import-metadata-execution-risk::430ea3600d39d4768e29754523634c6f3cda92676feb5292fc2ac60e17fa3995",
       "normalizedFilePath": "tools/notices.mjs",
-      "tags": [
-        "security-scan"
-      ]
+      "tags": ["security-scan"]
     },
     {
       "filePath": "tools/package-portable.mjs",
@@ -3553,9 +3359,7 @@
       "fingerprint": "f6a07314325a27218fad710ebc328a6a4132f40bd58b216d1a8165634bdff9b6",
       "id": "tools/package-portable.mjs::34:1::react-doctor/import-metadata-execution-risk::430ea3600d39d4768e29754523634c6f3cda92676feb5292fc2ac60e17fa3995",
       "normalizedFilePath": "tools/package-portable.mjs",
-      "tags": [
-        "security-scan"
-      ]
+      "tags": ["security-scan"]
     },
     {
       "filePath": "tools/verify-explorer-moves-desktop.mjs",
@@ -3571,9 +3375,7 @@
       "fingerprint": "dd7822d67bdf1e8761af3d87a4f4ea3ebb78d0fa79b88513bec6966d25d973cf",
       "id": "tools/verify-explorer-moves-desktop.mjs::31:61::react-doctor/local-rpc-native-bridge-risk::bca81e3cc8b9b6bfd379a89b0de7c15d337447041c5639e151f53b311ce27725",
       "normalizedFilePath": "tools/verify-explorer-moves-desktop.mjs",
-      "tags": [
-        "security-scan"
-      ]
+      "tags": ["security-scan"]
     },
     {
       "filePath": "tools/verify-quick-open.mjs",
@@ -3589,9 +3391,7 @@
       "fingerprint": "cf4404c800b8967bae7e86fe7fcb828df6874c7dab874d54af1e91ec26674c2f",
       "id": "tools/verify-quick-open.mjs::48:7::react-doctor/postmessage-origin-risk::b109360a24ec44fb6b8fdf24c9551c0813771ad5ea1865cf27655c1c66960ddd",
       "normalizedFilePath": "tools/verify-quick-open.mjs",
-      "tags": [
-        "security-scan"
-      ]
+      "tags": ["security-scan"]
     }
   ],
   "summary": {

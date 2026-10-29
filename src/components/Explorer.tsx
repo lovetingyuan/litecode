@@ -30,9 +30,23 @@ import {
   visiblePath,
 } from "../editor/documents";
 import { ask } from "./dialog";
-import { creationParent, validateCreationName, validateRenameName, type CreationKind, type CreatedEntry, type RenamedEntry } from "../explorer/explorerCreation";
+import {
+  creationParent,
+  validateCreationName,
+  validateRenameName,
+  type CreationKind,
+  type CreatedEntry,
+  type RenamedEntry,
+} from "../explorer/explorerCreation";
 import { Icon, IconButton } from "./ui";
-import { refreshTree, attachWorkspaceTree, directoryDecoration, ensureWorkspacePath, loadedWorkspacePaths, workspaceDirectories } from "../explorer/workspaceTree";
+import {
+  refreshTree,
+  attachWorkspaceTree,
+  directoryDecoration,
+  ensureWorkspacePath,
+  loadedWorkspacePaths,
+  workspaceDirectories,
+} from "../explorer/workspaceTree";
 import { treeMovePlan, type FileMove, type MoveReport } from "../explorer/explorerMove";
 import {
   createExplorerClipboard,
@@ -73,7 +87,11 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     close?: (options?: { restoreFocus?: boolean }) => void;
   } | null>(null);
   const [directoryVersion, setDirectoryVersion] = useState(0);
-  const [revealTarget, setRevealTarget] = useState<{ path: string; canonical: string | null; root: string } | null>(null);
+  const [revealTarget, setRevealTarget] = useState<{
+    path: string;
+    canonical: string | null;
+    root: string;
+  } | null>(null);
   const explicitReveal = useRef<{
     path: string;
     group: string;
@@ -105,9 +123,18 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     icons: { set: "complete", colored: true },
     search: false,
     renderRowDecoration: ({ row }) => {
-      if (row.kind === "directory") { return directoryDecoration(row.path); }
+      if (row.kind === "directory") {
+        return directoryDecoration(row.path);
+      }
       const state = useApp.getState();
-      return state.root ? gitConflictDecoration(join(state.root, row.path), state.root, state.gitState.root, state.gitState.git) : null;
+      return state.root
+        ? gitConflictDecoration(
+            join(state.root, row.path),
+            state.root,
+            state.gitState.root,
+            state.gitState.git,
+          )
+        : null;
     },
     unsafeCSS: `
       ${sidebarScrollbarCSS}
@@ -137,7 +164,9 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         return true;
       },
       canDrop: (e) =>
-        !moveBusy.current && !creation.current && !!treeMovePlan(e.draggedPaths, e.target.directoryPath)?.length,
+        !moveBusy.current &&
+        !creation.current &&
+        !!treeMovePlan(e.draggedPaths, e.target.directoryPath)?.length,
       onDropRequest: (e) => {
         void requestMove(e);
       },
@@ -148,7 +177,10 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         enabled: true,
         triggerMode: "right-click",
         onOpen: (item, context) => {
-          if (item.path === model.getCreatingPath()) { context.close(); return; }
+          if (item.path === model.getCreatingPath()) {
+            context.close();
+            return;
+          }
           setContext({
             path: item.path,
             anchor: context.anchorElement,
@@ -167,53 +199,89 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     const state = useApp.getState();
     const base = state.root;
     const cache = workspaceDirectories();
-    if (!base || !cache || cache.session === null || moveBusy.current) { return null; }
+    if (!base || !cache || cache.session === null || moveBusy.current) {
+      return null;
+    }
     const parent = creationParent(source, false);
     const request = { root: base, epoch: state.workspaceEpoch, parent };
     creation.current = request;
     revealPending.current = false;
     explicitReveal.current = null;
-    const valid = () => creation.current === request && useApp.getState().root === base && useApp.getState().workspaceEpoch === request.epoch;
+    const valid = () =>
+      creation.current === request &&
+      useApp.getState().root === base &&
+      useApp.getState().workspaceEpoch === request.epoch;
     const args = { expectedRoot: base, session: cache.session, source };
     return {
-      validateSync: (name: string) => validateRenameName(name, /Win/i.test(navigator.platform), directory),
-      validate: (name: string) => valid() ? call<string | null>("validate_workspace_rename", { ...args, name }) : "Workspace changed. Please start renaming again.",
-      onCancel: () => { if (creation.current === request) { creation.current = null; } },
-      onFinish: () => { if (creation.current === request) { creation.current = null; } },
+      validateSync: (name: string) =>
+        validateRenameName(name, /Win/i.test(navigator.platform), directory),
+      validate: (name: string) =>
+        valid()
+          ? call<string | null>("validate_workspace_rename", { ...args, name })
+          : "Workspace changed. Please start renaming again.",
+      onCancel: () => {
+        if (creation.current === request) {
+          creation.current = null;
+        }
+      },
+      onFinish: () => {
+        if (creation.current === request) {
+          creation.current = null;
+        }
+      },
       onCommit: async (name: string) => {
         const operation = operationQueue.current.then(async () => {
-          if (!valid()) { throw new Error("Workspace changed. Please start renaming again."); }
+          if (!valid()) {
+            throw new Error("Workspace changed. Please start renaming again.");
+          }
           moveBusy.current = true;
           moveExecuting.current = true;
           const releaseTree = cache.hold([parent]);
           let releaseDocuments: ((error?: unknown) => void) | undefined;
           let moveError: unknown;
           try {
-            const destination = join(base, [parent, ...name.split(/[\\/]/).filter(Boolean)].filter(Boolean).join("/"));
-            releaseDocuments = await beginDocumentMove([{ from: join(base, source), to: destination }]);
-            if (!valid()) { throw new Error("Workspace changed. Please start renaming again."); }
+            const destination = join(
+              base,
+              [parent, ...name.split(/[\\/]/).filter(Boolean)].filter(Boolean).join("/"),
+            );
+            releaseDocuments = await beginDocumentMove([
+              { from: join(base, source), to: destination },
+            ]);
+            if (!valid()) {
+              throw new Error("Workspace changed. Please start renaming again.");
+            }
             const result = await call<RenamedEntry>("rename_workspace_entry", { ...args, name });
             // Disk success must rebind open documents, even after a workspace switch.
-            if (result.changed) { await renameDocumentPaths(result.from, result.to); }
-            if (!valid()) { return; }
+            if (result.changed) {
+              await renameDocumentPaths(result.from, result.to);
+            }
+            if (!valid()) {
+              return;
+            }
             const target = result.relativePath + (result.isDirectory ? "/" : "");
             if (result.changed && model.getItem(source)) {
               const parts = result.relativePath.split("/");
               for (let depth = 1; depth < parts.length; depth++) {
                 const path = parts.slice(0, depth).join("/") + "/";
-                if (!model.getItem(path)) { model.add(path); }
+                if (!model.getItem(path)) {
+                  model.add(path);
+                }
               }
               model.move(source + (directory ? "/" : ""), target);
             }
             const parts = result.relativePath.split("/");
             for (let depth = 1; depth < parts.length; depth++) {
               const ancestor = model.getItem(parts.slice(0, depth).join("/"));
-              if (ancestor && "expand" in ancestor) { ancestor.expand(); }
+              if (ancestor && "expand" in ancestor) {
+                ancestor.expand();
+              }
             }
             model.getItem(target)?.select();
             model.focusPath(target);
             model.scrollToPath(target, { focus: true, offset: "nearest" });
-            if (creation.current === request) { creation.current = null; }
+            if (creation.current === request) {
+              creation.current = null;
+            }
           } catch (error) {
             moveError = error;
             throw error;
@@ -222,14 +290,30 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
             moveExecuting.current = false;
             try {
               await releaseTree();
-              if (useApp.getState().root === base && useApp.getState().workspaceEpoch === request.epoch) {
-                await refreshTree([source, parent ? `${parent}/${name.split(/[\\/]/)[0]}` : name.split(/[\\/]/)[0]]);
+              if (
+                useApp.getState().root === base &&
+                useApp.getState().workspaceEpoch === request.epoch
+              ) {
+                await refreshTree([
+                  source,
+                  parent ? `${parent}/${name.split(/[\\/]/)[0]}` : name.split(/[\\/]/)[0],
+                ]);
               }
-            } finally { moveBusy.current = false; }
+            } finally {
+              moveBusy.current = false;
+            }
           }
           requestAnimationFrame(() => {
-            if (useApp.getState().root === base && useApp.getState().workspaceEpoch === request.epoch) {
-              model.getFileTreeContainer()?.shadowRoot?.querySelector<HTMLElement>('[data-item-focused="true"]:not([data-file-tree-sticky-row]):not([data-item-parked="true"])')?.focus({ preventScroll: true });
+            if (
+              useApp.getState().root === base &&
+              useApp.getState().workspaceEpoch === request.epoch
+            ) {
+              model
+                .getFileTreeContainer()
+                ?.shadowRoot?.querySelector<HTMLElement>(
+                  '[data-item-focused="true"]:not([data-file-tree-sticky-row]):not([data-item-parked="true"])',
+                )
+                ?.focus({ preventScroll: true });
             }
           });
         });
@@ -242,22 +326,33 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     const state = useApp.getState();
     const base = state.root;
     const cache = workspaceDirectories();
-    if (!base || !cache || moveBusy.current) { return; }
-    if (path && !model.getItem(path)) { notify("The destination is no longer available. Please select a folder again."); return; }
-    const parent = path === model.getCreatingPath() && creation.current
-      ? creation.current.parent
-      : creationParent(path, model.getItem(path)?.isDirectory() ?? false);
+    if (!base || !cache || moveBusy.current) {
+      return;
+    }
+    if (path && !model.getItem(path)) {
+      notify("The destination is no longer available. Please select a folder again.");
+      return;
+    }
+    const parent =
+      path === model.getCreatingPath() && creation.current
+        ? creation.current.parent
+        : creationParent(path, model.getItem(path)?.isDirectory() ?? false);
     model.cancelEditing();
     const request = { root: base, epoch: state.workspaceEpoch, parent };
     creation.current = request;
-    const valid = () => creation.current === request && useApp.getState().root === base && useApp.getState().workspaceEpoch === request.epoch;
+    const valid = () =>
+      creation.current === request &&
+      useApp.getState().root === base &&
+      useApp.getState().workspaceEpoch === request.epoch;
     revealPending.current = false;
     explicitReveal.current = null;
     setExpanded(true);
     try {
       // Loading first makes sibling validation and the insertion position stable.
       await cache.load(parent);
-      if (!valid()) { return; }
+      if (!valid()) {
+        return;
+      }
       if (cache.entry(parent).status !== "loaded" || cache.session === null) {
         throw new Error(cache.entry(parent).error ?? "Could not load the destination folder.");
       }
@@ -267,25 +362,48 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         kind,
         validateSync: (name) => validateCreationName(name, /Win/i.test(navigator.platform)),
         validate: async (name) => {
-          if (!valid()) { return "Workspace changed. Please start creation again."; }
+          if (!valid()) {
+            return "Workspace changed. Please start creation again.";
+          }
           return call<string | null>("validate_workspace_creation", { ...args, name });
         },
-        onCancel: () => { if (creation.current === request) { creation.current = null; } },
+        onCancel: () => {
+          if (creation.current === request) {
+            creation.current = null;
+          }
+        },
         onCommit: async (name) => {
           const operation = operationQueue.current.then(async () => {
-            if (!valid()) { throw new Error("Workspace changed. Please start creation again."); }
+            if (!valid()) {
+              throw new Error("Workspace changed. Please start creation again.");
+            }
             const result = await call<CreatedEntry>("create_workspace_entry", { ...args, name });
-            if (!valid()) { return; }
-            await refreshTree([parent ? `${parent}/${name.split(/[\\/]/)[0]}` : name.split(/[\\/]/)[0], result.relativePath]);
-            if (!valid()) { return; }
-            const target = await ensureWorkspacePath(result.relativePath + (result.kind === "newFolder" ? "/" : ""));
-            if (!valid()) { return; }
+            if (!valid()) {
+              return;
+            }
+            await refreshTree([
+              parent ? `${parent}/${name.split(/[\\/]/)[0]}` : name.split(/[\\/]/)[0],
+              result.relativePath,
+            ]);
+            if (!valid()) {
+              return;
+            }
+            const target = await ensureWorkspacePath(
+              result.relativePath + (result.kind === "newFolder" ? "/" : ""),
+            );
+            if (!valid()) {
+              return;
+            }
             if (target) {
-              for (const selected of model.getSelectedPaths()) { model.getItem(selected)?.deselect(); }
+              for (const selected of model.getSelectedPaths()) {
+                model.getItem(selected)?.deselect();
+              }
               const parts = target.replace(/\/$/, "").split("/");
               for (let depth = 1; depth < parts.length; depth++) {
                 const ancestor = model.getItem(parts.slice(0, depth).join("/"));
-                if (ancestor && "expand" in ancestor) { ancestor.expand(); }
+                if (ancestor && "expand" in ancestor) {
+                  ancestor.expand();
+                }
               }
               model.getItem(target)?.select();
               model.focusPath(target);
@@ -294,23 +412,37 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
                 requestAnimationFrame(() => {
                   const current = useApp.getState();
                   if (current.root === base && current.workspaceEpoch === request.epoch) {
-                    model.getFileTreeContainer()?.shadowRoot?.querySelector<HTMLElement>(`[data-item-path="${CSS.escape(target)}"]:not([data-file-tree-sticky-row]):not([data-item-parked="true"])`)?.focus({ preventScroll: true });
+                    model
+                      .getFileTreeContainer()
+                      ?.shadowRoot?.querySelector<HTMLElement>(
+                        `[data-item-path="${CSS.escape(target)}"]:not([data-file-tree-sticky-row]):not([data-item-parked="true"])`,
+                      )
+                      ?.focus({ preventScroll: true });
                   }
                 });
               }
             }
             if (result.kind === "newFile") {
-              await openPath(result.path, { pinned: true }).catch((error) => notify(errorMessage(error)));
+              await openPath(result.path, { pinned: true }).catch((error) =>
+                notify(errorMessage(error)),
+              );
             }
-            if (creation.current === request) { creation.current = null; }
+            if (creation.current === request) {
+              creation.current = null;
+            }
           });
           operationQueue.current = operation.catch(() => {});
           await operation;
         },
       });
-      if (!draft) { throw new Error("The destination folder is no longer available."); }
+      if (!draft) {
+        throw new Error("The destination folder is no longer available.");
+      }
     } catch (error) {
-      if (valid()) { creation.current = null; notify(errorMessage(error)); }
+      if (valid()) {
+        creation.current = null;
+        notify(errorMessage(error));
+      }
     }
   }
   const clipboardRef = useRef<ReturnType<typeof createExplorerClipboard> | null>(null);
@@ -357,7 +489,12 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         if (abort.signal.aborted || rootRef.current !== base || !report) {
           return;
         }
-        changedPaths = report.copied.flatMap((item) => [relative(item.to, base), ...(normalize(item.from).startsWith(normalize(base).replace(/\/$/, "") + "/") ? [relative(item.from, base)] : [])]);
+        changedPaths = report.copied.flatMap((item) => [
+          relative(item.to, base),
+          ...(normalize(item.from).startsWith(normalize(base).replace(/\/$/, "") + "/")
+            ? [relative(item.from, base)]
+            : []),
+        ]);
         if (report.copied.length) {
           pendingMoveSelection.current = report.copied.map((item) => relative(item.to, base));
           revealPending.current = false;
@@ -609,7 +746,10 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         return;
       }
       const report = await call<MoveReport>("move_files", args);
-      changedPaths = report.moved.flatMap((move) => [relative(move.from, base), relative(move.to, base)]);
+      changedPaths = report.moved.flatMap((move) => [
+        relative(move.from, base),
+        relative(move.to, base),
+      ]);
       // Always rebind successful disk moves, including a partially failed batch.
       await renameDocuments(report.moved);
       if (!abort.signal.aborted && report.moved.length) {
@@ -628,7 +768,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         revealPending.current = false;
       }
       if (report.failed.length) {
-        moveError = new Error(report.failed.map(failure => failure.message).join("\n"));
+        moveError = new Error(report.failed.map((failure) => failure.message).join("\n"));
         notify(
           `Moved ${report.moved.length} item(s). The remaining items were not moved.\n${report.failed.map((f) => `${relative(f.path, base)}: ${f.message}`).join("\n")}`,
         );
@@ -672,7 +812,13 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     ) as HTMLElement | undefined;
     const path = row?.dataset.itemPath;
     const item = path ? model.getItem(path) : null;
-    if (!path || path === model.getCreatingPath() || !item || item.isDirectory() || !rootRef.current) {
+    if (
+      !path ||
+      path === model.getCreatingPath() ||
+      !item ||
+      item.isDirectory() ||
+      !rootRef.current
+    ) {
       return false;
     }
     void openPath(join(rootRef.current, path), { pinned, preserveFocus: !pinned }).catch((e) =>
@@ -693,7 +839,11 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       return;
     }
     // A failed scan leaves the snapshot untouched. Root changes cancel the request.
-    if (state.root !== before.root || state.treeRoot !== before.root || workspaceDirectories()?.entry("").status === "failed") {
+    if (
+      state.root !== before.root ||
+      state.treeRoot !== before.root ||
+      workspaceDirectories()?.entry("").status === "failed"
+    ) {
       manualRefresh.current = null;
       return;
     }
@@ -714,16 +864,22 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     setRootDropTarget(false);
     setRevealTarget(null);
     return attachWorkspaceTree(model, () => {
-      const moved = pendingMoveSelection.current?.flatMap((path) => model.getItem(path)?.getPath() ?? []);
+      const moved = pendingMoveSelection.current?.flatMap(
+        (path) => model.getItem(path)?.getPath() ?? [],
+      );
       if (moved?.length && !moveExecuting.current) {
         pendingMoveSelection.current = null;
         revealPending.current = false;
-        for (const selected of model.getSelectedPaths()) {model.getItem(selected)?.deselect();}
+        for (const selected of model.getSelectedPaths()) {
+          model.getItem(selected)?.deselect();
+        }
         for (const path of moved) {
           const parts = path.replace(/\/$/, "").split("/");
           for (let depth = 1; depth < parts.length; depth++) {
             const parent = model.getItem(parts.slice(0, depth).join("/"));
-            if (parent && "expand" in parent) {parent.expand();}
+            if (parent && "expand" in parent) {
+              parent.expand();
+            }
           }
           model.getItem(path)?.select();
         }
@@ -736,7 +892,9 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   useEffect(() => {
     model.setGitStatus(
       root && gitState.root && normalize(gitState.root) === normalize(root)
-        ? gitState.git.flatMap(({ path, status }) => status === "conflicted" ? [] : [{ path, status }])
+        ? gitState.git.flatMap(({ path, status }) =>
+            status === "conflicted" ? [] : [{ path, status }],
+          )
         : [],
     );
     model.setComposition(model.getComposition());
@@ -761,15 +919,38 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   useEffect(() => {
     const path = explicitReveal.current?.path ?? active?.path;
     const base = root ? visiblePath(root).replace(/[\\/]+$/, "") : null;
-    if (!path || !base || sidebar !== "explorer" || !normalize(visiblePath(path)).startsWith(normalize(base) + "/")) {return;}
+    if (
+      !path ||
+      !base ||
+      sidebar !== "explorer" ||
+      !normalize(visiblePath(path)).startsWith(normalize(base) + "/")
+    ) {
+      return;
+    }
     let cancelled = false;
     const cached = workspaceDirectories()?.cachedPath(relative(path, base));
-    if (cached) { setRevealTarget({ path, canonical: cached, root: root! }); }
+    if (cached) {
+      setRevealTarget({ path, canonical: cached, root: root! });
+    }
     void ensureWorkspacePath(relative(path, base)).then((canonical) => {
-      if (!cancelled) {setRevealTarget({ path, canonical, root: root! });}
+      if (!cancelled) {
+        setRevealTarget({ path, canonical, root: root! });
+      }
     });
-    return () => { cancelled = true; };
-  }, [active?.path, root, sidebar, expanded, explicitRequest, tabRevealRequest, refreshRequest, structureVersion, workspaceEpoch]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    active?.path,
+    root,
+    sidebar,
+    expanded,
+    explicitRequest,
+    tabRevealRequest,
+    refreshRequest,
+    structureVersion,
+    workspaceEpoch,
+  ]);
   useEffect(() => {
     if (!moveExecuting.current && !pendingMoveSelection.current) {
       revealPending.current = true;
@@ -779,7 +960,9 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     if (moveExecuting.current || pendingMoveSelection.current) {
       return;
     }
-    if (creation.current) { return; }
+    if (creation.current) {
+      return;
+    }
     const refreshed = manualRefresh.current?.ready === true;
     if (refreshed) {
       revealPending.current = true;
@@ -824,11 +1007,17 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       revealPending.current = false;
       return;
     }
-    const canonicalPath = revealTarget?.path === path && revealTarget.root === root ? revealTarget.canonical : null;
+    const canonicalPath =
+      revealTarget?.path === path && revealTarget.root === root ? revealTarget.canonical : null;
     const item = canonicalPath ? model.getItem(canonicalPath) : null;
     // A newly opened file can precede the scan that first includes it.
     if (!item) {
-      if (refreshed && revealTarget?.path === path && revealTarget.root === root && revealTarget.canonical === null) {
+      if (
+        refreshed &&
+        revealTarget?.path === path &&
+        revealTarget.root === root &&
+        revealTarget.canonical === null
+      ) {
         manualRefresh.current = null;
         revealPending.current = false;
       }
@@ -897,12 +1086,17 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     refreshRequest,
   ]);
 
-  async function action(kind: string, path = model.getSelectedPaths().length ? model.getFocusedPath() ?? "" : "") {
+  async function action(
+    kind: string,
+    path = model.getSelectedPaths().length ? (model.getFocusedPath() ?? "") : "",
+  ) {
     if (!root) {
       return;
     }
     const selected = model.getSelectedPaths();
-    const paths = (selected.includes(path) ? [...selected] : [path]).filter((candidate) => candidate !== model.getCreatingPath());
+    const paths = (selected.includes(path) ? [...selected] : [path]).filter(
+      (candidate) => candidate !== model.getCreatingPath(),
+    );
     const full = join(root, path);
     const changedPaths: string[] = [];
     context?.close?.({ restoreFocus: !["rename", "newFile", "newFolder"].includes(kind) });
@@ -911,7 +1105,9 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       await startCreation(kind, path);
       return;
     }
-    if (path === model.getCreatingPath()) { return; }
+    if (path === model.getCreatingPath()) {
+      return;
+    }
     try {
       if (kind === "rename") {
         model.startRenaming(path);
@@ -947,7 +1143,10 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
           (p) =>
             !paths.some((parent) => parent !== p && p.startsWith(parent.replace(/\/$/, "") + "/")),
         );
-        await deleteInternalFiles(filtered.map(path => join(root, path)), path => changedPaths.push(relative(path, root)));
+        await deleteInternalFiles(
+          filtered.map((path) => join(root, path)),
+          (path) => changedPaths.push(relative(path, root)),
+        );
       }
       if (kind === "paste") {
         await paste(path);
@@ -959,7 +1158,9 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       await refreshTree(changedPaths.length ? changedPaths : undefined);
     }
   }
-  const directoryWarnings = [...(workspaceDirectories()?.directories.values() ?? [])].flatMap((entry) => entry.warnings);
+  const directoryWarnings = [...(workspaceDirectories()?.directories.values() ?? [])].flatMap(
+    (entry) => entry.warnings,
+  );
   const treeStyle = {
     flex: 1,
     minHeight: 0,
@@ -1054,15 +1255,27 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
           >
             <button
               title={pathTitle(root)}
-              onPointerDown={() => { model.cancelEditing(); creation.current = null; }}
-              onClick={() => { model.cancelEditing(); creation.current = null; setExpanded(!expanded); }}
+              onPointerDown={() => {
+                model.cancelEditing();
+                creation.current = null;
+              }}
+              onClick={() => {
+                model.cancelEditing();
+                creation.current = null;
+                setExpanded(!expanded);
+              }}
               aria-expanded={expanded}
             >
               <Icon name={expanded ? "chevron-down" : "chevron-right"} />
               {basename(root).toUpperCase()}
             </button>
             <div className="actions">
-              <IconButton icon="new-file" label="New File" onPointerDown={(event) => event.preventDefault()} onClick={() => void action("newFile")} />
+              <IconButton
+                icon="new-file"
+                label="New File"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => void action("newFile")}
+              />
               <IconButton
                 icon="new-folder"
                 label="New Folder"

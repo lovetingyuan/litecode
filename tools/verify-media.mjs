@@ -106,13 +106,17 @@ try {
   await page.locator("file-tree-container").waitFor({ timeout: 180000 });
   // The browser's resource timing buffer may fill before these modules load.
   // Resolve the actual Vite import URLs, including their HMR version queries.
-  const appSource = await fetch("http://localhost:1420/src/components/App.tsx").then((response) => response.text());
+  const appSource = await fetch("http://localhost:1420/src/components/App.tsx").then((response) =>
+    response.text(),
+  );
   const imports = [...appSource.matchAll(/from ["']([^"']+)["']/g)].map((match) => match[1]);
-  const urls = Object.fromEntries(["documents", "store", "bridge"].map((name) => {
-    const url = imports.find((url) => url.split("?")[0].endsWith(`/${name}.ts`));
-    assert.ok(url, `App must import ${name}`);
-    return [name, new URL(url, "http://localhost:1420").href];
-  }));
+  const urls = Object.fromEntries(
+    ["documents", "store", "bridge"].map((name) => {
+      const url = imports.find((url) => url.split("?")[0].endsWith(`/${name}.ts`));
+      assert.ok(url, `App must import ${name}`);
+      return [name, new URL(url, "http://localhost:1420").href];
+    }),
+  );
   async function action(module, method, ...args) {
     return page.evaluate(async ({ url, method, args }) => (await import(url))[method](...args), {
       url: urls[module],

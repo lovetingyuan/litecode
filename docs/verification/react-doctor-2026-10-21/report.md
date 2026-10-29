@@ -7,30 +7,30 @@
 本次全量扫描完成，主要诊断集中在性能与 React Compiler 优化覆盖范围。29 条 error 中有 24 条属于性能类别，其中 9 条是编译器暂不支持语法。错误级别不等于已确认的运行故障或安全漏洞。建议先处理渲染纯度、状态写入与输入边界，再验证键盘交互，随后按实际测量推进性能和结构调整。
 
 | 扫描文件 | 诊断总数 | error | warning | 涉及文件 | 规则种类 |
-|---:|---:|---:|---:|---:|---:|
-| 92 | 85 | 29 | 56 | 25 | 26 |
+| -------: | -------: | ----: | ------: | -------: | -------: |
+|       92 |       85 |    29 |      56 |       25 |       26 |
 
 [打开可筛选的 HTML 报告](./report.html) · [原始 JSON](./raw-report.json)
 
 ## 2. 分类概览
 
-| 分类 | 总数 | error | warning | 占比 |
-|---|---:|---:|---:|---:|
-| 性能与编译器 | 50 | 24 | 26 | 58.8% |
-| 可维护性 | 14 | 0 | 14 | 16.5% |
-| 正确性与健壮性 | 10 | 3 | 7 | 11.8% |
-| 无障碍与交互 | 6 | 0 | 6 | 7.1% |
-| 安全边界 | 5 | 2 | 3 | 5.9% |
+| 分类           | 总数 | error | warning |  占比 |
+| -------------- | ---: | ----: | ------: | ----: |
+| 性能与编译器   |   50 |    24 |      26 | 58.8% |
+| 可维护性       |   14 |     0 |      14 | 16.5% |
+| 正确性与健壮性 |   10 |     3 |       7 | 11.8% |
+| 无障碍与交互   |    6 |     0 |       6 |  7.1% |
+| 安全边界       |    5 |     2 |       3 |  5.9% |
 
 ### 建议处理顺序
 
-| 批次 | 方向 | 重点 | 验收方式（后续工作） |
-|---|---|---|---|
-| 1 | 状态与渲染纯度 | EditorGroup 的 group.views 写入；Explorer/MediaPreview 的 render 中 Ref 写入 | 切换标签、恢复滚动位置、图片缩放与根目录切换；检查旧闭包和重复渲染行为。 |
-| 2 | 输入边界与资源生命周期 | 拖拽 JSON、useExternalDrop 异步分配与清理 | 非法/空载荷；拖拽中切换工作区或卸载；超时与取消后的资源释放。 |
-| 3 | 键盘和辅助技术 | 标签页关闭按钮、搜索树节点、媒体预览动作 | 仅用键盘完成选择/关闭/导航；验证可访问名称、焦点和屏幕阅读器语义。 |
-| 4 | 编译器与性能 | QuickOpen 缓存；串行任务与线性查找；Monaco 加载 | 以真实大目录和快速输入建立基线，检查响应时间、取消语义、初始化与冷启动。 |
-| 5 | 结构整理与告警治理 | 大组件拆分；Compiler todo；工具脚本与 Worker 告警 | 合并重复根因；只对有充分场景依据的告警做最小范围豁免并留下理由。 |
+| 批次 | 方向                   | 重点                                                                         | 验收方式（后续工作）                                                     |
+| ---- | ---------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1    | 状态与渲染纯度         | EditorGroup 的 group.views 写入；Explorer/MediaPreview 的 render 中 Ref 写入 | 切换标签、恢复滚动位置、图片缩放与根目录切换；检查旧闭包和重复渲染行为。 |
+| 2    | 输入边界与资源生命周期 | 拖拽 JSON、useExternalDrop 异步分配与清理                                    | 非法/空载荷；拖拽中切换工作区或卸载；超时与取消后的资源释放。            |
+| 3    | 键盘和辅助技术         | 标签页关闭按钮、搜索树节点、媒体预览动作                                     | 仅用键盘完成选择/关闭/导航；验证可访问名称、焦点和屏幕阅读器语义。       |
+| 4    | 编译器与性能           | QuickOpen 缓存；串行任务与线性查找；Monaco 加载                              | 以真实大目录和快速输入建立基线，检查响应时间、取消语义、初始化与冷启动。 |
+| 5    | 结构整理与告警治理     | 大组件拆分；Compiler todo；工具脚本与 Worker 告警                            | 合并重复根因；只对有充分场景依据的告警做最小范围豁免并留下理由。         |
 
 优先级分布：P1 21 条；P2 48 条；P3 16 条。它们是处理顺序，不会覆盖原始严重级别。
 
@@ -265,33 +265,33 @@ notices 执行固定 cargo metadata 再解析输出；package-portable 执行固
 
 ## 5. 文件热点
 
-| 文件 | 总数 | error | warning |
-|---|---:|---:|---:|
-| [src/components/Explorer.tsx](../../../src/components/Explorer.tsx) | 16 | 9 | 7 |
-| [src/components/EditorGroup.tsx](../../../src/components/EditorGroup.tsx) | 13 | 5 | 8 |
-| [src/components/QuickOpen.tsx](../../../src/components/QuickOpen.tsx) | 10 | 6 | 4 |
-| [src/components/MediaPreview.tsx](../../../src/components/MediaPreview.tsx) | 7 | 2 | 5 |
-| [src/editor/documents.ts](../../../src/editor/documents.ts) | 6 | 0 | 6 |
-| [src/components/SearchView.tsx](../../../src/components/SearchView.tsx) | 5 | 1 | 4 |
-| [src/hooks/useExternalDrop.ts](../../../src/hooks/useExternalDrop.ts) | 4 | 4 | 0 |
-| [src/editor/languages.ts](../../../src/editor/languages.ts) | 3 | 0 | 3 |
-| [src/components/App.tsx](../../../src/components/App.tsx) | 2 | 0 | 2 |
-| [src/components/dialog.tsx](../../../src/components/dialog.tsx) | 2 | 0 | 2 |
-| [src/hooks/useQuickFiles.ts](../../../src/hooks/useQuickFiles.ts) | 2 | 0 | 2 |
-| [src/store/store.ts](../../../src/store/store.ts) | 2 | 0 | 2 |
-| [src/components/EditorTabMenu.tsx](../../../src/components/EditorTabMenu.tsx) | 1 | 0 | 1 |
-| [src/components/MarkdownPreview.tsx](../../../src/components/MarkdownPreview.tsx) | 1 | 0 | 1 |
-| [src/core/commands.ts](../../../src/core/commands.ts) | 1 | 0 | 1 |
-| [src/editor/editorLayout.test.ts](../../../src/editor/editorLayout.test.ts) | 1 | 0 | 1 |
-| [src/editor/monaco.ts](../../../src/editor/monaco.ts) | 1 | 0 | 1 |
-| [src/explorer/explorerClipboard.ts](../../../src/explorer/explorerClipboard.ts) | 1 | 0 | 1 |
-| [src/explorer/externalDrop.ts](../../../src/explorer/externalDrop.ts) | 1 | 0 | 1 |
-| [src/search/search.ts](../../../src/search/search.ts) | 1 | 0 | 1 |
-| [src/utils/keybindings.ts](../../../src/utils/keybindings.ts) | 1 | 0 | 1 |
-| [tools/notices.mjs](../../../tools/notices.mjs) | 1 | 1 | 0 |
-| [tools/package-portable.mjs](../../../tools/package-portable.mjs) | 1 | 1 | 0 |
-| [tools/verify-explorer-moves-desktop.mjs](../../../tools/verify-explorer-moves-desktop.mjs) | 1 | 0 | 1 |
-| [tools/verify-quick-open.mjs](../../../tools/verify-quick-open.mjs) | 1 | 0 | 1 |
+| 文件                                                                                        | 总数 | error | warning |
+| ------------------------------------------------------------------------------------------- | ---: | ----: | ------: |
+| [src/components/Explorer.tsx](../../../src/components/Explorer.tsx)                         |   16 |     9 |       7 |
+| [src/components/EditorGroup.tsx](../../../src/components/EditorGroup.tsx)                   |   13 |     5 |       8 |
+| [src/components/QuickOpen.tsx](../../../src/components/QuickOpen.tsx)                       |   10 |     6 |       4 |
+| [src/components/MediaPreview.tsx](../../../src/components/MediaPreview.tsx)                 |    7 |     2 |       5 |
+| [src/editor/documents.ts](../../../src/editor/documents.ts)                                 |    6 |     0 |       6 |
+| [src/components/SearchView.tsx](../../../src/components/SearchView.tsx)                     |    5 |     1 |       4 |
+| [src/hooks/useExternalDrop.ts](../../../src/hooks/useExternalDrop.ts)                       |    4 |     4 |       0 |
+| [src/editor/languages.ts](../../../src/editor/languages.ts)                                 |    3 |     0 |       3 |
+| [src/components/App.tsx](../../../src/components/App.tsx)                                   |    2 |     0 |       2 |
+| [src/components/dialog.tsx](../../../src/components/dialog.tsx)                             |    2 |     0 |       2 |
+| [src/hooks/useQuickFiles.ts](../../../src/hooks/useQuickFiles.ts)                           |    2 |     0 |       2 |
+| [src/store/store.ts](../../../src/store/store.ts)                                           |    2 |     0 |       2 |
+| [src/components/EditorTabMenu.tsx](../../../src/components/EditorTabMenu.tsx)               |    1 |     0 |       1 |
+| [src/components/MarkdownPreview.tsx](../../../src/components/MarkdownPreview.tsx)           |    1 |     0 |       1 |
+| [src/core/commands.ts](../../../src/core/commands.ts)                                       |    1 |     0 |       1 |
+| [src/editor/editorLayout.test.ts](../../../src/editor/editorLayout.test.ts)                 |    1 |     0 |       1 |
+| [src/editor/monaco.ts](../../../src/editor/monaco.ts)                                       |    1 |     0 |       1 |
+| [src/explorer/explorerClipboard.ts](../../../src/explorer/explorerClipboard.ts)             |    1 |     0 |       1 |
+| [src/explorer/externalDrop.ts](../../../src/explorer/externalDrop.ts)                       |    1 |     0 |       1 |
+| [src/search/search.ts](../../../src/search/search.ts)                                       |    1 |     0 |       1 |
+| [src/utils/keybindings.ts](../../../src/utils/keybindings.ts)                               |    1 |     0 |       1 |
+| [tools/notices.mjs](../../../tools/notices.mjs)                                             |    1 |     1 |       0 |
+| [tools/package-portable.mjs](../../../tools/package-portable.mjs)                           |    1 |     1 |       0 |
+| [tools/verify-explorer-moves-desktop.mjs](../../../tools/verify-explorer-moves-desktop.mjs) |    1 |     0 |       1 |
+| [tools/verify-quick-open.mjs](../../../tools/verify-quick-open.mjs)                         |    1 |     0 |       1 |
 
 ## 6. 扫描方法与边界
 
@@ -320,90 +320,90 @@ npx --yes react-doctor@0.9.18 . --yes --scope full --no-telemetry --json --json-
 
 原始 message/help 可在 HTML 展开查看或在 JSON 搜索；以下保持原始次序与行列号。
 
-| ID | 级别 | 优先级 | 分类 | 位置 | 规则 |
-|---:|---|---|---|---|---|
-| 1 | warning | P2 | 可维护性 | [src/components/App.tsx:103:16](../../../src/components/App.tsx) | react-doctor/no-high-complexity-react-function |
-| 2 | warning | P2 | 可维护性 | [src/components/App.tsx:103:25](../../../src/components/App.tsx) | react-doctor/no-giant-component |
-| 3 | warning | P2 | 可维护性 | [src/components/EditorGroup.tsx:41:8](../../../src/components/EditorGroup.tsx) | react-doctor/no-high-complexity-react-function |
-| 4 | warning | P2 | 可维护性 | [src/components/EditorGroup.tsx:41:17](../../../src/components/EditorGroup.tsx) | react-doctor/no-giant-component |
-| 5 | error | P1 | 性能与编译器 | [src/components/EditorGroup.tsx:195:13](../../../src/components/EditorGroup.tsx) | react-hooks-js/immutability |
-| 6 | error | P1 | 性能与编译器 | [src/components/EditorGroup.tsx:205:7](../../../src/components/EditorGroup.tsx) | react-hooks-js/immutability |
-| 7 | warning | P2 | 性能与编译器 | [src/components/EditorGroup.tsx:250:9](../../../src/components/EditorGroup.tsx) | react-doctor/async-await-in-loop |
-| 8 | warning | P1 | 正确性与健壮性 | [src/components/EditorGroup.tsx:295:30](../../../src/components/EditorGroup.tsx) | react-doctor/no-unsafe-json-parse |
-| 9 | warning | P2 | 性能与编译器 | [src/components/EditorGroup.tsx:315:30](../../../src/components/EditorGroup.tsx) | react-doctor/js-set-map-lookups |
-| 10 | warning | P1 | 无障碍与交互 | [src/components/EditorGroup.tsx:377:20](../../../src/components/EditorGroup.tsx) | react-doctor/html-no-nested-interactive |
-| 11 | warning | P2 | 正确性与健壮性 | [src/components/EditorGroup.tsx:447:25](../../../src/components/EditorGroup.tsx) | react-doctor/no-array-index-as-key |
-| 12 | error | P1 | 性能与编译器 | [src/components/EditorGroup.tsx:581:5](../../../src/components/EditorGroup.tsx) | react-hooks-js/immutability |
-| 13 | error | P1 | 性能与编译器 | [src/components/EditorGroup.tsx:588:22](../../../src/components/EditorGroup.tsx) | react-hooks-js/immutability |
-| 14 | error | P1 | 性能与编译器 | [src/components/EditorGroup.tsx:601:22](../../../src/components/EditorGroup.tsx) | react-hooks-js/immutability |
-| 15 | warning | P2 | 可维护性 | [src/components/EditorGroup.tsx:673:23](../../../src/components/EditorGroup.tsx) | react-doctor/only-export-components |
-| 16 | warning | P2 | 正确性与健壮性 | [src/components/EditorTabMenu.tsx:111:34](../../../src/components/EditorTabMenu.tsx) | react-doctor/no-array-index-as-key |
-| 17 | warning | P2 | 可维护性 | [src/components/Explorer.tsx:52:17](../../../src/components/Explorer.tsx) | react-doctor/only-export-components |
-| 18 | warning | P2 | 可维护性 | [src/components/Explorer.tsx:57:17](../../../src/components/Explorer.tsx) | react-doctor/no-giant-component |
-| 19 | warning | P2 | 性能与编译器 | [src/components/Explorer.tsx:85:33](../../../src/components/Explorer.tsx) | react-doctor/rerender-lazy-ref-init |
-| 20 | error | P1 | 正确性与健壮性 | [src/components/Explorer.tsx:147:3](../../../src/components/Explorer.tsx) | react-doctor/no-ref-current-in-render |
-| 21 | error | P1 | 性能与编译器 | [src/components/Explorer.tsx:147:3](../../../src/components/Explorer.tsx) | react-hooks-js/refs |
-| 22 | error | P1 | 性能与编译器 | [src/components/Explorer.tsx:149:8](../../../src/components/Explorer.tsx) | react-hooks-js/refs |
-| 23 | error | P1 | 性能与编译器 | [src/components/Explorer.tsx:150:52](../../../src/components/Explorer.tsx) | react-hooks-js/refs |
-| 24 | error | P3 | 性能与编译器 | [src/components/Explorer.tsx:192:7](../../../src/components/Explorer.tsx) | react-hooks-js/todo |
-| 25 | error | P3 | 性能与编译器 | [src/components/Explorer.tsx:282:13](../../../src/components/Explorer.tsx) | react-hooks-js/todo |
-| 26 | error | P3 | 性能与编译器 | [src/components/Explorer.tsx:409:5](../../../src/components/Explorer.tsx) | react-hooks-js/todo |
-| 27 | warning | P3 | 安全边界 | [src/components/Explorer.tsx:550:5](../../../src/components/Explorer.tsx) | react-doctor/postmessage-origin-risk |
-| 28 | warning | P2 | 性能与编译器 | [src/components/Explorer.tsx:692:7](../../../src/components/Explorer.tsx) | react-hooks-js/set-state-in-effect |
-| 29 | error | P3 | 性能与编译器 | [src/components/Explorer.tsx:741:46](../../../src/components/Explorer.tsx) | react-hooks-js/todo |
-| 30 | error | P3 | 性能与编译器 | [src/components/Explorer.tsx:771:24](../../../src/components/Explorer.tsx) | react-hooks-js/todo |
-| 31 | warning | P2 | 性能与编译器 | [src/components/Explorer.tsx:809:11](../../../src/components/Explorer.tsx) | react-doctor/async-await-in-loop |
-| 32 | warning | P1 | 无障碍与交互 | [src/components/Explorer.tsx:848:6](../../../src/components/Explorer.tsx) | react-doctor/no-noninteractive-element-interactions |
-| 33 | warning | P3 | 正确性与健壮性 | [src/components/MarkdownPreview.tsx:107:9](../../../src/components/MarkdownPreview.tsx) | react-doctor/no-prevent-default |
-| 34 | warning | P2 | 可维护性 | [src/components/MediaPreview.tsx:10:8](../../../src/components/MediaPreview.tsx) | react-doctor/no-high-complexity-react-function |
-| 35 | warning | P2 | 性能与编译器 | [src/components/MediaPreview.tsx:20:5](../../../src/components/MediaPreview.tsx) | react-hooks-js/set-state-in-effect |
-| 36 | error | P1 | 正确性与健壮性 | [src/components/MediaPreview.tsx:170:3](../../../src/components/MediaPreview.tsx) | react-doctor/no-ref-current-in-render |
-| 37 | error | P1 | 性能与编译器 | [src/components/MediaPreview.tsx:170:3](../../../src/components/MediaPreview.tsx) | react-hooks-js/refs |
-| 38 | warning | P1 | 无障碍与交互 | [src/components/MediaPreview.tsx:211:6](../../../src/components/MediaPreview.tsx) | react-doctor/no-static-element-interactions |
-| 39 | warning | P1 | 无障碍与交互 | [src/components/MediaPreview.tsx:247:10](../../../src/components/MediaPreview.tsx) | react-doctor/click-events-have-key-events |
-| 40 | warning | P1 | 无障碍与交互 | [src/components/MediaPreview.tsx:247:10](../../../src/components/MediaPreview.tsx) | react-doctor/no-noninteractive-element-interactions |
-| 41 | warning | P2 | 可维护性 | [src/components/QuickOpen.tsx:36:8](../../../src/components/QuickOpen.tsx) | react-doctor/no-high-complexity-react-function |
-| 42 | warning | P2 | 可维护性 | [src/components/QuickOpen.tsx:36:17](../../../src/components/QuickOpen.tsx) | react-doctor/no-giant-component |
-| 43 | error | P2 | 性能与编译器 | [src/components/QuickOpen.tsx:95:21](../../../src/components/QuickOpen.tsx) | react-hooks-js/preserve-manual-memoization |
-| 44 | error | P2 | 性能与编译器 | [src/components/QuickOpen.tsx:109:13](../../../src/components/QuickOpen.tsx) | react-hooks-js/preserve-manual-memoization |
-| 45 | error | P2 | 性能与编译器 | [src/components/QuickOpen.tsx:109:26](../../../src/components/QuickOpen.tsx) | react-hooks-js/preserve-manual-memoization |
-| 46 | warning | P2 | 性能与编译器 | [src/components/QuickOpen.tsx:157:5](../../../src/components/QuickOpen.tsx) | react-hooks-js/set-state-in-effect |
-| 47 | error | P1 | 性能与编译器 | [src/components/QuickOpen.tsx:225:11](../../../src/components/QuickOpen.tsx) | react-hooks-js/refs |
-| 48 | error | P2 | 性能与编译器 | [src/components/QuickOpen.tsx:367:5](../../../src/components/QuickOpen.tsx) | react-hooks-js/preserve-manual-memoization |
-| 49 | error | P2 | 性能与编译器 | [src/components/QuickOpen.tsx:387:13](../../../src/components/QuickOpen.tsx) | react-hooks-js/preserve-manual-memoization |
-| 50 | warning | P2 | 正确性与健壮性 | [src/components/QuickOpen.tsx:547:55](../../../src/components/QuickOpen.tsx) | react-doctor/no-array-index-as-key |
-| 51 | warning | P2 | 可维护性 | [src/components/SearchView.tsx:22:8](../../../src/components/SearchView.tsx) | react-doctor/no-high-complexity-react-function |
-| 52 | warning | P2 | 可维护性 | [src/components/SearchView.tsx:22:17](../../../src/components/SearchView.tsx) | react-doctor/no-giant-component |
-| 53 | error | P3 | 性能与编译器 | [src/components/SearchView.tsx:152:20](../../../src/components/SearchView.tsx) | react-hooks-js/todo |
-| 54 | warning | P2 | 正确性与健壮性 | [src/components/SearchView.tsx:367:12](../../../src/components/SearchView.tsx) | react-doctor/no-array-index-as-key |
-| 55 | warning | P1 | 无障碍与交互 | [src/components/SearchView.tsx:427:13](../../../src/components/SearchView.tsx) | react-doctor/interactive-supports-focus |
-| 56 | warning | P2 | 可维护性 | [src/components/dialog.tsx:16:17](../../../src/components/dialog.tsx) | react-doctor/only-export-components |
-| 57 | warning | P2 | 可维护性 | [src/components/dialog.tsx:58:17](../../../src/components/dialog.tsx) | react-doctor/only-export-components |
-| 58 | warning | P2 | 性能与编译器 | [src/core/commands.ts:243:54](../../../src/core/commands.ts) | react-doctor/js-set-map-lookups |
-| 59 | warning | P2 | 性能与编译器 | [src/editor/documents.ts:371:66](../../../src/editor/documents.ts) | react-doctor/js-set-map-lookups |
-| 60 | warning | P2 | 性能与编译器 | [src/editor/documents.ts:375:53](../../../src/editor/documents.ts) | react-doctor/js-set-map-lookups |
-| 61 | warning | P2 | 性能与编译器 | [src/editor/documents.ts:491:7](../../../src/editor/documents.ts) | react-doctor/async-await-in-loop |
-| 62 | warning | P2 | 性能与编译器 | [src/editor/documents.ts:633:7](../../../src/editor/documents.ts) | react-doctor/async-await-in-loop |
-| 63 | warning | P2 | 性能与编译器 | [src/editor/documents.ts:706:8](../../../src/editor/documents.ts) | react-doctor/js-set-map-lookups |
-| 64 | warning | P2 | 性能与编译器 | [src/editor/documents.ts:931:20](../../../src/editor/documents.ts) | react-doctor/async-await-in-loop |
-| 65 | warning | P3 | 性能与编译器 | [src/editor/editorLayout.test.ts:81:26](../../../src/editor/editorLayout.test.ts) | react-doctor/no-json-parse-stringify-clone |
-| 66 | warning | P2 | 性能与编译器 | [src/editor/languages.ts:361:7](../../../src/editor/languages.ts) | react-doctor/async-await-in-loop |
-| 67 | warning | P2 | 性能与编译器 | [src/editor/languages.ts:408:5](../../../src/editor/languages.ts) | react-doctor/async-await-in-loop |
-| 68 | warning | P2 | 性能与编译器 | [src/editor/languages.ts:448:22](../../../src/editor/languages.ts) | react-doctor/async-await-in-loop |
-| 69 | warning | P2 | 性能与编译器 | [src/editor/monaco.ts:1:1](../../../src/editor/monaco.ts) | react-doctor/prefer-dynamic-import |
-| 70 | warning | P2 | 性能与编译器 | [src/explorer/explorerClipboard.ts:108:11](../../../src/explorer/explorerClipboard.ts) | react-doctor/async-await-in-loop |
-| 71 | warning | P2 | 性能与编译器 | [src/explorer/externalDrop.ts:86:9](../../../src/explorer/externalDrop.ts) | react-doctor/async-await-in-loop |
-| 72 | error | P1 | 正确性与健壮性 | [src/hooks/useExternalDrop.ts:21:3](../../../src/hooks/useExternalDrop.ts) | react-doctor/effect-needs-cleanup |
-| 73 | error | P3 | 性能与编译器 | [src/hooks/useExternalDrop.ts:130:7](../../../src/hooks/useExternalDrop.ts) | react-hooks-js/todo |
-| 74 | error | P3 | 性能与编译器 | [src/hooks/useExternalDrop.ts:134:11](../../../src/hooks/useExternalDrop.ts) | react-hooks-js/todo |
-| 75 | error | P3 | 性能与编译器 | [src/hooks/useExternalDrop.ts:176:17](../../../src/hooks/useExternalDrop.ts) | react-hooks-js/todo |
-| 76 | warning | P1 | 正确性与健壮性 | [src/hooks/useQuickFiles.ts:21:12](../../../src/hooks/useQuickFiles.ts) | react-doctor/no-unsafe-json-parse |
-| 77 | warning | P2 | 性能与编译器 | [src/hooks/useQuickFiles.ts:57:7](../../../src/hooks/useQuickFiles.ts) | react-hooks-js/set-state-in-effect |
-| 78 | warning | P2 | 性能与编译器 | [src/search/search.ts:338:12](../../../src/search/search.ts) | react-doctor/async-await-in-loop |
-| 79 | warning | P2 | 性能与编译器 | [src/store/store.ts:97:18](../../../src/store/store.ts) | react-doctor/js-set-map-lookups |
-| 80 | warning | P2 | 性能与编译器 | [src/store/store.ts:111:11](../../../src/store/store.ts) | react-doctor/js-set-map-lookups |
-| 81 | warning | P2 | 性能与编译器 | [src/utils/keybindings.ts:11:61](../../../src/utils/keybindings.ts) | react-doctor/js-set-map-lookups |
-| 82 | error | P3 | 安全边界 | [tools/notices.mjs:38:3](../../../tools/notices.mjs) | react-doctor/import-metadata-execution-risk |
-| 83 | error | P3 | 安全边界 | [tools/package-portable.mjs:34:1](../../../tools/package-portable.mjs) | react-doctor/import-metadata-execution-risk |
-| 84 | warning | P3 | 安全边界 | [tools/verify-explorer-moves-desktop.mjs:31:61](../../../tools/verify-explorer-moves-desktop.mjs) | react-doctor/local-rpc-native-bridge-risk |
-| 85 | warning | P3 | 安全边界 | [tools/verify-quick-open.mjs:48:7](../../../tools/verify-quick-open.mjs) | react-doctor/postmessage-origin-risk |
+|  ID | 级别    | 优先级 | 分类           | 位置                                                                                              | 规则                                                |
+| --: | ------- | ------ | -------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+|   1 | warning | P2     | 可维护性       | [src/components/App.tsx:103:16](../../../src/components/App.tsx)                                  | react-doctor/no-high-complexity-react-function      |
+|   2 | warning | P2     | 可维护性       | [src/components/App.tsx:103:25](../../../src/components/App.tsx)                                  | react-doctor/no-giant-component                     |
+|   3 | warning | P2     | 可维护性       | [src/components/EditorGroup.tsx:41:8](../../../src/components/EditorGroup.tsx)                    | react-doctor/no-high-complexity-react-function      |
+|   4 | warning | P2     | 可维护性       | [src/components/EditorGroup.tsx:41:17](../../../src/components/EditorGroup.tsx)                   | react-doctor/no-giant-component                     |
+|   5 | error   | P1     | 性能与编译器   | [src/components/EditorGroup.tsx:195:13](../../../src/components/EditorGroup.tsx)                  | react-hooks-js/immutability                         |
+|   6 | error   | P1     | 性能与编译器   | [src/components/EditorGroup.tsx:205:7](../../../src/components/EditorGroup.tsx)                   | react-hooks-js/immutability                         |
+|   7 | warning | P2     | 性能与编译器   | [src/components/EditorGroup.tsx:250:9](../../../src/components/EditorGroup.tsx)                   | react-doctor/async-await-in-loop                    |
+|   8 | warning | P1     | 正确性与健壮性 | [src/components/EditorGroup.tsx:295:30](../../../src/components/EditorGroup.tsx)                  | react-doctor/no-unsafe-json-parse                   |
+|   9 | warning | P2     | 性能与编译器   | [src/components/EditorGroup.tsx:315:30](../../../src/components/EditorGroup.tsx)                  | react-doctor/js-set-map-lookups                     |
+|  10 | warning | P1     | 无障碍与交互   | [src/components/EditorGroup.tsx:377:20](../../../src/components/EditorGroup.tsx)                  | react-doctor/html-no-nested-interactive             |
+|  11 | warning | P2     | 正确性与健壮性 | [src/components/EditorGroup.tsx:447:25](../../../src/components/EditorGroup.tsx)                  | react-doctor/no-array-index-as-key                  |
+|  12 | error   | P1     | 性能与编译器   | [src/components/EditorGroup.tsx:581:5](../../../src/components/EditorGroup.tsx)                   | react-hooks-js/immutability                         |
+|  13 | error   | P1     | 性能与编译器   | [src/components/EditorGroup.tsx:588:22](../../../src/components/EditorGroup.tsx)                  | react-hooks-js/immutability                         |
+|  14 | error   | P1     | 性能与编译器   | [src/components/EditorGroup.tsx:601:22](../../../src/components/EditorGroup.tsx)                  | react-hooks-js/immutability                         |
+|  15 | warning | P2     | 可维护性       | [src/components/EditorGroup.tsx:673:23](../../../src/components/EditorGroup.tsx)                  | react-doctor/only-export-components                 |
+|  16 | warning | P2     | 正确性与健壮性 | [src/components/EditorTabMenu.tsx:111:34](../../../src/components/EditorTabMenu.tsx)              | react-doctor/no-array-index-as-key                  |
+|  17 | warning | P2     | 可维护性       | [src/components/Explorer.tsx:52:17](../../../src/components/Explorer.tsx)                         | react-doctor/only-export-components                 |
+|  18 | warning | P2     | 可维护性       | [src/components/Explorer.tsx:57:17](../../../src/components/Explorer.tsx)                         | react-doctor/no-giant-component                     |
+|  19 | warning | P2     | 性能与编译器   | [src/components/Explorer.tsx:85:33](../../../src/components/Explorer.tsx)                         | react-doctor/rerender-lazy-ref-init                 |
+|  20 | error   | P1     | 正确性与健壮性 | [src/components/Explorer.tsx:147:3](../../../src/components/Explorer.tsx)                         | react-doctor/no-ref-current-in-render               |
+|  21 | error   | P1     | 性能与编译器   | [src/components/Explorer.tsx:147:3](../../../src/components/Explorer.tsx)                         | react-hooks-js/refs                                 |
+|  22 | error   | P1     | 性能与编译器   | [src/components/Explorer.tsx:149:8](../../../src/components/Explorer.tsx)                         | react-hooks-js/refs                                 |
+|  23 | error   | P1     | 性能与编译器   | [src/components/Explorer.tsx:150:52](../../../src/components/Explorer.tsx)                        | react-hooks-js/refs                                 |
+|  24 | error   | P3     | 性能与编译器   | [src/components/Explorer.tsx:192:7](../../../src/components/Explorer.tsx)                         | react-hooks-js/todo                                 |
+|  25 | error   | P3     | 性能与编译器   | [src/components/Explorer.tsx:282:13](../../../src/components/Explorer.tsx)                        | react-hooks-js/todo                                 |
+|  26 | error   | P3     | 性能与编译器   | [src/components/Explorer.tsx:409:5](../../../src/components/Explorer.tsx)                         | react-hooks-js/todo                                 |
+|  27 | warning | P3     | 安全边界       | [src/components/Explorer.tsx:550:5](../../../src/components/Explorer.tsx)                         | react-doctor/postmessage-origin-risk                |
+|  28 | warning | P2     | 性能与编译器   | [src/components/Explorer.tsx:692:7](../../../src/components/Explorer.tsx)                         | react-hooks-js/set-state-in-effect                  |
+|  29 | error   | P3     | 性能与编译器   | [src/components/Explorer.tsx:741:46](../../../src/components/Explorer.tsx)                        | react-hooks-js/todo                                 |
+|  30 | error   | P3     | 性能与编译器   | [src/components/Explorer.tsx:771:24](../../../src/components/Explorer.tsx)                        | react-hooks-js/todo                                 |
+|  31 | warning | P2     | 性能与编译器   | [src/components/Explorer.tsx:809:11](../../../src/components/Explorer.tsx)                        | react-doctor/async-await-in-loop                    |
+|  32 | warning | P1     | 无障碍与交互   | [src/components/Explorer.tsx:848:6](../../../src/components/Explorer.tsx)                         | react-doctor/no-noninteractive-element-interactions |
+|  33 | warning | P3     | 正确性与健壮性 | [src/components/MarkdownPreview.tsx:107:9](../../../src/components/MarkdownPreview.tsx)           | react-doctor/no-prevent-default                     |
+|  34 | warning | P2     | 可维护性       | [src/components/MediaPreview.tsx:10:8](../../../src/components/MediaPreview.tsx)                  | react-doctor/no-high-complexity-react-function      |
+|  35 | warning | P2     | 性能与编译器   | [src/components/MediaPreview.tsx:20:5](../../../src/components/MediaPreview.tsx)                  | react-hooks-js/set-state-in-effect                  |
+|  36 | error   | P1     | 正确性与健壮性 | [src/components/MediaPreview.tsx:170:3](../../../src/components/MediaPreview.tsx)                 | react-doctor/no-ref-current-in-render               |
+|  37 | error   | P1     | 性能与编译器   | [src/components/MediaPreview.tsx:170:3](../../../src/components/MediaPreview.tsx)                 | react-hooks-js/refs                                 |
+|  38 | warning | P1     | 无障碍与交互   | [src/components/MediaPreview.tsx:211:6](../../../src/components/MediaPreview.tsx)                 | react-doctor/no-static-element-interactions         |
+|  39 | warning | P1     | 无障碍与交互   | [src/components/MediaPreview.tsx:247:10](../../../src/components/MediaPreview.tsx)                | react-doctor/click-events-have-key-events           |
+|  40 | warning | P1     | 无障碍与交互   | [src/components/MediaPreview.tsx:247:10](../../../src/components/MediaPreview.tsx)                | react-doctor/no-noninteractive-element-interactions |
+|  41 | warning | P2     | 可维护性       | [src/components/QuickOpen.tsx:36:8](../../../src/components/QuickOpen.tsx)                        | react-doctor/no-high-complexity-react-function      |
+|  42 | warning | P2     | 可维护性       | [src/components/QuickOpen.tsx:36:17](../../../src/components/QuickOpen.tsx)                       | react-doctor/no-giant-component                     |
+|  43 | error   | P2     | 性能与编译器   | [src/components/QuickOpen.tsx:95:21](../../../src/components/QuickOpen.tsx)                       | react-hooks-js/preserve-manual-memoization          |
+|  44 | error   | P2     | 性能与编译器   | [src/components/QuickOpen.tsx:109:13](../../../src/components/QuickOpen.tsx)                      | react-hooks-js/preserve-manual-memoization          |
+|  45 | error   | P2     | 性能与编译器   | [src/components/QuickOpen.tsx:109:26](../../../src/components/QuickOpen.tsx)                      | react-hooks-js/preserve-manual-memoization          |
+|  46 | warning | P2     | 性能与编译器   | [src/components/QuickOpen.tsx:157:5](../../../src/components/QuickOpen.tsx)                       | react-hooks-js/set-state-in-effect                  |
+|  47 | error   | P1     | 性能与编译器   | [src/components/QuickOpen.tsx:225:11](../../../src/components/QuickOpen.tsx)                      | react-hooks-js/refs                                 |
+|  48 | error   | P2     | 性能与编译器   | [src/components/QuickOpen.tsx:367:5](../../../src/components/QuickOpen.tsx)                       | react-hooks-js/preserve-manual-memoization          |
+|  49 | error   | P2     | 性能与编译器   | [src/components/QuickOpen.tsx:387:13](../../../src/components/QuickOpen.tsx)                      | react-hooks-js/preserve-manual-memoization          |
+|  50 | warning | P2     | 正确性与健壮性 | [src/components/QuickOpen.tsx:547:55](../../../src/components/QuickOpen.tsx)                      | react-doctor/no-array-index-as-key                  |
+|  51 | warning | P2     | 可维护性       | [src/components/SearchView.tsx:22:8](../../../src/components/SearchView.tsx)                      | react-doctor/no-high-complexity-react-function      |
+|  52 | warning | P2     | 可维护性       | [src/components/SearchView.tsx:22:17](../../../src/components/SearchView.tsx)                     | react-doctor/no-giant-component                     |
+|  53 | error   | P3     | 性能与编译器   | [src/components/SearchView.tsx:152:20](../../../src/components/SearchView.tsx)                    | react-hooks-js/todo                                 |
+|  54 | warning | P2     | 正确性与健壮性 | [src/components/SearchView.tsx:367:12](../../../src/components/SearchView.tsx)                    | react-doctor/no-array-index-as-key                  |
+|  55 | warning | P1     | 无障碍与交互   | [src/components/SearchView.tsx:427:13](../../../src/components/SearchView.tsx)                    | react-doctor/interactive-supports-focus             |
+|  56 | warning | P2     | 可维护性       | [src/components/dialog.tsx:16:17](../../../src/components/dialog.tsx)                             | react-doctor/only-export-components                 |
+|  57 | warning | P2     | 可维护性       | [src/components/dialog.tsx:58:17](../../../src/components/dialog.tsx)                             | react-doctor/only-export-components                 |
+|  58 | warning | P2     | 性能与编译器   | [src/core/commands.ts:243:54](../../../src/core/commands.ts)                                      | react-doctor/js-set-map-lookups                     |
+|  59 | warning | P2     | 性能与编译器   | [src/editor/documents.ts:371:66](../../../src/editor/documents.ts)                                | react-doctor/js-set-map-lookups                     |
+|  60 | warning | P2     | 性能与编译器   | [src/editor/documents.ts:375:53](../../../src/editor/documents.ts)                                | react-doctor/js-set-map-lookups                     |
+|  61 | warning | P2     | 性能与编译器   | [src/editor/documents.ts:491:7](../../../src/editor/documents.ts)                                 | react-doctor/async-await-in-loop                    |
+|  62 | warning | P2     | 性能与编译器   | [src/editor/documents.ts:633:7](../../../src/editor/documents.ts)                                 | react-doctor/async-await-in-loop                    |
+|  63 | warning | P2     | 性能与编译器   | [src/editor/documents.ts:706:8](../../../src/editor/documents.ts)                                 | react-doctor/js-set-map-lookups                     |
+|  64 | warning | P2     | 性能与编译器   | [src/editor/documents.ts:931:20](../../../src/editor/documents.ts)                                | react-doctor/async-await-in-loop                    |
+|  65 | warning | P3     | 性能与编译器   | [src/editor/editorLayout.test.ts:81:26](../../../src/editor/editorLayout.test.ts)                 | react-doctor/no-json-parse-stringify-clone          |
+|  66 | warning | P2     | 性能与编译器   | [src/editor/languages.ts:361:7](../../../src/editor/languages.ts)                                 | react-doctor/async-await-in-loop                    |
+|  67 | warning | P2     | 性能与编译器   | [src/editor/languages.ts:408:5](../../../src/editor/languages.ts)                                 | react-doctor/async-await-in-loop                    |
+|  68 | warning | P2     | 性能与编译器   | [src/editor/languages.ts:448:22](../../../src/editor/languages.ts)                                | react-doctor/async-await-in-loop                    |
+|  69 | warning | P2     | 性能与编译器   | [src/editor/monaco.ts:1:1](../../../src/editor/monaco.ts)                                         | react-doctor/prefer-dynamic-import                  |
+|  70 | warning | P2     | 性能与编译器   | [src/explorer/explorerClipboard.ts:108:11](../../../src/explorer/explorerClipboard.ts)            | react-doctor/async-await-in-loop                    |
+|  71 | warning | P2     | 性能与编译器   | [src/explorer/externalDrop.ts:86:9](../../../src/explorer/externalDrop.ts)                        | react-doctor/async-await-in-loop                    |
+|  72 | error   | P1     | 正确性与健壮性 | [src/hooks/useExternalDrop.ts:21:3](../../../src/hooks/useExternalDrop.ts)                        | react-doctor/effect-needs-cleanup                   |
+|  73 | error   | P3     | 性能与编译器   | [src/hooks/useExternalDrop.ts:130:7](../../../src/hooks/useExternalDrop.ts)                       | react-hooks-js/todo                                 |
+|  74 | error   | P3     | 性能与编译器   | [src/hooks/useExternalDrop.ts:134:11](../../../src/hooks/useExternalDrop.ts)                      | react-hooks-js/todo                                 |
+|  75 | error   | P3     | 性能与编译器   | [src/hooks/useExternalDrop.ts:176:17](../../../src/hooks/useExternalDrop.ts)                      | react-hooks-js/todo                                 |
+|  76 | warning | P1     | 正确性与健壮性 | [src/hooks/useQuickFiles.ts:21:12](../../../src/hooks/useQuickFiles.ts)                           | react-doctor/no-unsafe-json-parse                   |
+|  77 | warning | P2     | 性能与编译器   | [src/hooks/useQuickFiles.ts:57:7](../../../src/hooks/useQuickFiles.ts)                            | react-hooks-js/set-state-in-effect                  |
+|  78 | warning | P2     | 性能与编译器   | [src/search/search.ts:338:12](../../../src/search/search.ts)                                      | react-doctor/async-await-in-loop                    |
+|  79 | warning | P2     | 性能与编译器   | [src/store/store.ts:97:18](../../../src/store/store.ts)                                           | react-doctor/js-set-map-lookups                     |
+|  80 | warning | P2     | 性能与编译器   | [src/store/store.ts:111:11](../../../src/store/store.ts)                                          | react-doctor/js-set-map-lookups                     |
+|  81 | warning | P2     | 性能与编译器   | [src/utils/keybindings.ts:11:61](../../../src/utils/keybindings.ts)                               | react-doctor/js-set-map-lookups                     |
+|  82 | error   | P3     | 安全边界       | [tools/notices.mjs:38:3](../../../tools/notices.mjs)                                              | react-doctor/import-metadata-execution-risk         |
+|  83 | error   | P3     | 安全边界       | [tools/package-portable.mjs:34:1](../../../tools/package-portable.mjs)                            | react-doctor/import-metadata-execution-risk         |
+|  84 | warning | P3     | 安全边界       | [tools/verify-explorer-moves-desktop.mjs:31:61](../../../tools/verify-explorer-moves-desktop.mjs) | react-doctor/local-rpc-native-bridge-risk           |
+|  85 | warning | P3     | 安全边界       | [tools/verify-quick-open.mjs:48:7](../../../tools/verify-quick-open.mjs)                          | react-doctor/postmessage-origin-risk                |

@@ -12,7 +12,23 @@ describe("Explorer creation paths", () => {
     for (const name of ["src/ui/Button.tsx", "src\\ui\\", ".env", "中文🙂.txt", "COM10"]) {
       expect(validateCreationName(name, true)).toBeNull();
     }
-    for (const name of ["", " ", "../x", "a/./b", "a/../b", "C:a", "/root", "\\root", "a?b", "src/NUL.txt", "COM¹", "a/LPT9.log", "tail.", "tail ", "a\0b"]) {
+    for (const name of [
+      "",
+      " ",
+      "../x",
+      "a/./b",
+      "a/../b",
+      "C:a",
+      "/root",
+      "\\root",
+      "a?b",
+      "src/NUL.txt",
+      "COM¹",
+      "a/LPT9.log",
+      "tail.",
+      "tail ",
+      "a\0b",
+    ]) {
       expect(validateCreationName(name, true), name).not.toBeNull();
     }
     expect(validateCreationName("x".repeat(256), true)).not.toBeNull();

@@ -24,13 +24,27 @@ import { DocumentBackups } from "./documentBackup";
 
 export const models = new Map<string, monaco.editor.ITextModel>();
 export const editors = new Map<string, monaco.editor.IStandaloneCodeEditor>();
-export const diffEditors = new Map<string, { editor: monaco.editor.IStandaloneDiffEditor; viewModel: monaco.editor.IDiffEditorViewModel }>();
+export const diffEditors = new Map<
+  string,
+  { editor: monaco.editor.IStandaloneDiffEditor; viewModel: monaco.editor.IDiffEditorViewModel }
+>();
 useApp.subscribe((state, previous) => {
-  if (state.settings === previous.settings) { return; }
-  if (modelSettingKeys.some((key) => settingValue(state.settings, key) !== settingValue(previous.settings, key))) {
-    for (const m of models.values()) { applyModelSettings(m, state.settings); }
+  if (state.settings === previous.settings) {
+    return;
   }
-  if (!settingValue(state.settings, "workbench.editor.enablePreview") && state.groups.some((g) => g.preview)) {
+  if (
+    modelSettingKeys.some(
+      (key) => settingValue(state.settings, key) !== settingValue(previous.settings, key),
+    )
+  ) {
+    for (const m of models.values()) {
+      applyModelSettings(m, state.settings);
+    }
+  }
+  if (
+    !settingValue(state.settings, "workbench.editor.enablePreview") &&
+    state.groups.some((g) => g.preview)
+  ) {
     setApp({ groups: state.groups.map((g) => ({ ...g, preview: null })) });
   }
 });
@@ -50,11 +64,18 @@ let documentEpoch = 0;
 let backupRetryDelay = 0;
 let backupRetryAt = 0;
 let lastMoveFailure: { sequence: number; error: unknown } | undefined;
-let documentMove: { paths: readonly string[]; done: Promise<{ error?: unknown }>; drainThrough: number } | null = null;
+let documentMove: {
+  paths: readonly string[];
+  done: Promise<{ error?: unknown }>;
+  drainThrough: number;
+} | null = null;
 let windowClose: Promise<void> | undefined;
 
 export async function beginDocumentMove(moves: FileMove[]) {
-  return beginDocumentChange(moves.flatMap(({ from, to }) => [from, to]), () => checkDocumentMoves(moves));
+  return beginDocumentChange(
+    moves.flatMap(({ from, to }) => [from, to]),
+    () => checkDocumentMoves(moves),
+  );
 }
 
 export async function beginDocumentDelete(paths: readonly string[]) {
@@ -67,12 +88,18 @@ async function beginDocumentChange(paths: readonly string[], validate = () => {}
   }
   const sequence = ++moveSequence;
   let complete!: (result: { error?: unknown }) => void;
-  const done = new Promise<{ error?: unknown }>((resolve) => { complete = resolve; });
+  const done = new Promise<{ error?: unknown }>((resolve) => {
+    complete = resolve;
+  });
   const draining = [...saveQueues.values()];
-  const move = documentMove = { paths, done, drainThrough: saveSequence };
+  const move = (documentMove = { paths, done, drainThrough: saveSequence });
   const release = (error?: unknown) => {
-    if (documentMove !== move) { return; }
-    if (error !== undefined) { lastMoveFailure = { sequence, error }; }
+    if (documentMove !== move) {
+      return;
+    }
+    if (error !== undefined) {
+      lastMoveFailure = { sequence, error };
+    }
     documentMove = null;
     complete({ error });
     scheduleBackup();
@@ -91,9 +118,7 @@ async function beginDocumentChange(paths: readonly string[], validate = () => {}
 }
 
 function isMoving(path: string) {
-  return (
-    documentMove?.paths.some(source => withinPath(path, source)) ?? false
-  );
+  return documentMove?.paths.some((source) => withinPath(path, source)) ?? false;
 }
 function withinPath(path: string, parent: string) {
   const base = normalize(parent).replace(/\/+$/, "");
@@ -102,39 +127,60 @@ function withinPath(path: string, parent: string) {
 
 export function documentsAtPaths(paths: readonly string[]) {
   const docs = Object.values(useApp.getState().docs);
-  const ids = new Set(docs.filter(doc => doc.path && paths.some(path => withinPath(doc.path!, path))).map(doc => doc.id));
-  return docs.filter(doc => ids.has(doc.id) || (doc.gitDiff?.sourceId && ids.has(doc.gitDiff.sourceId)));
+  const ids = new Set(
+    docs
+      .filter((doc) => doc.path && paths.some((path) => withinPath(doc.path!, path)))
+      .map((doc) => doc.id),
+  );
+  return docs.filter(
+    (doc) => ids.has(doc.id) || (doc.gitDiff?.sourceId && ids.has(doc.gitDiff.sourceId)),
+  );
 }
 
 function movedDocumentPath(path: string, moves: FileMove[]) {
   const move = moves.find(({ from }) => withinPath(path, from));
-  if (!move) { return null; }
+  if (!move) {
+    return null;
+  }
   const source = visiblePath(move.from).replace(/\\/g, "/").replace(/\/+$/, "");
   const destination = visiblePath(move.to).replace(/\\/g, "/").replace(/\/+$/, "");
   return destination + visiblePath(path).replace(/\\/g, "/").slice(source.length);
 }
 
 function occupiedDestination() {
-  return new Error("This destination is already open in another editor. Close that editor before moving files.");
+  return new Error(
+    "This destination is already open in another editor. Close that editor before moving files.",
+  );
 }
 
 function checkDocumentMoves(moves: FileMove[]) {
   const docs = Object.values(useApp.getState().docs);
   for (const { from, to } of moves) {
-    if (docs.some(doc => doc.path && withinPath(doc.path, to) && !withinPath(doc.path, from))) {
+    if (docs.some((doc) => doc.path && withinPath(doc.path, to) && !withinPath(doc.path, from))) {
       throw occupiedDestination();
     }
     const target = monaco.editor.getModel(monaco.Uri.file(visiblePath(to)));
-    if (target && !docs.some(doc => doc.path && withinPath(doc.path, from) && models.get(doc.id) === target)) {
+    if (
+      target &&
+      !docs.some((doc) => doc.path && withinPath(doc.path, from) && models.get(doc.id) === target)
+    ) {
       throw occupiedDestination();
     }
   }
   for (const doc of docs) {
     const path = doc.path && movedDocumentPath(doc.path, moves);
-    if (!path) { continue; }
+    if (!path) {
+      continue;
+    }
     const target = monaco.editor.getModel(monaco.Uri.file(path));
-    if (target && target !== models.get(doc.id)) { throw occupiedDestination(); }
-    if (docs.some(other => other.id !== doc.id && other.path && normalize(other.path) === normalize(path))) {
+    if (target && target !== models.get(doc.id)) {
+      throw occupiedDestination();
+    }
+    if (
+      docs.some(
+        (other) => other.id !== doc.id && other.path && normalize(other.path) === normalize(path),
+      )
+    ) {
       throw occupiedDestination();
     }
   }
@@ -232,7 +278,9 @@ export function session(): Session {
   saveEditorViews();
   const s = useApp.getState();
   return {
-    gitDiffs: Object.values(s.docs).filter((doc) => doc.gitDiff).map((doc) => ({ ...doc, dirty: false })),
+    gitDiffs: Object.values(s.docs)
+      .filter((doc) => doc.gitDiff)
+      .map((doc) => ({ ...doc, dirty: false })),
     gitRepository: s.gitRepository,
     gitTab: s.gitTab,
     gitLayout: s.gitLayout,
@@ -250,7 +298,9 @@ export function session(): Session {
 }
 
 export async function checkpoint(options: { waitForMoves?: boolean } = {}) {
-  if (!desktop) { return; }
+  if (!desktop) {
+    return;
+  }
   const firstMove = moveSequence;
   for (;;) {
     if (options.waitForMoves) {
@@ -259,12 +309,16 @@ export async function checkpoint(options: { waitForMoves?: boolean } = {}) {
       while (documentMove || saveQueues.size) {
         if (documentMove) {
           const result = await documentMove.done;
-          if (result.error !== undefined) { throw result.error; }
+          if (result.error !== undefined) {
+            throw result.error;
+          }
         } else {
           await Promise.allSettled(saveQueues.values());
         }
       }
-      if (lastMoveFailure && lastMoveFailure.sequence > firstMove) { throw lastMoveFailure.error; }
+      if (lastMoveFailure && lastMoveFailure.sequence > firstMove) {
+        throw lastMoveFailure.error;
+      }
     } else if (documentMove) {
       return;
     }
@@ -272,8 +326,14 @@ export async function checkpoint(options: { waitForMoves?: boolean } = {}) {
     const saveVersion = saveSequence;
     const snapshotDocs = useApp.getState().docs;
     await syncDocumentSnapshot();
-    if (!options.waitForMoves || (!documentMove && !saveQueues.size &&
-      moveVersion === moveSequence && saveVersion === saveSequence && snapshotDocs === useApp.getState().docs)) {
+    if (
+      !options.waitForMoves ||
+      (!documentMove &&
+        !saveQueues.size &&
+        moveVersion === moveSequence &&
+        saveVersion === saveSequence &&
+        snapshotDocs === useApp.getState().docs)
+    ) {
       return;
     }
   }
@@ -283,7 +343,7 @@ async function syncDocumentSnapshot() {
   await queueDocumentSnapshot(false);
 }
 
-const backupDocuments = () => Object.values(useApp.getState().docs).filter(doc => !doc.gitDiff);
+const backupDocuments = () => Object.values(useApp.getState().docs).filter((doc) => !doc.gitDiff);
 
 function queueDocumentSnapshot(automatic: boolean) {
   const epoch = documentEpoch;
@@ -291,14 +351,20 @@ function queueDocumentSnapshot(automatic: boolean) {
     .catch(() => {})
     .then(async () => {
       // A reloaded WebView must restore the native mirror before replacing it.
-      if (!useApp.getState().ready || epoch !== documentEpoch) { return; }
-      if (automatic && documentMove) { return; }
+      if (!useApp.getState().ready || epoch !== documentEpoch) {
+        return;
+      }
+      if (automatic && documentMove) {
+        return;
+      }
       const capturedDue = sessionBackupDue;
       const snapshot = backups.capture(backupDocuments(), models, automatic);
       await call<void>("sync_documents", { documents: snapshot.documents, session: session() });
       snapshot.acknowledge();
       backupRetryDelay = backupRetryAt = 0;
-      if (sessionBackupDue === capturedDue) { sessionBackupDue = undefined; }
+      if (sessionBackupDue === capturedDue) {
+        sessionBackupDue = undefined;
+      }
       backups.noteChanges(backupDocuments(), models);
       armBackupTimer();
     });
@@ -306,7 +372,11 @@ function queueDocumentSnapshot(automatic: boolean) {
 }
 
 export function closeWindowWithRecovery(destroy: () => Promise<void>) {
-  return windowClose ??= checkpoint({ waitForMoves: true }).then(destroy).finally(() => { windowClose = undefined; });
+  return (windowClose ??= checkpoint({ waitForMoves: true })
+    .then(destroy)
+    .finally(() => {
+      windowClose = undefined;
+    }));
 }
 export function scheduleBackup() {
   sessionBackupDue = Date.now() + 400;
@@ -316,18 +386,25 @@ export function scheduleBackup() {
 
 function armBackupTimer() {
   clearTimeout(backupTimer);
-  if (documentMove || !useApp.getState().ready) { return; }
+  if (documentMove || !useApp.getState().ready) {
+    return;
+  }
   const deadline = Math.min(sessionBackupDue ?? Infinity, backups.nextDeadline());
-  if (!Number.isFinite(deadline)) { return; }
+  if (!Number.isFinite(deadline)) {
+    return;
+  }
   const epoch = documentEpoch;
   backupTimer = setTimeout(
-    () => void queueDocumentSnapshot(true).catch((e) => {
-      if (epoch !== documentEpoch) { return; }
-      notify(`Backup failed: ${errorMessage(e)}`);
-      backupRetryDelay = Math.min(30_000, backupRetryDelay ? backupRetryDelay * 2 : 1000);
-      backupRetryAt = Date.now() + backupRetryDelay;
-      armBackupTimer();
-    }),
+    () =>
+      void queueDocumentSnapshot(true).catch((e) => {
+        if (epoch !== documentEpoch) {
+          return;
+        }
+        notify(`Backup failed: ${errorMessage(e)}`);
+        backupRetryDelay = Math.min(30_000, backupRetryDelay ? backupRetryDelay * 2 : 1000);
+        backupRetryAt = Date.now() + backupRetryDelay;
+        armBackupTimer();
+      }),
     Math.max(0, deadline - Date.now(), backupRetryAt - Date.now()),
   );
 }
@@ -338,7 +415,9 @@ export function attachDocument(doc: Doc, text: string, initiallyDirty = false) {
   }
   const uri = doc.path ? monaco.Uri.file(visiblePath(doc.path)) : monaco.Uri.parse(doc.id);
   const existing = monaco.editor.getModel(uri);
-  if (existing && existing !== models.get(doc.id)) { throw occupiedDestination(); }
+  if (existing && existing !== models.get(doc.id)) {
+    throw occupiedDestination();
+  }
   const m = existing ?? monaco.editor.createModel(text, doc.language, uri);
   applyModelSettings(m, useApp.getState().settings);
   models.set(doc.id, m);
@@ -408,7 +487,8 @@ export function restoreDocument(mirror: Mirror, options: { synchronized?: boolea
   const doc: Doc = {
     ...mirror,
     kind,
-    large: (mirror.fileInfo?.size ?? new TextEncoder().encode(mirror.text).length) > 20 * 1024 * 1024,
+    large:
+      (mirror.fileInfo?.size ?? new TextEncoder().encode(mirror.text).length) > 20 * 1024 * 1024,
     name: mirror.name ?? (mirror.path ? basename(mirror.path) : "Untitled"),
     language,
     eol: mirror.text.includes("\r\n") ? "CRLF" : "LF",
@@ -420,7 +500,9 @@ export function restoreDocument(mirror: Mirror, options: { synchronized?: boolea
   }
   // Bootstrap already owns this exact body in its backend mirror. In
   // particular, retain restored large buffers before their first idle timer.
-  if (options.synchronized) { backups.confirmRestored(doc, models.get(doc.id)); }
+  if (options.synchronized) {
+    backups.confirmRestored(doc, models.get(doc.id));
+  }
 }
 
 function attachPreviewDocument(doc: Doc) {
@@ -443,25 +525,38 @@ export async function openPath(path: string, options: OpenPathOptions = {}): Pro
   const epoch = documentEpoch;
   const root = useApp.getState().root;
   const current = () => epoch === documentEpoch && root === useApp.getState().root;
-  while (documentMove && isMoving(path)) { await documentMove.done; }
-  if (!current()) { throw new Error("The workspace changed before the file opened."); }
+  while (documentMove && isMoving(path)) {
+    await documentMove.done;
+  }
+  if (!current()) {
+    throw new Error("The workspace changed before the file opened.");
+  }
   const sequence = moveSequence;
   try {
     return await openDocumentPath(path, options, sequence, current);
   } catch (error) {
-    if (current() && sequence !== moveSequence) { return openPath(path, options); }
+    if (current() && sequence !== moveSequence) {
+      return openPath(path, options);
+    }
     throw error;
   }
 }
 
-async function openDocumentPath(path: string, options: OpenPathOptions, sequence: number, current: () => boolean): Promise<string> {
+async function openDocumentPath(
+  path: string,
+  options: OpenPathOptions,
+  sequence: number,
+  current: () => boolean,
+): Promise<string> {
   const existing = Object.values(useApp.getState().docs).find(
     (d) => d.path && normalize(d.path) === normalize(path),
   );
   let id = existing?.id;
   if (!id) {
     const fileInfo = await call<FileInfo>("inspect_file", { path });
-    if (!current()) { throw new Error("The workspace changed before the file opened."); }
+    if (!current()) {
+      throw new Error("The workspace changed before the file opened.");
+    }
     let kind = fileInfo.kind;
     let disk: DiskDocument | undefined;
     try {
@@ -469,13 +564,17 @@ async function openDocumentPath(path: string, options: OpenPathOptions, sequence
         disk = await call<DiskDocument>("read_document", { path, force: options.force ?? false });
       }
     } catch (e) {
-      if (!current()) { throw new Error("The workspace changed before the file opened."); }
+      if (!current()) {
+        throw new Error("The workspace changed before the file opened.");
+      }
       if (
         (e as { code?: string }).code === "largeFile" &&
         (await ask("Open large file?", errorMessage(e), ["Open Anyway", "Cancel"])) ===
           "Open Anyway"
       ) {
-        if (!current()) { throw new Error("The workspace changed before the file opened."); }
+        if (!current()) {
+          throw new Error("The workspace changed before the file opened.");
+        }
         return openPath(path, { ...options, force: true });
       }
       if (["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
@@ -486,8 +585,12 @@ async function openDocumentPath(path: string, options: OpenPathOptions, sequence
     }
     // The read may have started before a disk move. Never attach its stale bytes
     // to a URI now owned by a moved document, even if the move already finished.
-    if (!current()) { throw new Error("The workspace changed before the file opened."); }
-    if (sequence !== moveSequence) { return openPath(path, options); }
+    if (!current()) {
+      throw new Error("The workspace changed before the file opened.");
+    }
+    if (sequence !== moveSequence) {
+      return openPath(path, options);
+    }
     const duplicate = Object.values(useApp.getState().docs).find(
       (d) => d.path && normalize(d.path) === normalize(path),
     );
@@ -528,8 +631,10 @@ async function openDocumentPath(path: string, options: OpenPathOptions, sequence
     }
   }
   const state = useApp.getState();
-  if ((state.dataDir && normalize(path) === normalize(join(state.dataDir, "settings.json"))) ||
-    (state.root && normalize(path) === normalize(join(state.root, ".litecode/settings.json")))) {
+  if (
+    (state.dataDir && normalize(path) === normalize(join(state.dataDir, "settings.json"))) ||
+    (state.root && normalize(path) === normalize(join(state.root, ".litecode/settings.json")))
+  ) {
     const m = models.get(id);
     if (m) {
       try {
@@ -544,7 +649,9 @@ async function openDocumentPath(path: string, options: OpenPathOptions, sequence
       }
     }
   }
-  if (options.reveal !== false) { showDocument(id, options); }
+  if (options.reveal !== false) {
+    showDocument(id, options);
+  }
   return id;
 }
 
@@ -583,7 +690,9 @@ export function normalizeGroup(group: Group): Group {
     tabs: [...sticky, ...group.tabs.filter((id) => !sticky.includes(id))],
     preview:
       settingValue(useApp.getState().settings, "workbench.editor.enablePreview") &&
-      group.preview && group.tabs.includes(group.preview) && !sticky.includes(group.preview)
+      group.preview &&
+      group.tabs.includes(group.preview) &&
+      !sticky.includes(group.preview)
         ? group.preview
         : null,
   };
@@ -668,7 +777,9 @@ export function showDocument(
   const visible = new Set(useApp.getState().groups.flatMap((g) => g.tabs));
   for (const tab of visible) {
     const source = useApp.getState().docs[tab]?.gitDiff?.sourceId;
-    if (source) { visible.add(source); }
+    if (source) {
+      visible.add(source);
+    }
   }
   for (const previous of Object.values(s.docs)) {
     if (previous.id !== id && !previous.dirty && !visible.has(previous.id)) {
@@ -713,7 +824,9 @@ export async function autoSave(reason: AutoSaveMode, id?: string) {
 export async function save(id = activeDoc()?.id, saveAs = false) {
   if (id && useApp.getState().docs[id]?.gitDiff) {
     id = useApp.getState().docs[id].gitDiff?.sourceId;
-    if (!id) { return; }
+    if (!id) {
+      return;
+    }
   }
   await saveDocument(id, saveAs);
 }
@@ -747,144 +860,169 @@ async function saveDocument(
   autoSaveMode?: AutoSaveMode,
   resolution?: { context: ConflictContext; action: "reload" | "overwrite" },
 ) {
-  if (!id) { return; }
+  if (!id) {
+    return;
+  }
   await queueDocumentOperation(id, async () => {
-      let doc = useApp.getState().docs[id];
-      let m = models.get(id);
-      if (resolution) { checkConflictContext(resolution.context); }
-      if (!doc || !m || !isTextDocument(doc)) {
-        return;
+    let doc = useApp.getState().docs[id];
+    let m = models.get(id);
+    if (resolution) {
+      checkConflictContext(resolution.context);
+    }
+    if (!doc || !m || !isTextDocument(doc)) {
+      return;
+    }
+    if (
+      autoSaveMode &&
+      (useApp.getState().settings["files.autoSave"] !== autoSaveMode ||
+        !doc.path ||
+        !doc.dirty ||
+        doc.conflict)
+    ) {
+      return;
+    }
+    let path = doc.path;
+    let revision = doc.revision;
+    if (resolution) {
+      const { context, action } = resolution;
+      const disk = await call<DiskDocument>("read_document", {
+        path: context.path,
+        force: true,
+        encoding: context.encoding,
+      });
+      const fileInfo =
+        doc.kind === "svg"
+          ? await call<FileInfo>("inspect_file", { path: context.path })
+          : doc.fileInfo;
+      checkConflictContext(context);
+      if (disk.revision !== context.revision) {
+        throw changedConflict();
       }
-      if (
-        autoSaveMode &&
-        (useApp.getState().settings["files.autoSave"] !== autoSaveMode ||
-          !doc.path ||
-          !doc.dirty ||
-          doc.conflict)
-      ) {
-        return;
-      }
-      let path = doc.path;
-      let revision = doc.revision;
-      if (resolution) {
-        const { context, action } = resolution;
-        const disk = await call<DiskDocument>("read_document", {
-          path: context.path, force: true, encoding: context.encoding,
-        });
-        const fileInfo = doc.kind === "svg"
-          ? await call<FileInfo>("inspect_file", { path: context.path }) : doc.fileInfo;
-        checkConflictContext(context);
-        if (disk.revision !== context.revision) { throw changedConflict(); }
-        if (action === "reload") {
-          m.pushStackElement();
-          m.pushEditOperations([], [{ range: m.getFullModelRange(), text: disk.text }], () => null);
-          if (m.getEOL() !== (disk.eol === "CRLF" ? "\r\n" : "\n")) {
-            m.pushEOL(disk.eol === "CRLF" ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF);
-          }
-          m.pushStackElement();
-          savedVersions.set(id, m.getAlternativeVersionId());
-          savedEncodings.set(id, disk.encoding);
-          patchDoc(id, {
-            dirty: false, revision: disk.revision, encoding: disk.encoding,
-            eol: disk.eol, fileInfo, conflict: false, deleted: false,
-          });
-          scheduleBackup();
-          return;
-        }
-        revision = context.revision;
-      }
-      if (!path || saveAs) {
-        path = await call<string | null>("pick_path", { kind: "save" });
-        if (!path) {
-          return;
-        }
-        if (
-          Object.values(useApp.getState().docs).some(
-            (other) => other.id !== id && other.path && normalize(other.path) === normalize(path!),
-          )
-        ) {
-          throw new Error(
-            "This destination is already open in another editor. Close that editor before using Save As.",
+      if (action === "reload") {
+        m.pushStackElement();
+        m.pushEditOperations([], [{ range: m.getFullModelRange(), text: disk.text }], () => null);
+        if (m.getEOL() !== (disk.eol === "CRLF" ? "\r\n" : "\n")) {
+          m.pushEOL(
+            disk.eol === "CRLF"
+              ? monaco.editor.EndOfLineSequence.CRLF
+              : monaco.editor.EndOfLineSequence.LF,
           );
         }
-        try {
-          const disk = await call<DiskDocument>("read_document", { path, force: true });
-          if ((await ask("Replace existing file?", path, ["Replace", "Cancel"])) !== "Replace") {
-            return;
-          }
-          revision = disk.revision;
-        } catch (e) {
-          if ((e as { code?: string }).code !== "notFound") {
-            throw e;
-          }
-          revision = null;
-        }
-      }
-      if (!resolution && useApp.getState().settings["editor.formatOnSave"] === true && canFormat(doc.language)) {
-        try {
-          await formatModel(m);
-        } catch (e) {
-          notify(`Formatting failed; saving the current buffer: ${errorMessage(e)}`);
-        }
-        doc = useApp.getState().docs[id];
-      }
-      const version = doc.version;
-      const alternativeVersion = m.getAlternativeVersionId();
-      try {
-        const newRevision = await call<string>("save_document", {
-          id,
-          version,
-          path,
-          text: m.getValue(),
-          encoding: doc.encoding,
-          revision,
-        });
-        savedVersions.set(id, alternativeVersion);
-        savedEncodings.set(id, doc.encoding);
+        m.pushStackElement();
+        savedVersions.set(id, m.getAlternativeVersionId());
+        savedEncodings.set(id, disk.encoding);
         patchDoc(id, {
-          path,
-          name: basename(path),
-          revision: newRevision,
-          dirty:
-            alternativeVersion !== m.getAlternativeVersionId() ||
-            useApp.getState().docs[id]?.encoding !== doc.encoding,
+          dirty: false,
+          revision: disk.revision,
+          encoding: disk.encoding,
+          eol: disk.eol,
+          fileInfo,
           conflict: false,
           deleted: false,
         });
-        if (doc.kind === "svg") {
-          const fileInfo = await call<FileInfo>("inspect_file", { path });
-          patchDoc(id, { fileInfo });
-        }
-        if (saveAs || !doc.path) {
-          rebindDocument(id, path);
-          m = models.get(id)!;
-        }
-        const s = useApp.getState();
-        const shortcuts = normalize(path) === normalize(join(s.dataDir, "keybindings.json"));
-        if (
-          shortcuts ||
-          normalize(path) === normalize(join(s.dataDir, "settings.json")) ||
-          (s.root && normalize(path) === normalize(join(s.root, ".litecode/settings.json")))
-        ) {
-          try {
-            parseConfiguration(m.getValue(), shortcuts);
-            const config = await call<{
-              settings: Record<string, unknown>;
-              keybindings: import("../types/types").Keybinding[] | null;
-            }>("configuration");
-            setApp({ settings: config.settings, keybindings: config.keybindings ?? [] });
-          } catch (e) {
-            notify(`Configuration was saved but not activated: ${errorMessage(e)}`);
-          }
-        }
-        await checkpoint();
-      } catch (e) {
-        if ((e as { code?: string }).code === "conflict") {
-          patchDoc(id, { conflict: true });
-          if (!autoSaveMode && !resolution) { await compareDisk(id); }
-        }
-        throw e;
+        scheduleBackup();
+        return;
       }
+      revision = context.revision;
+    }
+    if (!path || saveAs) {
+      path = await call<string | null>("pick_path", { kind: "save" });
+      if (!path) {
+        return;
+      }
+      if (
+        Object.values(useApp.getState().docs).some(
+          (other) => other.id !== id && other.path && normalize(other.path) === normalize(path!),
+        )
+      ) {
+        throw new Error(
+          "This destination is already open in another editor. Close that editor before using Save As.",
+        );
+      }
+      try {
+        const disk = await call<DiskDocument>("read_document", { path, force: true });
+        if ((await ask("Replace existing file?", path, ["Replace", "Cancel"])) !== "Replace") {
+          return;
+        }
+        revision = disk.revision;
+      } catch (e) {
+        if ((e as { code?: string }).code !== "notFound") {
+          throw e;
+        }
+        revision = null;
+      }
+    }
+    if (
+      !resolution &&
+      useApp.getState().settings["editor.formatOnSave"] === true &&
+      canFormat(doc.language)
+    ) {
+      try {
+        await formatModel(m);
+      } catch (e) {
+        notify(`Formatting failed; saving the current buffer: ${errorMessage(e)}`);
+      }
+      doc = useApp.getState().docs[id];
+    }
+    const version = doc.version;
+    const alternativeVersion = m.getAlternativeVersionId();
+    try {
+      const newRevision = await call<string>("save_document", {
+        id,
+        version,
+        path,
+        text: m.getValue(),
+        encoding: doc.encoding,
+        revision,
+      });
+      savedVersions.set(id, alternativeVersion);
+      savedEncodings.set(id, doc.encoding);
+      patchDoc(id, {
+        path,
+        name: basename(path),
+        revision: newRevision,
+        dirty:
+          alternativeVersion !== m.getAlternativeVersionId() ||
+          useApp.getState().docs[id]?.encoding !== doc.encoding,
+        conflict: false,
+        deleted: false,
+      });
+      if (doc.kind === "svg") {
+        const fileInfo = await call<FileInfo>("inspect_file", { path });
+        patchDoc(id, { fileInfo });
+      }
+      if (saveAs || !doc.path) {
+        rebindDocument(id, path);
+        m = models.get(id)!;
+      }
+      const s = useApp.getState();
+      const shortcuts = normalize(path) === normalize(join(s.dataDir, "keybindings.json"));
+      if (
+        shortcuts ||
+        normalize(path) === normalize(join(s.dataDir, "settings.json")) ||
+        (s.root && normalize(path) === normalize(join(s.root, ".litecode/settings.json")))
+      ) {
+        try {
+          parseConfiguration(m.getValue(), shortcuts);
+          const config = await call<{
+            settings: Record<string, unknown>;
+            keybindings: import("../types/types").Keybinding[] | null;
+          }>("configuration");
+          setApp({ settings: config.settings, keybindings: config.keybindings ?? [] });
+        } catch (e) {
+          notify(`Configuration was saved but not activated: ${errorMessage(e)}`);
+        }
+      }
+      await checkpoint();
+    } catch (e) {
+      if ((e as { code?: string }).code === "conflict") {
+        patchDoc(id, { conflict: true });
+        if (!autoSaveMode && !resolution) {
+          await compareDisk(id);
+        }
+      }
+      throw e;
+    }
   });
 }
 
@@ -900,8 +1038,16 @@ export async function confirmDocumentClose(id: string): Promise<boolean> {
   const diff = useApp.getState().docs[id]?.gitDiff;
   if (diff?.sourceId) {
     const state = useApp.getState();
-    const shared = state.groups.some((g) => g.tabs.some((tab) => tab !== id && (tab === diff.sourceId || state.docs[tab]?.gitDiff?.sourceId === diff.sourceId)));
-    if (shared) { return true; }
+    const shared = state.groups.some((g) =>
+      g.tabs.some(
+        (tab) =>
+          tab !== id &&
+          (tab === diff.sourceId || state.docs[tab]?.gitDiff?.sourceId === diff.sourceId),
+      ),
+    );
+    if (shared) {
+      return true;
+    }
     return confirmDocumentClose(diff.sourceId);
   }
   const doc = useApp.getState().docs[id];
@@ -979,16 +1125,25 @@ export async function closeDocument(
 // without a save prompt that could recreate the file or cancel the cleanup.
 export function closeDeletedDocuments(paths: readonly string[]) {
   const docs = documentsAtPaths(paths).sort((a, b) => Number(!!b.gitDiff) - Number(!!a.gitDiff));
-  const ids = new Set(docs.map(doc => doc.id));
+  const ids = new Set(docs.map((doc) => doc.id));
   for (const doc of docs) {
     for (const group of useApp.getState().groups) {
-      if (group.tabs.includes(doc.id)) { removeDocumentFromGroup(doc.id, group.id); }
+      if (group.tabs.includes(doc.id)) {
+        removeDocumentFromGroup(doc.id, group.id);
+      }
     }
-    if (useApp.getState().docs[doc.id]) { disposeDocument(doc.id); }
+    if (useApp.getState().docs[doc.id]) {
+      disposeDocument(doc.id);
+    }
   }
-  setApp(s => {
-    const keep = (location: Location) => !ids.has(location.id) && !(location.path && paths.some(path => withinPath(location.path!, path)));
-    return { history: s.history.filter(keep), historyIndex: s.history.slice(0, s.historyIndex + 1).filter(keep).length - 1 };
+  setApp((s) => {
+    const keep = (location: Location) =>
+      !ids.has(location.id) &&
+      !(location.path && paths.some((path) => withinPath(location.path!, path)));
+    return {
+      history: s.history.filter(keep),
+      historyIndex: s.history.slice(0, s.historyIndex + 1).filter(keep).length - 1,
+    };
   });
   scheduleBackup();
 }
@@ -1071,7 +1226,9 @@ export async function closeTabs(id: string, groupId: string, mode: CloseTabsMode
 
 function disposeDocument(id: string) {
   const state = useApp.getState();
-  if (Object.values(state.docs).some((doc) => doc.gitDiff?.sourceId === id)) { return; }
+  if (Object.values(state.docs).some((doc) => doc.gitDiff?.sourceId === id)) {
+    return;
+  }
   const source = state.docs[id]?.gitDiff?.sourceId;
   detachModel(id);
   setApp((s) => {
@@ -1079,7 +1236,11 @@ function disposeDocument(id: string) {
     delete docs[id];
     return { docs };
   });
-  if (source && !useApp.getState().groups.some((g) => g.tabs.includes(source)) && !Object.values(useApp.getState().docs).some((doc) => doc.gitDiff?.sourceId === source)) {
+  if (
+    source &&
+    !useApp.getState().groups.some((g) => g.tabs.includes(source)) &&
+    !Object.values(useApp.getState().docs).some((doc) => doc.gitDiff?.sourceId === source)
+  ) {
     disposeDocument(source);
   }
 }
@@ -1096,7 +1257,10 @@ function detachModel(id: string) {
     // Cancel the diff view model before releasing its shared source to the worker.
     for (const { editor, viewModel } of diffEditors.values()) {
       const pair = editor.getModel();
-      if (pair?.original === m || pair?.modified === m) { editor.setModel(null); viewModel.dispose(); }
+      if (pair?.original === m || pair?.modified === m) {
+        editor.setModel(null);
+        viewModel.dispose();
+      }
     }
     for (const e of editors.values()) {
       if (e.getModel() === m) {
@@ -1272,16 +1436,29 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
   for (const id of Object.keys(useApp.getState().docs)) {
     await saveQueues.get(id)?.catch(() => {});
     const doc = useApp.getState().docs[id];
-    if (!doc) { continue; }
-    if (doc.path && affected && !affected.some((path) => normalize(doc.path!) === path || normalize(doc.path!).startsWith(path + "/"))) {continue;}
+    if (!doc) {
+      continue;
+    }
+    if (
+      doc.path &&
+      affected &&
+      !affected.some(
+        (path) => normalize(doc.path!) === path || normalize(doc.path!).startsWith(path + "/"),
+      )
+    ) {
+      continue;
+    }
     if (!doc.path || isMoving(doc.path)) {
       continue;
     }
     const request = Symbol();
     refreshRequests.set(id, request);
-    const isCurrent = () => refreshRequests.get(id) === request &&
-      useApp.getState().docs[id] === doc && !saveQueues.has(id) &&
-      !!doc.path && !isMoving(doc.path);
+    const isCurrent = () =>
+      refreshRequests.get(id) === request &&
+      useApp.getState().docs[id] === doc &&
+      !saveQueues.has(id) &&
+      !!doc.path &&
+      !isMoving(doc.path);
     try {
       const info = await call<FileInfo>("inspect_file", { path: doc.path });
       const current = useApp.getState().docs[doc.id];
@@ -1309,7 +1486,9 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
               disk.text,
             );
           } catch (e) {
-            if (!isCurrent()) { continue; }
+            if (!isCurrent()) {
+              continue;
+            }
             if (!["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
               throw e;
             }
@@ -1351,7 +1530,12 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
         continue;
       }
       if (disk.revision === latest.revision) {
-        patchDoc(doc.id, { kind: info.kind, fileInfo: info, deleted: false, ...(latest.deleted ? { conflict: false } : {}) });
+        patchDoc(doc.id, {
+          kind: info.kind,
+          fileInfo: info,
+          deleted: false,
+          ...(latest.deleted ? { conflict: false } : {}),
+        });
         continue;
       }
       if (latest.dirty) {
@@ -1398,7 +1582,9 @@ export async function refreshDocuments(changedPaths?: readonly string[]) {
 
 export async function readConflictDiff(id: string): Promise<DiffRequest> {
   const doc = useApp.getState().docs[id];
-  if (!doc?.path || !models.has(id)) { throw changedConflict(); }
+  if (!doc?.path || !models.has(id)) {
+    throw changedConflict();
+  }
   let disk: DiskDocument | undefined;
   let error: string | undefined;
   try {
@@ -1413,9 +1599,17 @@ export async function readConflictDiff(id: string): Promise<DiffRequest> {
   }
   return {
     title: `${latest.name} · 解决保存冲突`,
-    before: disk?.text ?? "", after: m.getValue(), language: latest.language, error,
-    conflict: { id, path: latest.path!, version: latest.version,
-      revision: disk?.revision ?? null, encoding: latest.encoding },
+    before: disk?.text ?? "",
+    after: m.getValue(),
+    language: latest.language,
+    error,
+    conflict: {
+      id,
+      path: latest.path!,
+      version: latest.version,
+      revision: disk?.revision ?? null,
+      encoding: latest.encoding,
+    },
   };
 }
 
@@ -1427,14 +1621,23 @@ export async function compareDisk(id: string) {
 }
 
 function changedConflict() {
-  return { code: "conflict", message: "文件或编辑内容已变化，请查看更新后的差异，再次选择最终版本。" };
+  return {
+    code: "conflict",
+    message: "文件或编辑内容已变化，请查看更新后的差异，再次选择最终版本。",
+  };
 }
 
 function checkConflictContext(context: ConflictContext) {
   const doc = useApp.getState().docs[context.id];
-  if (!doc || !models.has(context.id) || !doc.conflict ||
-    doc.path !== context.path || doc.version !== context.version ||
-    doc.encoding !== context.encoding || context.revision === null) {
+  if (
+    !doc ||
+    !models.has(context.id) ||
+    !doc.conflict ||
+    doc.path !== context.path ||
+    doc.version !== context.version ||
+    doc.encoding !== context.encoding ||
+    context.revision === null
+  ) {
     throw changedConflict();
   }
 }
@@ -1477,7 +1680,9 @@ function rebindDocument(id: string, path: string) {
   }
   const uri = monaco.Uri.file(visiblePath(path));
   const target = monaco.editor.getModel(uri);
-  if (target && target !== old) { throw occupiedDestination(); }
+  if (target && target !== old) {
+    throw occupiedDestination();
+  }
   if (target === old || old.uri.toString() === uri.toString()) {
     patchDoc(id, { path, name: basename(path), deleted: false });
     setApp((s) => ({

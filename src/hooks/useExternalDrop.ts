@@ -42,9 +42,17 @@ export function useExternalDrop(ready: boolean) {
     }
     function target(
       event: DragEvent,
-    ): { tree: ExplorerDropTarget | null; group: string; element: HTMLElement; terminal?: string } | null {
+    ): {
+      tree: ExplorerDropTarget | null;
+      group: string;
+      element: HTMLElement;
+      terminal?: string;
+    } | null {
       const path = event.composedPath();
-      if (useApp.getState().openingWorkspace !== null || document.querySelector('[role="dialog"]')) {
+      if (
+        useApp.getState().openingWorkspace !== null ||
+        document.querySelector('[role="dialog"]')
+      ) {
         return null;
       }
       const terminal = path.find(
@@ -181,7 +189,10 @@ export function useExternalDrop(ready: boolean) {
         if (dropTarget.terminal) {
           const { pasteDroppedPaths } = await import("../terminal/runtime");
           if (!controller.signal.aborted) {
-            await pasteDroppedPaths(dropTarget.terminal, drop.items.map((item) => item.path));
+            await pasteDroppedPaths(
+              dropTarget.terminal,
+              drop.items.map((item) => item.path),
+            );
           }
         } else if (dropTarget.tree) {
           await externalExplorer()?.copy(drop, dropTarget.tree.directory, controller.signal);

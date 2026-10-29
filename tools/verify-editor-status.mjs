@@ -23,7 +23,9 @@ const doc = {
 };
 page.on("pageerror", (error) => errors.push(String(error)));
 page.on("request", (request) => {
-  const match = new URL(request.url()).pathname.match(/^\/src\/(?:store|editor)\/(store|documents)\.ts$/);
+  const match = new URL(request.url()).pathname.match(
+    /^\/src\/(?:store|editor)\/(store|documents)\.ts$/,
+  );
   if (match) {
     urls[match[1]] = request.url();
   }
@@ -207,30 +209,43 @@ try {
     "Clicking outside cancels without changing document state",
   );
 
-  await page.evaluate(async ({ urls }) => {
-    const { setApp } = await import(urls.store);
-    const documents = await import(urls.documents);
-    await documents.resetEditors();
-    setApp({ settings: { "editor.fontSize": 17, "editor.lineHeight": 31 } });
-    documents.newDocument();
-  }, { urls });
+  await page.evaluate(
+    async ({ urls }) => {
+      const { setApp } = await import(urls.store);
+      const documents = await import(urls.documents);
+      await documents.resetEditors();
+      setApp({ settings: { "editor.fontSize": 17, "editor.lineHeight": 31 } });
+      documents.newDocument();
+    },
+    { urls },
+  );
   async function checkEditorSettings() {
-    await page.waitForFunction(async ({ urls }) => {
-      const { editor } = await import(urls.documents);
-      const { monaco } = await import("/src/editor/monaco.ts");
-      const current = editor();
-      return current?.getOption(monaco.editor.EditorOption.fontSize) === 17 &&
-        current.getOption(monaco.editor.EditorOption.lineHeight) === 31;
-    }, { urls });
+    await page.waitForFunction(
+      async ({ urls }) => {
+        const { editor } = await import(urls.documents);
+        const { monaco } = await import("/src/editor/monaco.ts");
+        const current = editor();
+        return (
+          current?.getOption(monaco.editor.EditorOption.fontSize) === 17 &&
+          current.getOption(monaco.editor.EditorOption.lineHeight) === 31
+        );
+      },
+      { urls },
+    );
   }
   await checkEditorSettings();
-  await page.evaluate(async ({ urls }) => {
-    const documents = await import(urls.documents);
-    await documents.resetEditors();
-    documents.newDocument();
-  }, { urls });
+  await page.evaluate(
+    async ({ urls }) => {
+      const documents = await import(urls.documents);
+      await documents.resetEditors();
+      documents.newDocument();
+    },
+    { urls },
+  );
   await checkEditorSettings();
-  console.log("PASS: new editors retain configured font size and line height when their group changes with unchanged settings");
+  console.log(
+    "PASS: new editors retain configured font size and line height when their group changes with unchanged settings",
+  );
   assert.deepEqual(errors, []);
   console.log(
     "PASS: all five text status controls share the top Quick Access popup; filtering, current choices, keyboard/mouse selection, cancellation, focus restoration, encoding state, EOL undo and command palette handoff work",

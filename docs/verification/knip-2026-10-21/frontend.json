@@ -1,1 +1,160 @@
-{"issues":[{"file":"package.json","binaries":[],"catalog":[],"catalogReferences":[],"dependencies":[{"name":"@tauri-apps/plugin-dialog","line":27,"col":6,"pos":891},{"name":"monaco-languages","line":34,"col":6,"pos":1185}],"devDependencies":[],"duplicates":[],"enumMembers":[],"exports":[],"files":[],"namespaceMembers":[],"optionalPeerDependencies":[],"types":[],"unlisted":[],"unresolved":[]},{"file":"src/editor/languages.ts","binaries":[],"catalog":[],"catalogReferences":[],"dependencies":[],"devDependencies":[],"duplicates":[],"enumMembers":[],"exports":[{"name":"formatModelText","line":171,"col":23,"pos":5425}],"files":[],"namespaceMembers":[],"optionalPeerDependencies":[],"types":[],"unlisted":[{"name":"vscode-jsonrpc","line":8,"col":8,"pos":177},{"name":"vscode","line":10,"col":25,"pos":291},{"name":"@codingame/monaco-vscode-files-service-override","line":16,"col":8,"pos":430},{"name":"vscode-languageserver-protocol","line":329,"col":48,"pos":10789}],"unresolved":[]},{"file":"src/core/commands.ts","binaries":[],"catalog":[],"catalogReferences":[],"dependencies":[],"devDependencies":[],"duplicates":[],"enumMembers":[],"exports":[{"name":"editorTarget","line":57,"col":17,"pos":1907},{"name":"quick","line":99,"col":17,"pos":3367},{"name":"openFile","line":131,"col":23,"pos":4276}],"files":[],"namespaceMembers":[],"optionalPeerDependencies":[],"types":[],"unlisted":[],"unresolved":[]},{"file":"src/editor/documents.ts","binaries":[],"catalog":[],"catalogReferences":[],"dependencies":[],"devDependencies":[],"duplicates":[],"enumMembers":[],"exports":[{"name":"model","line":79,"col":14,"pos":3241}],"files":[],"namespaceMembers":[],"optionalPeerDependencies":[],"types":[],"unlisted":[],"unresolved":[]},{"file":"src/explorer/workspaceTree.ts","binaries":[],"catalog":[],"catalogReferences":[],"dependencies":[],"devDependencies":[],"duplicates":[],"enumMembers":[],"exports":[{"name":"resetWorkspaceTree","line":10,"col":17,"pos":525}],"files":[],"namespaceMembers":[],"optionalPeerDependencies":[],"types":[],"unlisted":[],"unresolved":[]},{"file":"src/utils/media.ts","binaries":[],"catalog":[],"catalogReferences":[],"dependencies":[],"devDependencies":[],"duplicates":[],"enumMembers":[],"exports":[{"name":"zoomLevels","line":14,"col":14,"pos":755}],"files":[],"namespaceMembers":[],"optionalPeerDependencies":[],"types":[],"unlisted":[],"unresolved":[]},{"file":"src/components/EditorGroup.tsx","binaries":[],"catalog":[],"catalogReferences":[],"dependencies":[],"devDependencies":[],"duplicates":[],"enumMembers":[],"exports":[{"name":"compareDisk","line":675,"col":23,"pos":24797}],"files":[],"namespaceMembers":[],"optionalPeerDependencies":[],"types":[],"unlisted":[],"unresolved":[]},{"file":"src/types/types.ts","binaries":[],"catalog":[],"catalogReferences":[],"dependencies":[],"devDependencies":[],"duplicates":[],"enumMembers":[],"exports":[],"files":[],"namespaceMembers":[],"optionalPeerDependencies":[],"types":[{"name":"AppError","line":1,"col":13,"pos":12},{"name":"FileKind","line":9,"col":13,"pos":197}],"unlisted":[],"unresolved":[]}]}
+{
+  "issues": [
+    {
+      "file": "package.json",
+      "binaries": [],
+      "catalog": [],
+      "catalogReferences": [],
+      "dependencies": [
+        { "name": "@tauri-apps/plugin-dialog", "line": 27, "col": 6, "pos": 891 },
+        { "name": "monaco-languages", "line": 34, "col": 6, "pos": 1185 }
+      ],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [],
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "file": "src/editor/languages.ts",
+      "binaries": [],
+      "catalog": [],
+      "catalogReferences": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [{ "name": "formatModelText", "line": 171, "col": 23, "pos": 5425 }],
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [
+        { "name": "vscode-jsonrpc", "line": 8, "col": 8, "pos": 177 },
+        { "name": "vscode", "line": 10, "col": 25, "pos": 291 },
+        {
+          "name": "@codingame/monaco-vscode-files-service-override",
+          "line": 16,
+          "col": 8,
+          "pos": 430
+        },
+        { "name": "vscode-languageserver-protocol", "line": 329, "col": 48, "pos": 10789 }
+      ],
+      "unresolved": []
+    },
+    {
+      "file": "src/core/commands.ts",
+      "binaries": [],
+      "catalog": [],
+      "catalogReferences": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [
+        { "name": "editorTarget", "line": 57, "col": 17, "pos": 1907 },
+        { "name": "quick", "line": 99, "col": 17, "pos": 3367 },
+        { "name": "openFile", "line": 131, "col": 23, "pos": 4276 }
+      ],
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "file": "src/editor/documents.ts",
+      "binaries": [],
+      "catalog": [],
+      "catalogReferences": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [{ "name": "model", "line": 79, "col": 14, "pos": 3241 }],
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "file": "src/explorer/workspaceTree.ts",
+      "binaries": [],
+      "catalog": [],
+      "catalogReferences": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [{ "name": "resetWorkspaceTree", "line": 10, "col": 17, "pos": 525 }],
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "file": "src/utils/media.ts",
+      "binaries": [],
+      "catalog": [],
+      "catalogReferences": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [{ "name": "zoomLevels", "line": 14, "col": 14, "pos": 755 }],
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "file": "src/components/EditorGroup.tsx",
+      "binaries": [],
+      "catalog": [],
+      "catalogReferences": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [{ "name": "compareDisk", "line": 675, "col": 23, "pos": 24797 }],
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [],
+      "unresolved": []
+    },
+    {
+      "file": "src/types/types.ts",
+      "binaries": [],
+      "catalog": [],
+      "catalogReferences": [],
+      "dependencies": [],
+      "devDependencies": [],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [],
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [
+        { "name": "AppError", "line": 1, "col": 13, "pos": 12 },
+        { "name": "FileKind", "line": 9, "col": 13, "pos": 197 }
+      ],
+      "unlisted": [],
+      "unresolved": []
+    }
+  ]
+}

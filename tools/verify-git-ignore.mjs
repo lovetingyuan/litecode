@@ -221,7 +221,14 @@ try {
   checks.push(
     "Saving, deleting and recreating ignore rules updates tree and already-open tabs through native watchers",
   );
-  const snapshot = await page.evaluate((root) => window.__TAURI_INTERNALS__.invoke("workspace_git_status", {expectedRoot:root,session:null}), root);
+  const snapshot = await page.evaluate(
+    (root) =>
+      window.__TAURI_INTERNALS__.invoke("workspace_git_status", {
+        expectedRoot: root,
+        session: null,
+      }),
+    root,
+  );
   assert.ok(snapshot.git.some((g) => g.path === "build/" && g.status === "ignored"));
   assert.ok(!snapshot.git.some((g) => g.path === "build/deep/generated.txt"));
   // Reject stale snapshots in both views before a new workspace scan arrives.

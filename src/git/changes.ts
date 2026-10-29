@@ -39,12 +39,7 @@ export function filesUnder(changes: GitChange[], path: string) {
     ? changes.filter((c) => c.path.startsWith(path))
     : changes.filter((c) => c.path === path);
 }
-export function visibleRange(
-  count: number,
-  scroll: number,
-  height: number,
-  rowHeight = 26,
-) {
+export function visibleRange(count: number, scroll: number, height: number, rowHeight = 26) {
   const first = Math.max(0, Math.floor(scroll / rowHeight) - 8);
   return {
     first,

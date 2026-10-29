@@ -24,7 +24,9 @@ const urls = {};
 const errors = [];
 let restored;
 page.on("request", (request) => {
-  const match = new URL(request.url()).pathname.match(/^\/src\/(?:editor|core|store)\/(documents|commands|store)\.ts$/);
+  const match = new URL(request.url()).pathname.match(
+    /^\/src\/(?:editor|core|store)\/(documents|commands|store)\.ts$/,
+  );
   if (match) {
     urls[match[1]] = request.url();
   }

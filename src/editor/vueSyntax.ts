@@ -17,9 +17,7 @@ export function vueSyntax(html: languages.IMonarchLanguage): languages.IMonarchL
         [/[^<{]+/, ""],
         [/\{/, ""],
       ],
-      interpolation: [
-        [/\}\}/, { token: "delimiter", next: "@pop", nextEmbedded: "@pop" }],
-      ],
+      interpolation: [[/\}\}/, { token: "delimiter", next: "@pop", nextEmbedded: "@pop" }]],
       otherTag: [
         [/(?:v-[\w:.-]+|[:@#][\w:.-]+)/, "attribute.name", "@directive"],
         ...html.tokenizer.otherTag,
@@ -27,8 +25,14 @@ export function vueSyntax(html: languages.IMonarchLanguage): languages.IMonarchL
       directive: [
         [/\s+/, ""],
         [/=/, "delimiter"],
-        [/"/, { token: "attribute.value", switchTo: "@directiveDouble", nextEmbedded: "typescript" }],
-        [/'/, { token: "attribute.value", switchTo: "@directiveSingle", nextEmbedded: "typescript" }],
+        [
+          /"/,
+          { token: "attribute.value", switchTo: "@directiveDouble", nextEmbedded: "typescript" },
+        ],
+        [
+          /'/,
+          { token: "attribute.value", switchTo: "@directiveSingle", nextEmbedded: "typescript" },
+        ],
         [/./, { token: "@rematch", next: "@pop" }],
       ],
       directiveDouble: [[/"/, { token: "attribute.value", next: "@pop", nextEmbedded: "@pop" }]],

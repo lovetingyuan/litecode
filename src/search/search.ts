@@ -1,5 +1,12 @@
 import { call, channel, errorMessage } from "../core/bridge";
-import { useApp, setApp, initialSearch, primarySearchId, searchSession, patchSearch } from "../store/store";
+import {
+  useApp,
+  setApp,
+  initialSearch,
+  primarySearchId,
+  searchSession,
+  patchSearch,
+} from "../store/store";
 import {
   checkpoint,
   newDocument,
@@ -29,8 +36,11 @@ export function createSearchTab() {
   const s = useApp.getState();
   const search = initialSearch(crypto.randomUUID(), s.nextSearchNumber);
   setApp({
-    searchSessions: [...s.searchSessions, search], activeSearchId: search.id,
-    nextSearchNumber: s.nextSearchNumber + 1, sidebar: "search", view: "editor",
+    searchSessions: [...s.searchSessions, search],
+    activeSearchId: search.id,
+    nextSearchNumber: s.nextSearchNumber + 1,
+    sidebar: "search",
+    view: "editor",
   });
   focusSearch();
   return search.id;
@@ -57,7 +67,10 @@ export function resetSearchTabs() {
   for (const search of useApp.getState().searchSessions) {
     cancelSearch(search.id);
   }
-  setApp({ searchSessions: [{ ...initialSearch(), query: { ...query } }], activeSearchId: primarySearchId });
+  setApp({
+    searchSessions: [{ ...initialSearch(), query: { ...query } }],
+    activeSearchId: primarySearchId,
+  });
 }
 
 useApp.subscribe((state, previous) => {
@@ -76,7 +89,8 @@ export async function runSearch(query?: Query, id = useApp.getState().activeSear
   const requestId = crypto.randomUUID();
   const root = useApp.getState().root;
   let completed = false;
-  const current = () => useApp.getState().root === root && searchSession(id)?.requestId === requestId;
+  const current = () =>
+    useApp.getState().root === root && searchSession(id)?.requestId === requestId;
   patchSearch(id, {
     ...(query !== search.query ? { query } : {}),
     results: [],
@@ -115,7 +129,10 @@ export async function runSearch(query?: Query, id = useApp.getState().activeSear
     }
     if (useApp.getState().root === root && searchSession(id)?.query === query) {
       setApp((s) => ({
-        searchHistory: [query.text, ...s.searchHistory.filter((q) => q !== query.text)].slice(0, 30),
+        searchHistory: [query.text, ...s.searchHistory.filter((q) => q !== query.text)].slice(
+          0,
+          30,
+        ),
       }));
     }
   } catch (e) {
@@ -163,7 +180,11 @@ export async function openMatch(match: SearchMatch, side = false, group?: string
     const start = e.getOffsetForColumn(match.line, match.column);
     const end = e.getOffsetForColumn(match.endLine, match.endColumn);
     const layout = e.getLayoutInfo();
-    if (start >= 0 && end >= 0 && Math.max(start, end) <= layout.contentWidth - layout.verticalScrollbarWidth) {
+    if (
+      start >= 0 &&
+      end >= 0 &&
+      Math.max(start, end) <= layout.contentWidth - layout.verticalScrollbarWidth
+    ) {
       e.setScrollLeft(0, monaco.editor.ScrollType.Immediate);
     }
   }
@@ -184,7 +205,13 @@ export async function nextSearchResult(direction = 1) {
   await openMatch(results[navigationIndex]);
 }
 
-export { replaceMatches, cancelReplacementPlan, undoReplacement, retryReplacement, recoverInterruptedReplacements } from "./replacements";
+export {
+  replaceMatches,
+  cancelReplacementPlan,
+  undoReplacement,
+  retryReplacement,
+  recoverInterruptedReplacements,
+} from "./replacements";
 
 export async function createSearchEditor(
   query = searchSession()!.query,
@@ -199,7 +226,9 @@ export async function createSearchEditor(
   const files = new Map<string, SearchMatch[]>();
   for (const match of matches) {
     let hits = files.get(match.path);
-    if (!hits) { files.set(match.path, hits = []); }
+    if (!hits) {
+      files.set(match.path, (hits = []));
+    }
     hits.push(match);
   }
   for (const [path, hits] of files) {

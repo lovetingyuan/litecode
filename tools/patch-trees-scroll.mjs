@@ -142,9 +142,12 @@ const updates = [...grouped].map(([path, replacements]) => {
     if (source.includes(after)) {
       continue;
     }
-    const matches = before instanceof RegExp ? source.match(before)?.length : source.split(before).length - 1;
+    const matches =
+      before instanceof RegExp ? source.match(before)?.length : source.split(before).length - 1;
     if (matches !== 1) {
-      throw new Error(`Cannot apply trees scroll/drag patch to ${path}: ${String(before).slice(0, 90)}`);
+      throw new Error(
+        `Cannot apply trees scroll/drag patch to ${path}: ${String(before).slice(0, 90)}`,
+      );
     }
     source = source.replace(before, after);
   }

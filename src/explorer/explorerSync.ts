@@ -6,20 +6,27 @@ export function createDirectorySync(model: FileTree) {
   const recordMove = (event: FileTreeMutationEvent) => {
     if (event.operation === "batch") {
       event.events.forEach(recordMove);
-    }
-    else if (event.operation === "move" && event.from.endsWith("/")) {
-      const moved = [...children].filter(([path]) => path + "/" === event.from || path.startsWith(event.from));
+    } else if (event.operation === "move" && event.from.endsWith("/")) {
+      const moved = [...children].filter(
+        ([path]) => path + "/" === event.from || path.startsWith(event.from),
+      );
       for (const [path] of moved) {
         children.delete(path);
       }
       for (const [path, paths] of moved) {
-        children.set((event.to + (path + "/").slice(event.from.length)).replace(/\/$/, ""), new Set([...paths].map((path) => event.to + path.slice(event.from.length))));
+        children.set(
+          (event.to + (path + "/").slice(event.from.length)).replace(/\/$/, ""),
+          new Set([...paths].map((path) => event.to + path.slice(event.from.length))),
+        );
       }
     }
   };
   const unsubscribe = model.onMutation("*", recordMove);
   return {
-    dispose() { disposed = true; unsubscribe(); },
+    dispose() {
+      disposed = true;
+      unsubscribe();
+    },
     async update(directory: string, paths: readonly string[], valid = () => true) {
       const previous = children.get(directory) ?? new Set<string>();
       const next = new Set(paths);

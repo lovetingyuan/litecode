@@ -14,27 +14,46 @@ function fixture(target = "src/a.ts") {
     "src/nested": ["src/nested/deep.ts"],
     "src/empty": [],
   };
-  const read = vi.fn(async (directory: string): Promise<DirectorySnapshot> => ({ root: "C:/project", session: 1, directory, paths: content[directory] ?? [], warnings: [] }));
+  const read = vi.fn(async (directory: string): Promise<DirectorySnapshot> => ({
+    root: "C:/project",
+    session: 1,
+    directory,
+    paths: content[directory] ?? [],
+    warnings: [],
+  }));
   const cache = new DirectoryCache("C:/project", read);
   const model = new FileTree({ paths: [], initialExpansion: 0, flattenEmptyDirectories: false });
   const tree = attachBreadcrumbTree(model, cache, target, vi.fn());
-  cleanups.push(() => { tree.dispose(); model.cleanUp(); cache.dispose(); });
+  cleanups.push(() => {
+    tree.dispose();
+    model.cleanUp();
+    cache.dispose();
+  });
   return { content, read, cache, model, tree };
 }
 
 describe("Breadcrumb paths", () => {
   it("maps every segment to its own full and workspace path", () => {
-    expect(breadcrumbSegments("\\\\?\\C:\\Project\\src\\nested\\a.ts", "a.ts", "c:/project")).toEqual([
+    expect(
+      breadcrumbSegments("\\\\?\\C:\\Project\\src\\nested\\a.ts", "a.ts", "c:/project"),
+    ).toEqual([
       { label: "src", path: "c:/project/src", workspacePath: "src" },
       { label: "nested", path: "c:/project/src/nested", workspacePath: "src/nested" },
       { label: "a.ts", path: "c:/project/src/nested/a.ts", workspacePath: "src/nested/a.ts" },
     ]);
   });
   it("handles UNC workspaces, root files and outside or untitled documents", () => {
-    expect(breadcrumbSegments("\\\\?\\UNC\\server\\share\\a.ts", "a.ts", "\\\\server\\share")[0].workspacePath).toBe("a.ts");
+    expect(
+      breadcrumbSegments("\\\\?\\UNC\\server\\share\\a.ts", "a.ts", "\\\\server\\share")[0]
+        .workspacePath,
+    ).toBe("a.ts");
     expect(breadcrumbSegments("C:/project/a.ts", "a.ts", "C:/project/")).toHaveLength(1);
     for (const path of ["C:/project-other/a.ts", "D:/a.ts", undefined]) {
-      expect(breadcrumbSegments(path, "Untitled-1", "C:/project").every((segment) => segment.workspacePath === undefined)).toBe(true);
+      expect(
+        breadcrumbSegments(path, "Untitled-1", "C:/project").every(
+          (segment) => segment.workspacePath === undefined,
+        ),
+      ).toBe(true);
     }
   });
 });
@@ -55,7 +74,9 @@ describe("Breadcrumb directory tree", () => {
     const { tree, model, read } = fixture("src/nested/");
     await tree.initialized;
     const nested = model.getItem("nested/")!;
-    if (!("expand" in nested)) { throw new Error("Expected directory"); }
+    if (!("expand" in nested)) {
+      throw new Error("Expected directory");
+    }
     expect(nested.isExpanded()).toBe(false);
     nested.expand();
     await vi.waitFor(() => expect(model.getItem("nested/deep.ts")).not.toBeNull());
@@ -77,11 +98,14 @@ describe("Breadcrumb directory tree", () => {
     const { tree, model, cache, content } = fixture();
     await tree.initialized;
     const folder = model.getItem("nested/")!;
-    if ("expand" in folder) { folder.expand(); }
+    if ("expand" in folder) {
+      folder.expand();
+    }
     await vi.waitFor(() => expect(model.getItem("nested/deep.ts")).not.toBeNull());
     content.src = ["src/a.ts", "src/nested/", "src/new.ts"];
     content["src/nested"] = ["src/nested/renamed.ts"];
-    cache.invalidate("src"); cache.invalidate("src/nested");
+    cache.invalidate("src");
+    cache.invalidate("src/nested");
     tree.refresh();
     await vi.waitFor(() => expect(model.getItem("nested/renamed.ts")).not.toBeNull());
     expect(model.getItem("b.ts")).toBeNull();
@@ -94,13 +118,17 @@ describe("Breadcrumb directory tree", () => {
     await tree.initialized;
     read.mockRejectedValueOnce(new Error("Access denied"));
     const nested = model.getItem("nested/")!;
-    if ("expand" in nested) { nested.expand(); }
+    if ("expand" in nested) {
+      nested.expand();
+    }
     await vi.waitFor(() => expect(tree.state("nested").status).toBe("failed"));
     expect(tree.state("nested").error).toBe("Access denied");
     tree.retry("nested");
     await vi.waitFor(() => expect(model.getItem("nested/deep.ts")).not.toBeNull());
     const empty = model.getItem("empty/")!;
-    if ("expand" in empty) { empty.expand(); }
+    if ("expand" in empty) {
+      empty.expand();
+    }
     await vi.waitFor(() => expect(tree.state("empty").status).toBe("loaded"));
     expect(tree.state("empty").paths).toEqual([]);
   });
@@ -109,10 +137,15 @@ describe("Breadcrumb directory tree", () => {
     await tree.initialized;
     const second = new FileTree({ paths: [], initialExpansion: 0, flattenEmptyDirectories: false });
     const picker = attachBreadcrumbTree(second, cache, "src/b.ts", vi.fn());
-    cleanups.push(() => { picker.dispose(); second.cleanUp(); });
+    cleanups.push(() => {
+      picker.dispose();
+      second.cleanUp();
+    });
     await picker.initialized;
     const folder = second.getItem("nested/")!;
-    if ("expand" in folder) { folder.expand(); }
+    if ("expand" in folder) {
+      folder.expand();
+    }
     await vi.waitFor(() => expect(second.getItem("nested/deep.ts")).not.toBeNull());
     const original = model.getItem("nested/")!;
     expect("isExpanded" in original && original.isExpanded()).toBe(false);
@@ -125,12 +158,29 @@ describe("Breadcrumb directory tree", () => {
       const { tree, cache, model, read } = fixture();
       await tree.initialized;
       let resolve!: (snapshot: DirectorySnapshot) => void;
-      read.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
-      cache.invalidate("src"); tree.refresh();
+      read.mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          }),
+      );
+      cache.invalidate("src");
+      tree.refresh();
       await vi.waitFor(() => expect(resolve).toBeDefined());
-      if (workspaceChanged) { cache.dispose(); } else { tree.dispose(); }
-      resolve({ root: cache.root, session: 1, directory: "src", paths: ["src/late.ts"], warnings: [] });
-      await Promise.resolve(); await Promise.resolve();
+      if (workspaceChanged) {
+        cache.dispose();
+      } else {
+        tree.dispose();
+      }
+      resolve({
+        root: cache.root,
+        session: 1,
+        directory: "src",
+        paths: ["src/late.ts"],
+        warnings: [],
+      });
+      await Promise.resolve();
+      await Promise.resolve();
       expect(model.getItem("late.ts")).toBeNull();
     }
   });

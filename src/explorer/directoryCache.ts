@@ -8,7 +8,8 @@ export type DirectoryState = {
   promise?: Promise<void>;
 };
 export const directoryPath = (path: string) => path.replace(/\\/g, "/").replace(/\/+$/, "");
-export const parentDirectory = (path: string) => directoryPath(path).split("/").slice(0, -1).join("/");
+export const parentDirectory = (path: string) =>
+  directoryPath(path).split("/").slice(0, -1).join("/");
 const key = (path: string) => directoryPath(path).toLowerCase();
 /** A cache belongs to one opening of a workspace, even when the root is reopened. */
 export class DirectoryCache {
@@ -20,35 +21,64 @@ export class DirectoryCache {
   private deferredLoads = new Set<string>();
   private held(directory: string) {
     const path = key(directory);
-    return [...this.holds.keys()].some((parent) => !parent || path === parent || path.startsWith(parent + "/"));
+    return [...this.holds.keys()].some(
+      (parent) => !parent || path === parent || path.startsWith(parent + "/"),
+    );
   }
   /** Keep a rename's own watcher events from deleting its source before commit. */
   hold(directories: readonly string[]) {
     const paths = [...new Set(directories.map(key))];
-    for (const path of paths) { this.holds.set(path, (this.holds.get(path) ?? 0) + 1); }
+    for (const path of paths) {
+      this.holds.set(path, (this.holds.get(path) ?? 0) + 1);
+    }
     let released = false;
     return async () => {
-      if (released) { return; }
+      if (released) {
+        return;
+      }
       released = true;
       // Drain reads while the guard is still active so their old snapshots are discarded.
-      await Promise.all([...this.directories].filter(([path]) => paths.some((parent) => !parent || key(path) === parent || key(path).startsWith(parent + "/"))).map(([, entry]) => entry.promise));
+      await Promise.all(
+        [...this.directories]
+          .filter(([path]) =>
+            paths.some(
+              (parent) => !parent || key(path) === parent || key(path).startsWith(parent + "/"),
+            ),
+          )
+          .map(([, entry]) => entry.promise),
+      );
       for (const path of paths) {
         const count = (this.holds.get(path) ?? 1) - 1;
-        if (count) { this.holds.set(path, count); } else { this.holds.delete(path); }
+        if (count) {
+          this.holds.set(path, count);
+        } else {
+          this.holds.delete(path);
+        }
       }
-      await Promise.all([...this.deferredLoads].filter((path) => !this.held(path)).map(async (path) => {
-        this.deferredLoads.delete(path);
-        const entry = this.directories.get(path);
-        await entry?.promise;
-        if (!this.disposed && this.directories.has(path) && !this.held(path)) { await this.load(path, true); }
-      }));
+      await Promise.all(
+        [...this.deferredLoads]
+          .filter((path) => !this.held(path))
+          .map(async (path) => {
+            this.deferredLoads.delete(path);
+            const entry = this.directories.get(path);
+            await entry?.promise;
+            if (!this.disposed && this.directories.has(path) && !this.held(path)) {
+              await this.load(path, true);
+            }
+          }),
+      );
     };
   }
   private listeners = new Set<(directory?: string, paths?: string[]) => void | Promise<void>>();
-  constructor(readonly root: string, private read: (directory: string, session: number | null) => Promise<DirectorySnapshot>) { }
+  constructor(
+    readonly root: string,
+    private read: (directory: string, session: number | null) => Promise<DirectorySnapshot>,
+  ) {}
   subscribe(listener: (directory?: string, paths?: string[]) => void | Promise<void>) {
     this.listeners.add(listener);
-    return () => { this.listeners.delete(listener); };
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
   entry(directory: string) {
     const path = directoryPath(directory);
@@ -93,7 +123,10 @@ export class DirectoryCache {
             if (this.disposed || this.directories.get(path) !== entry) {
               return;
             }
-            if (key(result.root) !== key(this.root) || (this.session !== null && result.session !== this.session)) {
+            if (
+              key(result.root) !== key(this.root) ||
+              (this.session !== null && result.session !== this.session)
+            ) {
               throw new Error("Workspace changed while reading the directory");
             }
             this.session = result.session;
@@ -117,7 +150,12 @@ export class DirectoryCache {
                 }
               }
             }
-            if (entry.paths.length !== result.paths.length || entry.paths.some((path) => !next.has(path))) { this.revision++; }
+            if (
+              entry.paths.length !== result.paths.length ||
+              entry.paths.some((path) => !next.has(path))
+            ) {
+              this.revision++;
+            }
             entry.paths = result.paths;
             entry.warnings = result.warnings;
             await this.emit(path, result.paths);
@@ -125,8 +163,7 @@ export class DirectoryCache {
               return;
             }
             entry.status = entry.dirty ? "stale" : "loaded";
-          }
-          catch (error) {
+          } catch (error) {
             if (this.disposed || this.directories.get(path) !== entry) {
               return;
             }
@@ -137,13 +174,19 @@ export class DirectoryCache {
               break;
             }
             entry.status = "failed";
-            entry.error = error instanceof Error ? error.message : String((error as {
-              message?: string;
-            })?.message ?? error);
+            entry.error =
+              error instanceof Error
+                ? error.message
+                : String(
+                    (
+                      error as {
+                        message?: string;
+                      }
+                    )?.message ?? error,
+                  );
           }
         } while (entry.dirty && !this.disposed);
-      }
-      finally {
+      } finally {
         entry.promise = undefined;
         if (!this.disposed) {
           await this.emit();
@@ -163,7 +206,12 @@ export class DirectoryCache {
     const parts = directoryPath(path).split("/").filter(Boolean);
     let parent = "";
     for (let index = 0; index < parts.length; index++) {
-      const child = this.directories.get(parent)?.paths.find((candidate) => key(candidate) === key(parent ? `${parent}/${parts[index]}` : parts[index]));
+      const child = this.directories
+        .get(parent)
+        ?.paths.find(
+          (candidate) =>
+            key(candidate) === key(parent ? `${parent}/${parts[index]}` : parts[index]),
+        );
       if (!child || (index < parts.length - 1 && !child.endsWith("/"))) {
         return null;
       }
@@ -175,19 +223,28 @@ export class DirectoryCache {
     return "";
   }
   relocate(from: string, to: string) {
-    const matches = (path: string) => path === from || (from.endsWith("/") && path.startsWith(from));
+    const matches = (path: string) =>
+      path === from || (from.endsWith("/") && path.startsWith(from));
     const moved = [...this.directories].filter(([path]) => matches(path + "/"));
     for (const [path] of moved) {
       this.directories.delete(path);
     }
     for (const [path, entry] of moved) {
       this.directories.set(directoryPath(to + (path + "/").slice(from.length)), {
-        ...entry, paths: entry.paths.map((child) => to + child.slice(from.length)),
-        promise: undefined, dirty: true, status: "stale",
+        ...entry,
+        paths: entry.paths.map((child) => to + child.slice(from.length)),
+        promise: undefined,
+        dirty: true,
+        status: "stale",
       });
     }
     for (const entry of this.directories.values()) {
-      entry.paths = entry.paths.filter((path) => path !== to && !(path === from && parentDirectory(from) !== parentDirectory(to))).map((path) => matches(path) ? to + path.slice(from.length) : path);
+      entry.paths = entry.paths
+        .filter(
+          (path) =>
+            path !== to && !(path === from && parentDirectory(from) !== parentDirectory(to)),
+        )
+        .map((path) => (matches(path) ? to + path.slice(from.length) : path));
     }
     const destination = this.directories.get(parentDirectory(to));
     if (destination && !destination.paths.includes(to)) {
@@ -204,11 +261,15 @@ export class DirectoryCache {
       if (this.disposed) {
         return null;
       }
-      let child = this.entry(parent).paths.find((p) => key(p) === key(parent ? `${parent}/${parts[i]}` : parts[i]));
+      let child = this.entry(parent).paths.find(
+        (p) => key(p) === key(parent ? `${parent}/${parts[i]}` : parts[i]),
+      );
       if (!child) {
         // A newly created file can be opened before its watcher notification.
         await this.load(parent, true);
-        child = this.entry(parent).paths.find((p) => key(p) === key(parent ? `${parent}/${parts[i]}` : parts[i]));
+        child = this.entry(parent).paths.find(
+          (p) => key(p) === key(parent ? `${parent}/${parts[i]}` : parts[i]),
+        );
       }
       if (!child || (i < parts.length - 1 && !child.endsWith("/"))) {
         return null;

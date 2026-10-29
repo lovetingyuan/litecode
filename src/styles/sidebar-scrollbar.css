@@ -1,28 +1,70 @@
 /* Also injected into the file tree's shadow root, including its gutter probe. */
-:is(.search-results, .git-panel-content, .git-changes-list, [data-file-tree-virtualized-scroll], [data-file-tree-scrollbar-measure]) {
+:is(
+  .search-results,
+  .git-panel-content,
+  .git-changes-list,
+  [data-file-tree-virtualized-scroll],
+  [data-file-tree-scrollbar-measure]
+) {
   scrollbar-width: auto;
   scrollbar-color: auto;
 }
-:is(.search-results, .git-panel-content, .git-changes-list, [data-file-tree-virtualized-scroll], [data-file-tree-scrollbar-measure])::-webkit-scrollbar {
+:is(
+  .search-results,
+  .git-panel-content,
+  .git-changes-list,
+  [data-file-tree-virtualized-scroll],
+  [data-file-tree-scrollbar-measure]
+)::-webkit-scrollbar {
   width: 12px;
   height: 12px;
 }
-:is(.search-results, .git-panel-content, .git-changes-list, [data-file-tree-virtualized-scroll], [data-file-tree-scrollbar-measure])::-webkit-scrollbar-track {
+:is(
+  .search-results,
+  .git-panel-content,
+  .git-changes-list,
+  [data-file-tree-virtualized-scroll],
+  [data-file-tree-scrollbar-measure]
+)::-webkit-scrollbar-track {
   background: transparent;
 }
-:is(.search-results, .git-panel-content, .git-changes-list, [data-file-tree-virtualized-scroll], [data-file-tree-scrollbar-measure])::-webkit-scrollbar-thumb {
+:is(
+  .search-results,
+  .git-panel-content,
+  .git-changes-list,
+  [data-file-tree-virtualized-scroll],
+  [data-file-tree-scrollbar-measure]
+)::-webkit-scrollbar-thumb {
   background: #79797999;
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 7px;
   min-height: 24px;
 }
-:is(.search-results, .git-panel-content, .git-changes-list, [data-file-tree-virtualized-scroll], [data-file-tree-scrollbar-measure])::-webkit-scrollbar-thumb:hover {
+:is(
+    .search-results,
+    .git-panel-content,
+    .git-changes-list,
+    [data-file-tree-virtualized-scroll],
+    [data-file-tree-scrollbar-measure]
+  )::-webkit-scrollbar-thumb:hover {
   background-color: #797979cc;
 }
-:is(.search-results, .git-panel-content, .git-changes-list, [data-file-tree-virtualized-scroll], [data-file-tree-scrollbar-measure])::-webkit-scrollbar-button {
+:is(
+  .search-results,
+  .git-panel-content,
+  .git-changes-list,
+  [data-file-tree-virtualized-scroll],
+  [data-file-tree-scrollbar-measure]
+)::-webkit-scrollbar-button {
   display: none;
 }
-:is(.search-results, .git-panel-content, .git-changes-list, [data-file-tree-virtualized-scroll], [data-file-tree-scrollbar-measure])::-webkit-scrollbar-corner {
+:is(
+  .search-results,
+  .git-panel-content,
+  .git-changes-list,
+  [data-file-tree-virtualized-scroll],
+  [data-file-tree-scrollbar-measure]
+)::-webkit-scrollbar-corner {
   background: transparent;
 }

@@ -6,9 +6,17 @@ type Pending = { model: editor.ITextModel | undefined; version: number; due: num
 
 function metadata(doc: Doc): DocumentSnapshot {
   return {
-    id: doc.id, path: doc.path, version: doc.version, revision: doc.revision,
-    encoding: doc.encoding, dirty: doc.dirty, language: doc.language, name: doc.name,
-    searchQuery: doc.searchQuery, kind: doc.kind, fileInfo: doc.fileInfo,
+    id: doc.id,
+    path: doc.path,
+    version: doc.version,
+    revision: doc.revision,
+    encoding: doc.encoding,
+    dirty: doc.dirty,
+    language: doc.language,
+    name: doc.name,
+    searchQuery: doc.searchQuery,
+    kind: doc.kind,
+    fileInfo: doc.fileInfo,
   };
 }
 
@@ -30,9 +38,11 @@ export class DocumentBackups {
   }
 
   noteChanges(docs: Doc[], models: ReadonlyMap<string, editor.ITextModel>, now = Date.now()) {
-    const ids = new Set(docs.map(doc => doc.id));
+    const ids = new Set(docs.map((doc) => doc.id));
     for (const id of this.pending.keys()) {
-      if (!ids.has(id)) { this.pending.delete(id); }
+      if (!ids.has(id)) {
+        this.pending.delete(id);
+      }
     }
     for (const doc of docs) {
       const model = models.get(doc.id);
@@ -43,15 +53,17 @@ export class DocumentBackups {
       }
       const previous = this.pending.get(doc.id);
       if (!previous || previous.model !== model || previous.version !== doc.version) {
-        const large = doc.large || (doc.fileInfo?.size ?? 0) > 20 * 1024 * 1024
-          || (model?.getValueLength() ?? 0) > 20 * 1024 * 1024;
+        const large =
+          doc.large ||
+          (doc.fileInfo?.size ?? 0) > 20 * 1024 * 1024 ||
+          (model?.getValueLength() ?? 0) > 20 * 1024 * 1024;
         this.pending.set(doc.id, { model, version: doc.version, due: now + (large ? 2000 : 400) });
       }
     }
   }
 
   nextDeadline() {
-    return Math.min(...[...this.pending.values()].map(pending => pending.due));
+    return Math.min(...[...this.pending.values()].map((pending) => pending.due));
   }
 
   capture(docs: Doc[], models: ReadonlyMap<string, editor.ITextModel>, automatic: boolean) {
@@ -72,13 +84,18 @@ export class DocumentBackups {
       }
       const model = models.get(doc.id);
       const meta = metadata(doc);
-      const needsText = !previous || previous.model !== model || previous.metadata.version !== doc.version;
+      const needsText =
+        !previous || previous.model !== model || previous.metadata.version !== doc.version;
       documents.push(needsText ? { ...meta, text: model?.getValue() ?? "" } : meta);
       next.set(doc.id, { metadata: meta, model });
     }
     return {
       documents,
-      acknowledge: () => { if (this.epoch === epoch) { this.confirmed = next; } },
+      acknowledge: () => {
+        if (this.epoch === epoch) {
+          this.confirmed = next;
+        }
+      },
     };
   }
 }

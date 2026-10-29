@@ -12,7 +12,11 @@ describe("application CSP", () => {
 
   it("restricts HTTP images to the local media protocol", () => {
     for (const policy of [config.app.security.csp, config.app.security.devCsp]) {
-      const images = policy.split(";").find((directive) => directive.trim().startsWith("img-src"))!.trim().split(/\s+/);
+      const images = policy
+        .split(";")
+        .find((directive) => directive.trim().startsWith("img-src"))!
+        .trim()
+        .split(/\s+/);
       expect(images).not.toContain("http:");
       expect(images).toContain("http://media.localhost");
       expect(images).toContain("https:");

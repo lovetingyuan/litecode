@@ -25,22 +25,26 @@ import {
 } from "../editor/documents";
 import type { SplitDirection } from "../editor/editorLayout";
 import { refreshTree, revealInTree } from "../components/Explorer";
-import { createSearchTab, activateSearchTab, focusSearch, undoReplacement, nextSearchResult, retryReplacement, recoverInterruptedReplacements } from "../search/search";
+import {
+  createSearchTab,
+  activateSearchTab,
+  focusSearch,
+  undoReplacement,
+  nextSearchResult,
+  retryReplacement,
+  recoverInterruptedReplacements,
+} from "../search/search";
 import { changeLanguage } from "../editor/editorStatus";
 import { acceptInlineConflict, navigateInlineConflict } from "../editor/mergeConflictEditor";
 import { restartLanguages, stopLanguages, languageReport } from "../editor/languages";
-import { manageWorkspaceTrust, prepareWorkspaceOpen, rememberWorkspaceTrust } from "./workspaceTrust";
+import {
+  manageWorkspaceTrust,
+  prepareWorkspaceOpen,
+  rememberWorkspaceTrust,
+} from "./workspaceTrust";
 import { checkForUpdates } from "./updates";
-import {
-  matchesWhen,
-  normalizeKey,
-  resolveBinding,
-} from "../utils/keybindings";
-import {
-  completeSettings,
-  parseConfiguration,
-  updateSetting,
-} from "../utils/settings";
+import { matchesWhen, normalizeKey, resolveBinding } from "../utils/keybindings";
+import { completeSettings, parseConfiguration, updateSetting } from "../utils/settings";
 import { terminalSelections, useTerminal } from "../terminal/state";
 
 export type EditorContext = { groupId: string; documentId: string };
@@ -78,11 +82,7 @@ export function editorTarget(context?: EditorContext) {
 }
 export function canRevealInExplorer(path: string | null) {
   const root = useApp.getState().root;
-  return (
-    !!path &&
-    !!root &&
-    normalize(path).startsWith(normalize(root).replace(/\/$/, "") + "/")
-  );
+  return !!path && !!root && normalize(path).startsWith(normalize(root).replace(/\/$/, "") + "/");
 }
 async function copyEditorPath(context: EditorContext | undefined, useRelative: boolean) {
   const path = editorTarget(context)?.doc.path;
@@ -119,18 +119,26 @@ export function quick(value: string) {
 }
 let openingFolder = false;
 export async function openFolder(newWindow = false, recentPath?: string) {
-  if (openingFolder) { return; }
+  if (openingFolder) {
+    return;
+  }
   openingFolder = true;
   try {
     setApp({ openingWorkspace: recentPath ?? "", quick: null });
     if (!recentPath) {
-      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
     }
     const selected = recentPath ?? (await call<string | null>("pick_path", { kind: "folder" }));
-    if (!selected) { return; }
+    if (!selected) {
+      return;
+    }
     setApp({ openingWorkspace: selected, quick: null });
     const info = await prepareWorkspaceOpen(selected);
-    if (!info) { return; }
+    if (!info) {
+      return;
+    }
     const path = info.path;
     setApp({ openingWorkspace: path });
     const root = useApp.getState().root;
@@ -139,14 +147,20 @@ export async function openFolder(newWindow = false, recentPath?: string) {
       (!root || normalize(root).replace(/\/$/, "") !== normalize(path).replace(/\/$/, ""));
     if (switching) {
       for (const id of Object.keys(useApp.getState().docs)) {
-        if (useApp.getState().docs[id]?.gitDiff) { continue; }
+        if (useApp.getState().docs[id]?.gitDiff) {
+          continue;
+        }
         if (!(await confirmDocumentClose(id))) {
           return;
         }
       }
     }
     await checkpoint();
-    const same = await call<boolean>("open_workspace", { path, newWindow, ...(info.trust ? { trust: info.trust } : {}) });
+    const same = await call<boolean>("open_workspace", {
+      path,
+      newWindow,
+      ...(info.trust ? { trust: info.trust } : {}),
+    });
     if (same) {
       if (switching) {
         await stopLanguages();
@@ -219,7 +233,9 @@ export const commands: Command[] = [
     run: (context?: EditorContext) => {
       const target = editorTarget(context);
       const instance = target ? editors.get(target.group.id) : undefined;
-      if (target && instance && instance.getModel() === models.get(target.doc.id)) { acceptInlineConflict(instance, choice); }
+      if (target && instance && instance.getModel() === models.get(target.doc.id)) {
+        acceptInlineConflict(instance, choice);
+      }
     },
   })),
   ...(["next", "previous"] as const).map((direction) => ({
@@ -228,7 +244,9 @@ export const commands: Command[] = [
     run: (context?: EditorContext) => {
       const target = editorTarget(context);
       const instance = target ? editors.get(target.group.id) : undefined;
-      if (target && instance && instance.getModel() === models.get(target.doc.id)) { navigateInlineConflict(instance, direction); }
+      if (target && instance && instance.getModel() === models.get(target.doc.id)) {
+        navigateInlineConflict(instance, direction);
+      }
     },
   })),
   {
@@ -254,14 +272,12 @@ export const commands: Command[] = [
   {
     id: "workbench.action.terminal.splitRight",
     label: "Terminal: Split Right",
-    run: () =>
-      import("../terminal/runtime").then((t) => t.splitTerminal("right")),
+    run: () => import("../terminal/runtime").then((t) => t.splitTerminal("right")),
   },
   {
     id: "workbench.action.terminal.splitDown",
     label: "Terminal: Split Down",
-    run: () =>
-      import("../terminal/runtime").then((t) => t.splitTerminal("down")),
+    run: () => import("../terminal/runtime").then((t) => t.splitTerminal("down")),
   },
   {
     id: "workbench.action.terminal.kill",
@@ -291,8 +307,7 @@ export const commands: Command[] = [
     label: `Terminal: Focus ${direction}`,
     key: `Alt+${direction[0].toUpperCase()}${direction.slice(1)}`,
     when: "terminalFocus",
-    run: () =>
-      import("../terminal/runtime").then((t) => t.moveFocus(direction)),
+    run: () => import("../terminal/runtime").then((t) => t.moveFocus(direction)),
   })),
   {
     id: "workbench.action.terminal.copySelection",
@@ -742,7 +757,11 @@ export const commands: Command[] = [
       setApp((s) => ({
         settings: {
           ...s.settings,
-          "editor.wordWrap": ["on", "wordWrapColumn", "bounded"].includes(String(s.settings["editor.wordWrap"])) ? "off" : "on",
+          "editor.wordWrap": ["on", "wordWrapColumn", "bounded"].includes(
+            String(s.settings["editor.wordWrap"]),
+          )
+            ? "off"
+            : "on",
         },
       })),
   },
@@ -863,7 +882,12 @@ export const commands: Command[] = [
     },
   },
   { id: "litecode.setLanguage", label: "Change Language Mode", run: changeLanguage },
-  { id: "litecode.checkForUpdates", label: "Check for Updates…", menu: "Help", run: checkForUpdates },
+  {
+    id: "litecode.checkForUpdates",
+    label: "Check for Updates…",
+    menu: "Help",
+    run: checkForUpdates,
+  },
   {
     id: "litecode.about",
     label: "About LiteCode",
@@ -876,7 +900,9 @@ export const commands: Command[] = [
   },
 ];
 export async function execute(id: string, context?: EditorContext) {
-  if (useApp.getState().openingWorkspace !== null) { return; }
+  if (useApp.getState().openingWorkspace !== null) {
+    return;
+  }
   const command = commands.find((c) => c.id === id);
   if (!command) {
     notify(`Unknown command: ${id}`);
@@ -964,7 +990,9 @@ export function installKeys() {
     if (useApp.getState().openingWorkspace !== null) {
       chord = "";
       const target = e.target instanceof Element ? e.target : null;
-      const allowed = e.key === "Tab" || target?.closest('[role="dialog"]') ||
+      const allowed =
+        e.key === "Tab" ||
+        target?.closest('[role="dialog"]') ||
         (["Enter", " "].includes(e.key) && target?.closest(".window-controls"));
       if (!allowed) {
         e.preventDefault();
@@ -982,8 +1010,7 @@ export function installKeys() {
     }
     const target = e.target as HTMLElement;
     const typing =
-      ["INPUT", "TEXTAREA"].includes(target.tagName) &&
-      !target.closest(".monaco-editor");
+      ["INPUT", "TEXTAREA"].includes(target.tagName) && !target.closest(".monaco-editor");
     const physical =
       e.code === "Backquote"
         ? "`"
@@ -1031,7 +1058,7 @@ export function installKeys() {
               "workbench.action.showCommands",
               "workbench.action.quickOpen",
               "workbench.view.explorer",
-                "workbench.view.scm",
+              "workbench.view.scm",
               "workbench.action.findInFiles",
             ].includes(c.command.id)),
       )?.command.id;
@@ -1053,9 +1080,15 @@ export function installKeys() {
     if (
       command &&
       (!typing ||
-          ["Ctrl+S", "Ctrl+Shift+S", "Ctrl+Shift+P", "Ctrl+P", "Ctrl+Shift+F", "Ctrl+Shift+G", "Ctrl+O"].includes(
-          key,
-        ))
+        [
+          "Ctrl+S",
+          "Ctrl+Shift+S",
+          "Ctrl+Shift+P",
+          "Ctrl+P",
+          "Ctrl+Shift+F",
+          "Ctrl+Shift+G",
+          "Ctrl+O",
+        ].includes(key))
     ) {
       e.preventDefault();
       e.stopPropagation();

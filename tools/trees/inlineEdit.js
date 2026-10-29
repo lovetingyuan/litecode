@@ -20,7 +20,10 @@ export class InlineEditSession {
     this.revision = 0;
     this.name = `.litecode-new-${Date.now().toString(36)}-${++sequence}`;
     const parent = options.parentPath.replace(/\/$/, "");
-    this.path = this.mode === "rename" ? options.path : `${parent ? parent + "/" : ""}${this.name}${options.kind === "newFolder" ? "/" : ""}`;
+    this.path =
+      this.mode === "rename"
+        ? options.path
+        : `${parent ? parent + "/" : ""}${this.name}${options.kind === "newFolder" ? "/" : ""}`;
     if (this.mode === "create") creationNames.add(this.name);
   }
   setValue(value) {
@@ -31,7 +34,10 @@ export class InlineEditSession {
     clearTimeout(this.timer);
     this.error = this.options.validateSync?.(value) ?? null;
     this.emit();
-    if (value && !this.error) this.timer = setTimeout(() => { void this.check(); }, 150);
+    if (value && !this.error)
+      this.timer = setTimeout(() => {
+        void this.check();
+      }, 150);
   }
   check() {
     clearTimeout(this.timer);
@@ -39,25 +45,37 @@ export class InlineEditSession {
     const revision = this.revision;
     const value = this.value;
     const syntax = this.options.validateSync?.(value);
-    const validation = Promise.resolve().then(() => syntax || this.options.validate(value)).catch(error => error?.message ?? String(error)).then(error => {
-      if (!this.disposed && revision === this.revision) {
-        if (this.validation === validation) this.validation = null;
-        this.error = error ?? null;
-        this.emit();
-      }
-      return error;
-    });
+    const validation = Promise.resolve()
+      .then(() => syntax || this.options.validate(value))
+      .catch((error) => error?.message ?? String(error))
+      .then((error) => {
+        if (!this.disposed && revision === this.revision) {
+          if (this.validation === validation) this.validation = null;
+          this.error = error ?? null;
+          this.emit();
+        }
+        return error;
+      });
     this.validation = validation;
     return validation;
   }
   async commit(blur = false) {
     if (this.busy || this.disposed) return;
-    if (!this.value.trim()) { this.cancel(); return; }
-    if (this.mode === "rename" && this.value === this.initialValue) { this.finish(false); return; }
+    if (!this.value.trim()) {
+      this.cancel();
+      return;
+    }
+    if (this.mode === "rename" && this.value === this.initialValue) {
+      this.finish(false);
+      return;
+    }
     const revision = this.revision;
     const error = await this.check();
     if (this.disposed || revision !== this.revision || this.busy) return;
-    if (error) { if (blur) this.cancel(); return; }
+    if (error) {
+      if (blur) this.cancel();
+      return;
+    }
     this.busy = true;
     this.emit();
     try {
@@ -72,8 +90,12 @@ export class InlineEditSession {
       }
     }
   }
-  cancel() { if (!this.busy) this.finish(true); }
-  dispose() { this.finish(true); }
+  cancel() {
+    if (!this.busy) this.finish(true);
+  }
+  dispose() {
+    this.finish(true);
+  }
   finish(canceled) {
     if (this.disposed) return;
     this.disposed = true;

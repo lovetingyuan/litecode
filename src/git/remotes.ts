@@ -9,15 +9,17 @@ export function remoteWebUrl(address: string | null): string | null {
   if (/^[a-z]:/i.test(value) || value.includes("\\")) {
     return null;
   }
-  const scp = !value.includes("://") &&
-    value.match(/^[^@/:\s]+@([^/:\s]+):([^\s]+)$/);
+  const scp = !value.includes("://") && value.match(/^[^@/:\s]+@([^/:\s]+):([^\s]+)$/);
   if (!scp && !/^(?:https?|ssh):\/\//i.test(value)) {
     return null;
   }
   try {
     let url = new URL(scp ? `ssh://${scp[1]}/${scp[2]}` : value);
-    if (!["http:", "https:", "ssh:"].includes(url.protocol) ||
-        !url.hostname || !url.pathname.replace(/^\/+|\/+$/g, "")) {
+    if (
+      !["http:", "https:", "ssh:"].includes(url.protocol) ||
+      !url.hostname ||
+      !url.pathname.replace(/^\/+|\/+$/g, "")
+    ) {
       return null;
     }
     if (url.protocol === "ssh:") {
@@ -33,7 +35,9 @@ export function remoteWebUrl(address: string | null): string | null {
   }
 }
 
-export function preferredRemoteUrl(info: Pick<GitInfo, "remotes" | "upstream"> | null): string | null {
+export function preferredRemoteUrl(
+  info: Pick<GitInfo, "remotes" | "upstream"> | null,
+): string | null {
   if (!info) {
     return null;
   }

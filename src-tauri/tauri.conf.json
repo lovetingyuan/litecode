@@ -23,21 +23,15 @@
       }
     ],
     "security": {
-      "dangerousDisableAssetCspModification": [
-        "style-src"
-      ],
+      "dangerousDisableAssetCspModification": ["style-src"],
       "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: media: http://media.localhost https:; media-src 'self' blob: media: http://media.localhost; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost",
       "devCsp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: media: http://media.localhost https:; media-src 'self' blob: media: http://media.localhost; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420"
     }
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "nsis"
-    ],
-    "resources": [
-      "tools/**/*"
-    ],
+    "targets": ["nsis"],
+    "resources": ["tools/**/*"],
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper",

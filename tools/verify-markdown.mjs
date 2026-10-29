@@ -437,11 +437,17 @@ try {
   assert.equal(httpImageRequests, 0);
   assert.equal(httpsImageRequests, 0);
   await group(first).getByRole("button", { name: "Load remote images", exact: true }).click();
-  await page.waitForFunction(() => document.querySelectorAll(".markdown-body img").length === 2 &&
-    [...document.querySelectorAll(".markdown-body img")].every((img) => img.naturalWidth === 1));
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll(".markdown-body img").length === 2 &&
+      [...document.querySelectorAll(".markdown-body img")].every((img) => img.naturalWidth === 1),
+  );
   assert.equal(httpImageRequests, 0);
   assert.equal(httpsImageRequests, 1);
-  assert.equal(await group(first).getByAltText("HTTPS", { exact: true }).getAttribute("referrerpolicy"), "no-referrer");
+  assert.equal(
+    await group(first).getByAltText("HTTPS", { exact: true }).getAttribute("referrerpolicy"),
+    "no-referrer",
+  );
   await group(first).getByRole("button", { name: "Block remote images", exact: true }).click();
   assert.equal(await group(first).locator(".markdown-body img").count(), 1);
   assert.equal(await group(first).getByRole("link", { name: "Unsafe", exact: true }).count(), 0);

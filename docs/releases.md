@@ -4,7 +4,7 @@ Release from Windows x64 with Node.js 24+, Rust, the Windows build tools, Git, a
 
 ## One-time update signing setup
 
-Run `npm run updater:setup`. It creates an updater signing key in `%USERPROFILE%\.tauri\litecode\updater.key`, outside this repository, and writes only its public key into the Tauri configuration. Commit that configuration along with the update feature before releasing. The setup command never replaces an existing key.
+Run `node tools/setup-updater.mjs`. It creates an updater signing key in `%USERPROFILE%\.tauri\litecode\updater.key`, outside this repository, and writes only its public key into the Tauri configuration. Commit that configuration along with the update feature before releasing. The setup command never replaces an existing key.
 
 Back up `updater.key` and `updater.key.pub` securely. All future releases must use the same private key so existing installations can verify them. The default local key is protected by the user's filesystem account and has no additional password. For an encrypted or separately stored key, set `TAURI_SIGNING_PRIVATE_KEY` to its path or contents and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` to its password in the release terminal. Never commit these values.
 
@@ -43,4 +43,4 @@ Versions distributed before this update feature must be upgraded manually once.
 
 `npm test` includes release-script tests against temporary Git repositories and a local bare remote, plus update-state and recovery acknowledgement tests. It does not push to GitHub.
 
-`npm run test:updates:desktop` builds two signed debug NSIS installers with a unique test application identifier, temporary signing key, isolated Cargo target directory, and isolated installation directory. It verifies update checks, shared operations, signature rejection, a real locked-backup failure, the 30-second backup timeout, installation, restart, and unsaved-buffer recovery. It uninstalls the fixture afterwards and keeps evidence under `.verification/updates-*/`. The production build cannot use the loopback endpoint override used by this test.
+Run `npm run build` first, then `node tools/verify-updates-desktop.mjs`. This builds two signed debug NSIS installers with a unique test application identifier, temporary signing key, isolated Cargo target directory, and isolated installation directory. It verifies update checks, shared operations, signature rejection, a real locked-backup failure, the 30-second backup timeout, installation, restart, and unsaved-buffer recovery. It uninstalls the fixture afterwards and keeps evidence under `.verification/updates-*/`. The production build cannot use the loopback endpoint override used by this test.

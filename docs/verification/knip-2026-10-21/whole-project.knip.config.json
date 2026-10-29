@@ -10,9 +10,5 @@
     "tools/report-verification.mjs",
     "tools/web-language-server.mjs"
   ],
-  "project": [
-    "src/**/*.{ts,tsx,css,json}",
-    "tools/**/*.mjs",
-    "vite.config.ts"
-  ]
+  "project": ["src/**/*.{ts,tsx,css,json}", "tools/**/*.mjs", "vite.config.ts"]
 }

@@ -9,12 +9,7 @@ import {
   reorderTab,
   useTerminal,
 } from "./state";
-import {
-  plainTerminalText,
-  reportedDirectory,
-  terminalOptions,
-  terminalSetting,
-} from "./settings";
+import { plainTerminalText, reportedDirectory, terminalOptions, terminalSetting } from "./settings";
 
 beforeEach(() =>
   useTerminal.setState({
@@ -39,10 +34,7 @@ describe("terminal tabs and split layouts", () => {
     const second = addTab("Command Prompt");
     expect(activePane()).toBe(second);
     removePane(right);
-    expect(layoutGroups(useTerminal.getState().tabs[0].layout)).toEqual([
-      first,
-      down,
-    ]);
+    expect(layoutGroups(useTerminal.getState().tabs[0].layout)).toEqual([first, down]);
     expect(useTerminal.getState().panes[first].cwd).toBe("D:/project/中文 dir");
     removePane(second);
     expect(activePane()).toBe(down);
@@ -79,33 +71,18 @@ describe("terminal settings and shell-reported directories", () => {
       fontSize: 14,
       scrollback: 1000,
     });
-    expect(
-      terminalSetting({ "terminal.integrated.scrollback": 1.5 }, "scrollback"),
-    ).toBe(1000);
-    expect(
-      terminalSetting({ "terminal.integrated.lineHeight": 0 }, "lineHeight"),
-    ).toBe(1);
-    expect(
-      terminalSetting(
-        { "terminal.integrated.cursorStyle": "unknown" },
-        "cursorStyle",
-      ),
-    ).toBe("block");
-    expect(
-      terminalOptions({ "terminal.integrated.fontWeight": "700" }).fontWeight,
-    ).toBe(700);
+    expect(terminalSetting({ "terminal.integrated.scrollback": 1.5 }, "scrollback")).toBe(1000);
+    expect(terminalSetting({ "terminal.integrated.lineHeight": 0 }, "lineHeight")).toBe(1);
+    expect(terminalSetting({ "terminal.integrated.cursorStyle": "unknown" }, "cursorStyle")).toBe(
+      "block",
+    );
+    expect(terminalOptions({ "terminal.integrated.fontWeight": "700" }).fontWeight).toBe(700);
     expect(terminalOptions({ "terminal.integrated.fontWeight": 400 }).fontWeight).toBe(400);
   });
   it("accepts explicit local cwd sequences including escaped characters", () => {
-    expect(reportedDirectory(9, '9;"D:\\中文 space;dir"')).toBe(
-      "D:\\中文 space;dir",
-    );
-    expect(reportedDirectory(633, "P;Cwd=D:\\\\test\\x3bdir")).toBe(
-      "D:\\test;dir",
-    );
-    expect(reportedDirectory(7, "file:///D:/%E4%B8%AD%E6%96%87%20dir")).toBe(
-      "D:/中文 dir",
-    );
+    expect(reportedDirectory(9, '9;"D:\\中文 space;dir"')).toBe("D:\\中文 space;dir");
+    expect(reportedDirectory(633, "P;Cwd=D:\\\\test\\x3bdir")).toBe("D:\\test;dir");
+    expect(reportedDirectory(7, "file:///D:/%E4%B8%AD%E6%96%87%20dir")).toBe("D:/中文 dir");
     expect(reportedDirectory(9, "9;relative")).toBeNull();
     expect(reportedDirectory(7, "https://example.com/path")).toBeNull();
     expect(reportedDirectory(7, "file:///D:/bad%00path")).toBeNull();

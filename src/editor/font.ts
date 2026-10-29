@@ -14,7 +14,7 @@ export function renderedFontFamily(fontFamily: string) {
   const names = stack.match(/(?:[^,"']|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')+/g) ?? [];
   return names
     .map((name) => name.trim())
-    .flatMap((name) => name.toLowerCase() === "monospace" ? ['"Microsoft YaHei"', name] : [name])
+    .flatMap((name) => (name.toLowerCase() === "monospace" ? ['"Microsoft YaHei"', name] : [name]))
     .join(", ");
 }
 

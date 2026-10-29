@@ -1,7 +1,16 @@
 import { call, errorMessage } from "../core/bridge";
 import { ask } from "../components/dialog";
 import { useApp, setApp, notify, searchSession, primarySearchId } from "../store/store";
-import { checkpoint, models, normalize, relative, basename, patchDoc, restoreDocument, showDocument } from "../editor/documents";
+import {
+  checkpoint,
+  models,
+  normalize,
+  relative,
+  basename,
+  patchDoc,
+  restoreDocument,
+  showDocument,
+} from "../editor/documents";
 import { monaco } from "../editor/monaco";
 import type { SearchMatch, DiskDocument, Query, Mirror } from "../types/types";
 import { isTextDocument } from "../utils/media";
@@ -9,20 +18,41 @@ import { isTextDocument } from "../utils/media";
 type BufferEdit = { before: Mirror; after: string };
 type DiskEdit = { path: string; before: string; after: string; encoding: string; revision: string };
 type Report = { succeeded: string[]; failed: string[]; remaining: string[]; complete: boolean };
-type Recovery = { transactionId: string; root: string | null; paths: string[]; buffers: BufferEdit[]; targetAfter: boolean };
+type Recovery = {
+  transactionId: string;
+  root: string | null;
+  paths: string[];
+  buffers: BufferEdit[];
+  targetAfter: boolean;
+};
 type Direction = "apply" | "undo" | "redo";
-type Transaction = { id: string; root: string | null; buffers: BufferEdit[]; direction: Direction | null; finishing: boolean };
+type Transaction = {
+  id: string;
+  root: string | null;
+  buffers: BufferEdit[];
+  direction: Direction | null;
+  finishing: boolean;
+};
 const undoStack: Transaction[] = [];
 const redoStack: Transaction[] = [];
 let pendingApply: Transaction | null = null;
 let operations = Promise.resolve();
-type PlanningJob = { id: string; root: string | null; cancelled: boolean; registered: boolean; applying: boolean; yieldedAt: number };
+type PlanningJob = {
+  id: string;
+  root: string | null;
+  cancelled: boolean;
+  registered: boolean;
+  applying: boolean;
+  yieldedAt: number;
+};
 let planningJob: PlanningJob | null = null;
 const cancelled = Symbol("Replacement planning cancelled");
 
 export function cancelReplacementPlan() {
   const job = planningJob;
-  if (!job || job.applying) { return; }
+  if (!job || job.applying) {
+    return;
+  }
   job.cancelled = true;
   if (job.registered) {
     void call("replacement_plan_cancel", { requestId: job.id }).catch(() => {});
@@ -30,12 +60,16 @@ export function cancelReplacementPlan() {
 }
 
 function checkPlanning(job: PlanningJob) {
-  if (job.cancelled || useApp.getState().root !== job.root) { throw cancelled; }
+  if (job.cancelled || useApp.getState().root !== job.root) {
+    throw cancelled;
+  }
 }
 
 async function yieldPlanning(job: PlanningJob) {
   checkPlanning(job);
-  if (performance.now() - job.yieldedAt < 8) { return; }
+  if (performance.now() - job.yieldedAt < 8) {
+    return;
+  }
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   job.yieldedAt = performance.now();
   checkPlanning(job);
@@ -43,7 +77,10 @@ async function yieldPlanning(job: PlanningJob) {
 
 function serial<T>(action: () => Promise<T>): Promise<T> {
   const next = operations.catch(() => {}).then(action);
-  operations = next.then(() => {}, () => {});
+  operations = next.then(
+    () => {},
+    () => {},
+  );
   return next;
 }
 
@@ -59,18 +96,27 @@ useApp.subscribe((state, previous) => {
 function checkRoot(root: string | null) {
   const current = useApp.getState().root;
   if ((root === null ? null : normalize(root)) !== (current === null ? null : normalize(current))) {
-    throw new Error("The workspace changed. Open the original folder before retrying this replacement.");
+    throw new Error(
+      "The workspace changed. Open the original folder before retrying this replacement.",
+    );
   }
 }
 function checkBuffers(buffers: BufferEdit[], after: boolean, retry: boolean) {
   for (const buffer of buffers) {
     const doc = useApp.getState().docs[buffer.before.id];
     const m = models.get(buffer.before.id);
-    if (!doc || !m || doc.path !== buffer.before.path || doc.encoding !== buffer.before.encoding ||
-        (m.getValue() !== (after ? buffer.before.text : buffer.after) &&
-          !(retry && m.getValue() === (after ? buffer.after : buffer.before.text)))) {
-      throw new Error((doc?.name ?? buffer.before.name ?? "A replacement editor") +
-        " changed. Preserve those edits or restore the expected version before retrying.");
+    if (
+      !doc ||
+      !m ||
+      doc.path !== buffer.before.path ||
+      doc.encoding !== buffer.before.encoding ||
+      (m.getValue() !== (after ? buffer.before.text : buffer.after) &&
+        !(retry && m.getValue() === (after ? buffer.after : buffer.before.text)))
+    ) {
+      throw new Error(
+        (doc?.name ?? buffer.before.name ?? "A replacement editor") +
+          " changed. Preserve those edits or restore the expected version before retrying.",
+      );
     }
   }
 }
@@ -79,7 +125,9 @@ function applyBuffers(buffers: BufferEdit[], after: boolean) {
   for (const buffer of buffers) {
     const m = models.get(buffer.before.id)!;
     const text = after ? buffer.after : buffer.before.text;
-    if (m.getValue() === text) { continue; }
+    if (m.getValue() === text) {
+      continue;
+    }
     m.pushStackElement();
     m.pushEditOperations([], [{ range: m.getFullModelRange(), text }], () => null);
     m.pushStackElement();
@@ -87,7 +135,10 @@ function applyBuffers(buffers: BufferEdit[], after: boolean) {
   }
 }
 function failure(report: Report) {
-  return [...report.failed, ...(report.remaining.length ? ["Still pending: " + report.remaining.join(", ")] : [])].join("\n");
+  return [
+    ...report.failed,
+    ...(report.remaining.length ? ["Still pending: " + report.remaining.join(", ")] : []),
+  ].join("\n");
 }
 async function finish(transaction: Transaction, after: boolean) {
   transaction.finishing = true;
@@ -105,11 +156,23 @@ async function hasRecovery(id: string) {
 }
 
 export function replaceMatches(
-  matches: SearchMatch[], replacement: string, preserve = false,
-  query = searchSession(primarySearchId)!.query, preview = false,
+  matches: SearchMatch[],
+  replacement: string,
+  preserve = false,
+  query = searchSession(primarySearchId)!.query,
+  preview = false,
 ) {
-  if (planningJob) { return Promise.resolve(["A replacement is already running"]); }
-  const job: PlanningJob = { id: crypto.randomUUID(), root: useApp.getState().root, cancelled: false, registered: false, applying: false, yieldedAt: -Infinity };
+  if (planningJob) {
+    return Promise.resolve(["A replacement is already running"]);
+  }
+  const job: PlanningJob = {
+    id: crypto.randomUUID(),
+    root: useApp.getState().root,
+    cancelled: false,
+    registered: false,
+    applying: false,
+    yieldedAt: -Infinity,
+  };
   planningJob = job;
   setApp({ replacementPhase: "planning" });
   return serial(async () => {
@@ -120,7 +183,9 @@ export function replaceMatches(
       checkPlanning(job);
       return await replace(matches, replacement, preserve, query, preview, job);
     } catch (error) {
-      if (error === cancelled || job.cancelled) { return null; }
+      if (error === cancelled || job.cancelled) {
+        return null;
+      }
       const errors = [errorMessage(error)];
       notify(errors.join("\n"));
       return errors;
@@ -135,19 +200,33 @@ export function replaceMatches(
     }
   });
 }
-async function replace(matches: SearchMatch[], replacement: string, preserve: boolean, query: Query, preview: boolean, job: PlanningJob) {
+async function replace(
+  matches: SearchMatch[],
+  replacement: string,
+  preserve: boolean,
+  query: Query,
+  preview: boolean,
+  job: PlanningJob,
+) {
   if (!preview && (pendingApply || [...undoStack, ...redoStack].some((t) => t.direction))) {
-    notify("A workspace replacement is unfinished. Use Search: Retry Interrupted Replacement or Search: Recover Interrupted Replacements.");
+    notify(
+      "A workspace replacement is unfinished. Use Search: Retry Interrupted Replacement or Search: Recover Interrupted Replacements.",
+    );
     return ["A replacement is unfinished"];
   }
   const root = job.root;
   const byFile = new Map<string, SearchMatch[]>();
   for (let i = 0; i < matches.length; i++) {
-    if (i % 256 === 0) { await yieldPlanning(job); }
+    if (i % 256 === 0) {
+      await yieldPlanning(job);
+    }
     const m = matches[i];
     const key = m.documentId ?? normalize(m.path);
     let list = byFile.get(key);
-    if (!list) { list = []; byFile.set(key, list); }
+    if (!list) {
+      list = [];
+      byFile.set(key, list);
+    }
     list.push(m);
   }
   const buffers: BufferEdit[] = [];
@@ -180,7 +259,13 @@ async function replace(matches: SearchMatch[], replacement: string, preserve: bo
       const before = m.getValue();
       const planned = await call<
         { line: number; column: number; endLine: number; endColumn: number; text: string }[]
-      >("replacement_plan", { requestId: job.id, text: before, query, replacement, preserveCase: preserve });
+      >("replacement_plan", {
+        requestId: job.id,
+        text: before,
+        query,
+        replacement,
+        preserveCase: preserve,
+      });
       checkPlanning(job);
       if (m.getVersionId() !== version) {
         throw new Error(
@@ -189,15 +274,19 @@ async function replace(matches: SearchMatch[], replacement: string, preserve: bo
       }
       const rangeKey = (p: { line: number; column: number; endLine: number; endColumn: number }) =>
         `${p.line}:${p.column}:${p.endLine}:${p.endColumn}`;
-      const plans = new Map<string, typeof planned[number]>();
+      const plans = new Map<string, (typeof planned)[number]>();
       for (let i = 0; i < planned.length; i++) {
-        if (i % 256 === 0) { await yieldPlanning(job); }
+        if (i % 256 === 0) {
+          await yieldPlanning(job);
+        }
         const plan = planned[i];
         plans.set(rangeKey(plan), plan);
       }
       const edits: { start: number; end: number; text: string }[] = [];
       for (let i = 0; i < list.length; i++) {
-        if (i % 256 === 0) { await yieldPlanning(job); }
+        if (i % 256 === 0) {
+          await yieldPlanning(job);
+        }
         const match = list[i];
         const range = new monaco.Range(match.line, match.column, match.endLine, match.endColumn);
         if (m.getValueInRange(range) !== match.matched) {
@@ -207,23 +296,37 @@ async function replace(matches: SearchMatch[], replacement: string, preserve: bo
         if (!plan) {
           throw new Error("Search and replacement ranges changed. Search again before replacing.");
         }
-        edits.push({ start: m.getOffsetAt(range.getStartPosition()), end: m.getOffsetAt(range.getEndPosition()), text: plan.text });
+        edits.push({
+          start: m.getOffsetAt(range.getStartPosition()),
+          end: m.getOffsetAt(range.getEndPosition()),
+          text: plan.text,
+        });
       }
       edits.sort((a, b) => a.start - b.start || a.end - b.end);
       const pieces: string[] = [];
       let offset = 0;
       for (let i = 0; i < edits.length; i++) {
-        if (i % 256 === 0) { await yieldPlanning(job); }
+        if (i % 256 === 0) {
+          await yieldPlanning(job);
+        }
         const edit = edits[i];
-        if (edit.start < offset) { throw new Error("Replacement ranges overlap. Search again before replacing."); }
+        if (edit.start < offset) {
+          throw new Error("Replacement ranges overlap. Search again before replacing.");
+        }
         pieces.push(before.slice(offset, edit.start), edit.text);
         offset = edit.end;
       }
       pieces.push(before.slice(offset));
       const after = pieces.join("");
       checkPlanning(job);
-      if (m.isDisposed() || m.getVersionId() !== version || (doc && useApp.getState().docs[doc.id] !== doc)) {
-        throw new Error(`${doc?.name ?? first.path} changed while preparing replacements. Search again.`);
+      if (
+        m.isDisposed() ||
+        m.getVersionId() !== version ||
+        (doc && useApp.getState().docs[doc.id] !== doc)
+      ) {
+        throw new Error(
+          `${doc?.name ?? first.path} changed while preparing replacements. Search again.`,
+        );
       }
       if (preview) {
         window.dispatchEvent(
@@ -261,44 +364,78 @@ async function replace(matches: SearchMatch[], replacement: string, preserve: bo
   }
 
   if (preview || errors.length || (!buffers.length && !diskEdits.length)) {
-    if (errors.length) { notify(errors.join("\n")); }
+    if (errors.length) {
+      notify(errors.join("\n"));
+    }
     return errors;
   }
   await checkpoint();
   checkPlanning(job);
   checkRoot(root);
   checkBuffers(buffers, true, false);
-  const transaction: Transaction = { id: crypto.randomUUID(), root, buffers, direction: "apply", finishing: false };
+  const transaction: Transaction = {
+    id: crypto.randomUUID(),
+    root,
+    buffers,
+    direction: "apply",
+    finishing: false,
+  };
   job.applying = true;
   setApp({ replacementPhase: "applying" });
   pendingApply = transaction; // Keep the identifier even when IPC loses its response.
   try {
     const report = await call<Report>("replace_disk", {
-      transactionId: transaction.id, expectedRoot: root, edits: diskEdits, buffers,
+      transactionId: transaction.id,
+      expectedRoot: root,
+      edits: diskEdits,
+      buffers,
     });
-    if (!report.complete) { throw new Error(failure(report)); }
+    if (!report.complete) {
+      throw new Error(failure(report));
+    }
     await finish(transaction, true);
     undoStack.push(transaction);
     redoStack.length = 0;
     pendingApply = null;
-    notify(report.succeeded.length + " closed file(s) saved; " + buffers.length + " open editor(s) updated. Open editors retain unsaved edits.");
+    notify(
+      report.succeeded.length +
+        " closed file(s) saved; " +
+        buffers.length +
+        " open editor(s) updated. Open editors retain unsaved edits.",
+    );
   } catch (error) {
     errors.push(errorMessage(error));
     // A rejected preflight has no journal and changed no file. An unavailable
     // recovery query leaves the ID intact, because the write outcome is unknown.
-    try { if (!transaction.finishing && !(await hasRecovery(transaction.id))) { pendingApply = null; } } catch { /* Retry recovery when the backend is available. */ }
-    notify(errors.join("\n") + (pendingApply ? "\nThe backup is retained. Retry or recover the interrupted replacement." : ""));
+    try {
+      if (!transaction.finishing && !(await hasRecovery(transaction.id))) {
+        pendingApply = null;
+      }
+    } catch {
+      /* Retry recovery when the backend is available. */
+    }
+    notify(
+      errors.join("\n") +
+        (pendingApply
+          ? "\nThe backup is retained. Retry or recover the interrupted replacement."
+          : ""),
+    );
   }
   return errors;
 }
 
 export function undoReplacement(redo = false) {
   return serial(async () => {
-    if (pendingApply) { notify("Recover or retry the unfinished replacement first."); return; }
+    if (pendingApply) {
+      notify("Recover or retry the unfinished replacement first.");
+      return;
+    }
     const from = redo ? redoStack : undoStack;
     const to = redo ? undoStack : redoStack;
     const transaction = from[from.length - 1];
-    if (!transaction) { return; }
+    if (!transaction) {
+      return;
+    }
     const direction = redo ? "redo" : "undo";
     if (transaction.direction && transaction.direction !== direction) {
       notify("An operation in the other direction is unfinished. Retry or recover it first.");
@@ -312,9 +449,12 @@ export function undoReplacement(redo = false) {
       transaction.direction = direction;
       if (!transaction.finishing) {
         const report = await call<Report>(retry ? "resume_replacement" : "replay_replacement", {
-          transactionId: transaction.id, redo,
+          transactionId: transaction.id,
+          redo,
         });
-        if (!report.complete) { throw new Error(failure(report)); }
+        if (!report.complete) {
+          throw new Error(failure(report));
+        }
       }
       await finish(transaction, redo);
       from.pop();
@@ -322,7 +462,13 @@ export function undoReplacement(redo = false) {
     } catch (error) {
       // A whole group stays on its original stack until every file and buffer
       // has reached the target and its durable completion marker is confirmed.
-      try { if (!transaction.finishing && !(await hasRecovery(transaction.id))) { transaction.direction = null; } } catch { /* Preserve unknown outcomes. */ }
+      try {
+        if (!transaction.finishing && !(await hasRecovery(transaction.id))) {
+          transaction.direction = null;
+        }
+      } catch {
+        /* Preserve unknown outcomes. */
+      }
       notify(errorMessage(error));
     }
   });
@@ -332,7 +478,9 @@ export function retryReplacement() {
   return serial(async () => {
     const transaction = pendingApply ?? [...undoStack, ...redoStack].find((t) => t.direction);
     if (!transaction) {
-      notify("Use Search: Recover Interrupted Replacements to inspect backups from a previous session.");
+      notify(
+        "Use Search: Recover Interrupted Replacements to inspect backups from a previous session.",
+      );
       return;
     }
     const direction = transaction.direction!;
@@ -343,18 +491,25 @@ export function retryReplacement() {
       await checkpoint();
       if (!transaction.finishing) {
         const report = await call<Report>("resume_replacement", { transactionId: transaction.id });
-        if (!report.complete) { throw new Error(failure(report)); }
+        if (!report.complete) {
+          throw new Error(failure(report));
+        }
       }
       await finish(transaction, after);
       if (direction === "apply") {
-        undoStack.push(transaction); redoStack.length = 0; pendingApply = null;
+        undoStack.push(transaction);
+        redoStack.length = 0;
+        pendingApply = null;
       } else {
         const from = direction === "undo" ? undoStack : redoStack;
         const to = direction === "undo" ? redoStack : undoStack;
-        from.splice(from.indexOf(transaction), 1); to.push(transaction);
+        from.splice(from.indexOf(transaction), 1);
+        to.push(transaction);
       }
       notify("Workspace replacement completed.");
-    } catch (error) { notify(errorMessage(error)); }
+    } catch (error) {
+      notify(errorMessage(error));
+    }
   });
 }
 
@@ -368,14 +523,23 @@ export function recoverInterruptedReplacements() {
         ["稍后处理", "恢复操作前状态", "保留现状"],
         { items: record.paths, itemsLabel: "Affected files" },
       );
-      if (!choice || choice === "稍后处理") { continue; }
+      if (!choice || choice === "稍后处理") {
+        continue;
+      }
       try {
         if (choice !== "保留现状") {
           checkRoot(record.root);
           for (const buffer of record.buffers) {
             if (!models.has(buffer.before.id)) {
-              if (buffer.before.path && Object.values(useApp.getState().docs).some((doc) => doc.path && normalize(doc.path) === normalize(buffer.before.path!))) {
-                throw new Error("A replacement file is open in a different editor. Its edits were preserved; resolve that editor before recovering.");
+              if (
+                buffer.before.path &&
+                Object.values(useApp.getState().docs).some(
+                  (doc) => doc.path && normalize(doc.path) === normalize(buffer.before.path!),
+                )
+              ) {
+                throw new Error(
+                  "A replacement file is open in a different editor. Its edits were preserved; resolve that editor before recovering.",
+                );
               }
               restoreDocument(buffer.before);
               showDocument(buffer.before.id, { pinned: true });
@@ -384,22 +548,51 @@ export function recoverInterruptedReplacements() {
           await checkpoint();
           checkBuffers(record.buffers, true, true);
         }
-        const report = await call<Report>("recover_replacement", { transactionId: record.transactionId, keep: choice === "保留现状" });
-        if (!report.complete) { throw new Error(failure(report)); }
-        if (choice !== "保留现状") {
-          const updated = (await call<Recovery[]>("replacement_recovery")).find((r) => r.transactionId === record.transactionId);
-          if (!updated) { throw new Error("The recovery record changed. Inspect the retained backup before retrying."); }
-          await finish({ id: updated.transactionId, root: updated.root, buffers: updated.buffers, direction: "apply", finishing: false }, updated.targetAfter);
+        const report = await call<Report>("recover_replacement", {
+          transactionId: record.transactionId,
+          keep: choice === "保留现状",
+        });
+        if (!report.complete) {
+          throw new Error(failure(report));
         }
-        if (pendingApply?.id === record.transactionId) { pendingApply = null; }
+        if (choice !== "保留现状") {
+          const updated = (await call<Recovery[]>("replacement_recovery")).find(
+            (r) => r.transactionId === record.transactionId,
+          );
+          if (!updated) {
+            throw new Error(
+              "The recovery record changed. Inspect the retained backup before retrying.",
+            );
+          }
+          await finish(
+            {
+              id: updated.transactionId,
+              root: updated.root,
+              buffers: updated.buffers,
+              direction: "apply",
+              finishing: false,
+            },
+            updated.targetAfter,
+          );
+        }
+        if (pendingApply?.id === record.transactionId) {
+          pendingApply = null;
+        }
         for (const stack of [undoStack, redoStack]) {
           const index = stack.findIndex((t) => t.id === record.transactionId);
           if (index >= 0) {
-            if (choice === "保留现状") { stack.splice(index, 1); } else { stack[index].direction = null; stack[index].finishing = false; }
+            if (choice === "保留现状") {
+              stack.splice(index, 1);
+            } else {
+              stack[index].direction = null;
+              stack[index].finishing = false;
+            }
           }
         }
         notify("恢复记录已处理，备份仍保留。");
-      } catch (error) { notify(errorMessage(error) + "\n恢复尚未完成，备份已保留。"); }
+      } catch (error) {
+        notify(errorMessage(error) + "\n恢复尚未完成，备份已保留。");
+      }
     }
   });
 }

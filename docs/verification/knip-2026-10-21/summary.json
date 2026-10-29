@@ -40,15 +40,8 @@
     "unlistedUniquePackages": 4,
     "valueExportsToMakeLocal": 7,
     "typeExportsToMakeLocal": 1,
-    "unusedTypeCandidates": [
-      "AppError"
-    ],
-    "unusedNpmDependencyCandidates": [
-      "@tauri-apps/plugin-dialog"
-    ],
-    "preserve": [
-      "monaco-languages",
-      "src/editor/documents.ts#model"
-    ]
+    "unusedTypeCandidates": ["AppError"],
+    "unusedNpmDependencyCandidates": ["@tauri-apps/plugin-dialog"],
+    "preserve": ["monaco-languages", "src/editor/documents.ts#model"]
   }
 }

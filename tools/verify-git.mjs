@@ -73,10 +73,7 @@ if (branchesOnly) {
   git(root, "add", "--all");
   git(root, "commit", "-m", "test: second branch fixture commit");
 }
-await copyFile(
-  "src-tauri/target/debug/litecode.exe",
-  path.join(app, "LiteCode.exe"),
-);
+await copyFile("src-tauri/target/debug/litecode.exe", path.join(app, "LiteCode.exe"));
 await writeFile(
   path.join(data, "session-main.json"),
   JSON.stringify({
@@ -89,17 +86,12 @@ await writeFile(
   path.join(data, "settings.json"),
   JSON.stringify({ "files.autoSave": "off", "editor.fontSize": 14 }),
 );
-await writeFile(
-  path.join(data, "recent.json"),
-  JSON.stringify(source ? [root, source] : [root]),
-);
+await writeFile(path.join(data, "recent.json"), JSON.stringify(source ? [root, source] : [root]));
 // The UI still exercises its trust flow; only this isolated portable profile is trusted.
 await writeFile(
   path.join(data, "trusted-workspaces.json"),
   JSON.stringify(
-    [root, ...(source ? [source] : [])].map((directory) =>
-      path.toNamespacedPath(directory),
-    ),
+    [root, ...(source ? [source] : [])].map((directory) => path.toNamespacedPath(directory)),
   ),
 );
 const server = createServer();
@@ -136,9 +128,7 @@ async function waitPage(predicate, argument, timeout = 25000) {
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error(
-    `Native UI condition timed out: ${String(predicate).slice(0, 180)}`,
-  );
+  throw new Error(`Native UI condition timed out: ${String(predicate).slice(0, 180)}`);
 }
 async function verify() {
   const endpoint = `http://127.0.0.1:${port}`,
@@ -159,9 +149,7 @@ async function verify() {
   browser = await chromium.connectOverCDP(endpoint);
   page = browser.contexts()[0].pages()[0];
   await page.setViewportSize({ width: 1280, height: 820 });
-  await browser
-    .contexts()[0]
-    .addInitScript(() => performance.setResourceTimingBufferSize(10000));
+  await browser.contexts()[0].addInitScript(() => performance.setResourceTimingBufferSize(10000));
   page.setDefaultTimeout(25_000);
   page.on("pageerror", (error) => {
     errors.push(error.stack ?? String(error));
@@ -177,15 +165,9 @@ async function verify() {
     timeout: 60_000,
   });
   await page.evaluate(() => performance.setResourceTimingBufferSize(10000));
-  await waitPage(
-    () => !!document.querySelector('.git-view .git-sync-actions'),
-  );
-  await page
-    .getByRole("button", { name: "Source Control (Ctrl+Shift+G)", exact: true })
-    .click();
-  if (
-    !(await page.getByRole("region", { name: "Source Control", exact: true }).isVisible())
-  ) {
+  await waitPage(() => !!document.querySelector(".git-view .git-sync-actions"));
+  await page.getByRole("button", { name: "Source Control (Ctrl+Shift+G)", exact: true }).click();
+  if (!(await page.getByRole("region", { name: "Source Control", exact: true }).isVisible())) {
     await page
       .getByRole("button", {
         name: "Source Control (Ctrl+Shift+G)",
@@ -194,10 +176,10 @@ async function verify() {
       .click();
   }
   const invoke = (command, args = {}) =>
-    page.evaluate(
-      ({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args),
-      { command, args },
-    );
+    page.evaluate(({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args), {
+      command,
+      args,
+    });
   async function snapshot() {
     return invoke("workspace_git_status", {
       expectedRoot: root,
@@ -215,26 +197,33 @@ async function verify() {
     return;
   }
   if (!branchesOnly) {
-    assert.ok(
-      repository.changes.some(
-        (c) => c.path === file && c.indexStatus && c.worktreeStatus,
-      ),
-    );
+    assert.ok(repository.changes.some((c) => c.path === file && c.indexStatus && c.worktreeStatus));
   }
-  const section = (title) =>
-    page.getByRole("region", { name: title, exact: true });
+  const section = (title) => page.getByRole("region", { name: title, exact: true });
   if (branchesOnly) {
     await page.getByRole("tab", { name: "Repository", exact: true }).click();
     await waitPage(() => !document.querySelector('[aria-label="Create Branch"]')?.disabled);
     const resources = await page.evaluate(() => ({
-      store: performance.getEntriesByType("resource").find((r) => new URL(r.name).pathname === "/src/store/store.ts")?.name,
+      store: performance
+        .getEntriesByType("resource")
+        .find((r) => new URL(r.name).pathname === "/src/store/store.ts")?.name,
     }));
-    checks.push(await verifyGitBranches({ page, root, branch, git, run, waitPage, resources, repository, invoke }));
+    checks.push(
+      await verifyGitBranches({
+        page,
+        root,
+        branch,
+        git,
+        run,
+        waitPage,
+        resources,
+        repository,
+        invoke,
+      }),
+    );
     return;
   }
-  await section("Staged Changes")
-    .getByRole("option", { name: file, exact: true })
-    .click();
+  await section("Staged Changes").getByRole("option", { name: file, exact: true }).click();
   await page.locator(".git-diff-host .monaco-diff-editor").waitFor();
   const staged = await invoke("git_read_diff", {
     expectedRoot: root,
@@ -247,16 +236,10 @@ async function verify() {
   });
   assert.equal(staged.before.replace(/\r/g, ""), "base\n");
   assert.equal(staged.after.replace(/\r/g, ""), "staged\n");
-  await section("Changes")
-    .getByRole("option", { name: file, exact: true })
-    .click();
+  await section("Changes").getByRole("option", { name: file, exact: true }).click();
   await page.locator(".git-diff-host .monaco-diff-editor").waitFor();
-  await page
-    .getByRole("button", { name: "Use Inline Diff", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Use Side by Side Diff", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Use Inline Diff", exact: true }).click();
+  await page.getByRole("button", { name: "Use Side by Side Diff", exact: true }).click();
   const resources = await page.evaluate(() =>
     Object.fromEntries(
       performance.getEntriesByType("resource").flatMap((entry) => {
@@ -274,9 +257,7 @@ async function verify() {
           return await (await import(url))[method](...args);
         } catch (error) {
           throw new Error(
-            error instanceof Error
-              ? (error.stack ?? error.message)
-              : JSON.stringify(error),
+            error instanceof Error ? (error.stack ?? error.message) : JSON.stringify(error),
           );
         }
       },
@@ -293,15 +274,26 @@ async function verify() {
     return;
   }
   const toolbar = page.locator(".git-sync-actions");
-  const commitTrigger = toolbar.getByRole("button", { name: "Commit", exact: true, includeHidden: true });
+  const commitTrigger = toolbar.getByRole("button", {
+    name: "Commit",
+    exact: true,
+    includeHidden: true,
+  });
   const commitDialog = page.getByRole("dialog", { name: "Commit Changes", exact: true });
   const commitMessage = commitDialog.getByRole("textbox", { name: "Commit Message", exact: true });
   const confirmCommit = commitDialog.getByRole("button", { name: "Commit", exact: true });
   assert.deepEqual(await toolbar.getByRole("button").allTextContents(), [
-    "Fetch", "Pull", "Pull (Rebase)", "Push", "Commit",
+    "Fetch",
+    "Pull",
+    "Pull (Rebase)",
+    "Push",
+    "Commit",
   ]);
   assert.equal(await commitTrigger.isEnabled(), true);
-  assert.equal(await commitTrigger.evaluate((button) => getComputedStyle(button).backgroundColor), "rgb(0, 127, 212)");
+  assert.equal(
+    await commitTrigger.evaluate((button) => getComputedStyle(button).backgroundColor),
+    "rgb(0, 127, 212)",
+  );
   assert.equal(await page.getByRole("textbox", { name: "Commit Message" }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "Open Remote", exact: true }).count(), 0);
   await page.getByRole("tab", { name: "Repository", exact: true }).click();
@@ -312,14 +304,27 @@ async function verify() {
     assert.equal(await remoteRows.count(), 0);
     git(root, "remote", "add", "origin", "git@github.com:litecode-test/browser-check.git");
     git(root, "remote", "add", "upstream", "https://github.com/litecode-test/fetch-check.git");
-    git(root, "remote", "set-url", "--push", "upstream", "ssh://git@github.com/litecode-test/push-check.git");
+    git(
+      root,
+      "remote",
+      "set-url",
+      "--push",
+      "upstream",
+      "ssh://git@github.com/litecode-test/push-check.git",
+    );
     git(root, "remote", "add", "local", root);
     git(root, "remote", "add", "long", longRemote);
     await page.getByRole("button", { name: "Refresh Source Control", exact: true }).click();
     await page.getByRole("button", { name: "Open long fetch URL", exact: true }).waitFor();
     assert.equal(await remoteRows.count(), 5);
-    assert.equal(await page.getByRole("button", { name: "Open origin push URL", exact: true }).count(), 0);
-    assert.equal(await page.getByRole("button", { name: "Open local fetch URL", exact: true }).isEnabled(), false);
+    assert.equal(
+      await page.getByRole("button", { name: "Open origin push URL", exact: true }).count(),
+      0,
+    );
+    assert.equal(
+      await page.getByRole("button", { name: "Open local fetch URL", exact: true }).isEnabled(),
+      false,
+    );
   }
   // Capture only the browser launch; all Git operations continue through real IPC.
   await page.evaluate(() => {
@@ -327,11 +332,16 @@ async function verify() {
     window.__gitBrowserCheck = { original, urls: [] };
     window.fetch = (input, options) => {
       const url = new URL(typeof input === "string" ? input : input.url, location.href);
-      if (url.hostname === "ipc.localhost" && decodeURIComponent(url.pathname) === "/plugin:opener|open_url") {
+      if (
+        url.hostname === "ipc.localhost" &&
+        decodeURIComponent(url.pathname) === "/plugin:opener|open_url"
+      ) {
         window.__gitBrowserCheck.urls.push(JSON.parse(options.body).url);
-        return Promise.resolve(new Response("null", {
-          headers: { "Content-Type": "application/json", "Tauri-Response": "ok" },
-        }));
+        return Promise.resolve(
+          new Response("null", {
+            headers: { "Content-Type": "application/json", "Tauri-Response": "ok" },
+          }),
+        );
       }
       return original(input, options);
     };
@@ -355,28 +365,45 @@ async function verify() {
     await longButton.focus();
     await page.keyboard.press("Enter");
     await waitPage(() => window.__gitBrowserCheck.urls.length === 5);
-    const sidebarSeparator = page.getByRole("separator", { name: "Primary side bar width", exact: true });
+    const sidebarSeparator = page.getByRole("separator", {
+      name: "Primary side bar width",
+      exact: true,
+    });
     await sidebarSeparator.focus();
     for (let step = 0; step < 11; step++) {
       await page.keyboard.press("ArrowLeft");
     }
     await waitPage(() => document.querySelector(".git-view").getBoundingClientRect().width <= 241);
-    const layout = await remoteRows.evaluateAll((rows) => rows.map((row) => {
-      const code = row.querySelector("code");
-      const name = row.querySelector("strong").getBoundingClientRect();
-      const address = code.getBoundingClientRect();
-      const button = row.querySelector("button").getBoundingClientRect();
-      const bounds = row.getBoundingClientRect();
-      return {
-        truncated: code.scrollWidth > code.clientWidth,
-        fullAddress: code.title === code.textContent,
-        singleLine: bounds.height <= button.height + 1,
-        fits: button.right <= bounds.right + 1 && address.right <= button.left && name.right <= address.left,
-      };
-    }));
-    assert.ok(layout.every((row) => row.fits), "Address buttons must stay visible to the right without overlap");
-    assert.ok(layout.every((row) => row.singleLine && row.fullAddress), "Remote names, addresses and buttons must share one line with full address tooltips");
-    assert.ok(layout.some((row) => row.truncated), "Long remote addresses must truncate");
+    const layout = await remoteRows.evaluateAll((rows) =>
+      rows.map((row) => {
+        const code = row.querySelector("code");
+        const name = row.querySelector("strong").getBoundingClientRect();
+        const address = code.getBoundingClientRect();
+        const button = row.querySelector("button").getBoundingClientRect();
+        const bounds = row.getBoundingClientRect();
+        return {
+          truncated: code.scrollWidth > code.clientWidth,
+          fullAddress: code.title === code.textContent,
+          singleLine: bounds.height <= button.height + 1,
+          fits:
+            button.right <= bounds.right + 1 &&
+            address.right <= button.left &&
+            name.right <= address.left,
+        };
+      }),
+    );
+    assert.ok(
+      layout.every((row) => row.fits),
+      "Address buttons must stay visible to the right without overlap",
+    );
+    assert.ok(
+      layout.every((row) => row.singleLine && row.fullAddress),
+      "Remote names, addresses and buttons must share one line with full address tooltips",
+    );
+    assert.ok(
+      layout.some((row) => row.truncated),
+      "Long remote addresses must truncate",
+    );
     await page.screenshot({ path: path.join(run, "00-remotes-narrow.png") });
     await sidebarSeparator.focus();
     for (let step = 0; step < 11; step++) {
@@ -405,7 +432,9 @@ async function verify() {
       git(root, "remote", "remove", name);
     }
   }
-  checks.push("Toolbar order, per-address browser opener IPC, distinct fetch/push targets, unsupported URLs, keyboard and narrow-sidebar layout");
+  checks.push(
+    "Toolbar order, per-address browser opener IPC, distinct fetch/push targets, unsupported URLs, keyboard and narrow-sidebar layout",
+  );
   if (process.argv.includes("--remotes-only")) {
     return;
   }
@@ -437,19 +466,13 @@ async function verify() {
     },
     { url: resources.documents, id: comparison.gitDiff.sourceId },
   );
-  await page.evaluate(
-    async (url) => (await import(url)).editor()?.focus(),
-    resources.documents,
-  );
+  await page.evaluate(async (url) => (await import(url)).editor()?.focus(), resources.documents);
   await page.keyboard.press("Control+s");
   await waitPage(async (url) => {
     const s = (await import(url)).useApp.getState();
     return !Object.values(s.docs).some((d) => d.dirty);
   }, resources.store);
-  assert.match(
-    await readFile(path.join(root, file), "utf8"),
-    /edited through shared model/,
-  );
+  assert.match(await readFile(path.join(root, file), "utf8"), /edited through shared model/);
   checks.push(
     "Staged/worktree versions, editable shared model, Ctrl+S, side-by-side and inline diffs",
   );
@@ -469,18 +492,10 @@ async function verify() {
       ),
     ),
   );
-  assert.ok(
-    resources.git,
-    "The native page must expose its actual Git module URL",
-  );
+  assert.ok(resources.git, "The native page must expose its actual Git module URL");
   const restored = await inspect();
-  assert.equal(
-    restored.docs[restored.active].gitDiff.sourceId,
-    comparison.gitDiff.sourceId,
-  );
-  checks.push(
-    "Git diff tabs and their shared source models survive session restoration",
-  );
+  assert.equal(restored.docs[restored.active].gitDiff.sourceId, comparison.gitDiff.sourceId);
+  checks.push("Git diff tabs and their shared source models survive session restoration");
   await action("documents", "splitGroup");
   assert.equal((await inspect()).groups.length, 2);
   await page.screenshot({ path: path.join(run, "01-git-diff.png") });
@@ -489,12 +504,8 @@ async function verify() {
   await section("Untracked Files").locator("file-tree-container").waitFor();
   await page.screenshot({ path: path.join(run, "02-git-tree.png") });
   await page.getByRole("button", { name: "View as List", exact: true }).click();
-  await section("Untracked Files")
-    .getByRole("option", { name: nested, exact: true })
-    .hover();
-  await page
-    .getByRole("button", { name: `Stage ${nested}`, exact: true })
-    .click();
+  await section("Untracked Files").getByRole("option", { name: nested, exact: true }).hover();
+  await page.getByRole("button", { name: `Stage ${nested}`, exact: true }).click();
   const trust = page.getByRole("button", {
     name: "Trust Workspace",
     exact: true,
@@ -504,13 +515,12 @@ async function verify() {
   }
   await waitPage(
     async ({ root, file }) => {
-      const s = await window.__TAURI_INTERNALS__.invoke(
-        "workspace_git_status",
-        { expectedRoot: root, session: null, force: true },
-      );
-      return s.repositories.some((r) =>
-        r.changes.some((c) => c.path === file && c.indexStatus),
-      );
+      const s = await window.__TAURI_INTERNALS__.invoke("workspace_git_status", {
+        expectedRoot: root,
+        session: null,
+        force: true,
+      });
+      return s.repositories.some((r) => r.changes.some((c) => c.path === file && c.indexStatus));
     },
     { root, file: nested },
   );
@@ -541,24 +551,36 @@ async function verify() {
   await commitTrigger.click();
   assert.equal(await commitMessage.inputValue(), draft);
   // Inject only a status snapshot; no conflicted files or index data are written.
-  await page.evaluate(async ({ url, repository }) => {
-    const { setApp } = await import(url);
-    setApp((state) => ({
-      gitState: {
-        ...state.gitState,
-        repositories: state.gitState.repositories.map((entry) => entry.path !== repository ? entry : {
-          ...entry,
-          changes: [...entry.changes, { ...entry.changes[0], path: "conflicted.txt", conflicted: true }],
-        }),
-      },
-    }));
-  }, { url: resources.store, repository: repository.path });
+  await page.evaluate(
+    async ({ url, repository }) => {
+      const { setApp } = await import(url);
+      setApp((state) => ({
+        gitState: {
+          ...state.gitState,
+          repositories: state.gitState.repositories.map((entry) =>
+            entry.path !== repository
+              ? entry
+              : {
+                  ...entry,
+                  changes: [
+                    ...entry.changes,
+                    { ...entry.changes[0], path: "conflicted.txt", conflicted: true },
+                  ],
+                },
+          ),
+        },
+      }));
+    },
+    { url: resources.store, repository: repository.path },
+  );
   assert.equal(await confirmCommit.isEnabled(), false);
   assert.equal(await commitTrigger.isEnabled(), false);
   await commitMessage.press("Control+Enter");
   assert.equal(git(root, "rev-parse", "HEAD"), headBeforeCommit);
   await action("git", "refreshGitPanel");
-  await waitPage(() => !!document.querySelector(".git-commit-dialog button.primary:not(:disabled)"));
+  await waitPage(
+    () => !!document.querySelector(".git-commit-dialog button.primary:not(:disabled)"),
+  );
   await page.screenshot({ path: path.join(run, "02-commit-dialog.png") });
 
   // A failed hook and a slow commit exercise retry, keyboard guards and dismissal.
@@ -568,14 +590,19 @@ async function verify() {
     window.fetch = (input, options) => {
       const url = new URL(typeof input === "string" ? input : input.url, location.href);
       const check = window.__gitCommitCheck;
-      if (url.hostname === "ipc.localhost" && url.pathname === "/git_operate" &&
-          JSON.parse(options.body).request.kind === "commit") {
+      if (
+        url.hostname === "ipc.localhost" &&
+        url.pathname === "/git_operate" &&
+        JSON.parse(options.body).request.kind === "commit"
+      ) {
         check.calls++;
         if (check.failNext) {
           check.failNext = false;
-          return Promise.resolve(new Response(JSON.stringify("Verification: commit hook rejected"), {
-            headers: { "Content-Type": "application/json", "Tauri-Response": "error" },
-          }));
+          return Promise.resolve(
+            new Response(JSON.stringify("Verification: commit hook rejected"), {
+              headers: { "Content-Type": "application/json", "Tauri-Response": "error" },
+            }),
+          );
         }
         return new Promise((resolve, reject) => {
           check.release = () => original(input, options).then(resolve, reject);
@@ -585,7 +612,9 @@ async function verify() {
     };
   });
   await confirmCommit.click();
-  await waitPage(() => !!document.querySelector(".git-commit-dialog button.primary:not(:disabled)"));
+  await waitPage(
+    () => !!document.querySelector(".git-commit-dialog button.primary:not(:disabled)"),
+  );
   assert.equal(await commitMessage.inputValue(), draft);
   assert.equal(git(root, "rev-parse", "HEAD"), headBeforeCommit);
   await commitMessage.press("Control+Enter");
@@ -593,7 +622,10 @@ async function verify() {
   await page.keyboard.press("Escape");
   await page.locator(".modal-backdrop").click({ position: { x: 2, y: 2 } });
   assert.equal(await commitDialog.isVisible(), true);
-  assert.equal(await commitDialog.getByRole("button", { name: "Cancel", exact: true }).isEnabled(), false);
+  assert.equal(
+    await commitDialog.getByRole("button", { name: "Cancel", exact: true }).isEnabled(),
+    false,
+  );
   assert.equal(await commitMessage.isEnabled(), false);
   await page.keyboard.press("Control+Enter");
   assert.equal(await page.evaluate(() => window.__gitCommitCheck.calls), 2);
@@ -601,9 +633,7 @@ async function verify() {
   await waitPage(
     async (url) =>
       !(await import(url)).useApp.getState().gitBusy[
-        Object.values(
-          (await import(url)).useApp.getState().gitState.repositories,
-        )[0]?.path
+        Object.values((await import(url)).useApp.getState().gitState.repositories)[0]?.path
       ],
     resources.store,
   );
@@ -612,9 +642,13 @@ async function verify() {
     window.fetch = window.__gitCommitCheck.original;
     delete window.__gitCommitCheck;
   });
-  assert.equal(await page.evaluate(async ({ url, repository }) =>
-    (await import(url)).useApp.getState().gitMessages[repository],
-    { url: resources.store, repository: repository.path }), "");
+  assert.equal(
+    await page.evaluate(
+      async ({ url, repository }) => (await import(url)).useApp.getState().gitMessages[repository],
+      { url: resources.store, repository: repository.path },
+    ),
+    "",
+  );
   assert.equal(await commitTrigger.isEnabled(), false);
   await toolbar.screenshot({ path: path.join(run, "02-commit-disabled.png") });
   assert.match(git(root, "log", "-1", "--format=%B"), /Git UI commit/);
@@ -623,77 +657,56 @@ async function verify() {
   checks.push(
     "List/tree, staging, commit dialog focus/drafts, empty-message guards, failure/retry, busy guards, multiline index-only commit and no-stage guard",
   );
-  await section("Changes")
-    .getByRole("option", { name: file, exact: true })
-    .hover();
-  await page
-    .getByRole("button", { name: `Discard ${file}`, exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Discard Changes", exact: true })
-    .click();
-  await waitPage(() =>
-    document.querySelector(".git-empty")?.textContent?.includes("No changes."),
-  );
+  await section("Changes").getByRole("option", { name: file, exact: true }).hover();
+  await page.getByRole("button", { name: `Discard ${file}`, exact: true }).click();
+  await page.getByRole("button", { name: "Discard Changes", exact: true }).click();
+  await waitPage(() => document.querySelector(".git-empty")?.textContent?.includes("No changes."));
   assert.equal(await commitTrigger.isEnabled(), false);
-  assert.equal(
-    (await readFile(path.join(root, file), "utf8")).replace(/\r/g, ""),
-    "staged\n",
-  );
+  assert.equal((await readFile(path.join(root, file), "utf8")).replace(/\r/g, ""), "staged\n");
   await page.getByRole("tab", { name: "Repository", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Create Branch", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Create Branch", exact: true }).click();
   const newBranch = `${branch}-child`;
   await page.getByRole("dialog").locator("input").fill(newBranch);
   await page.getByRole("button", { name: "OK", exact: true }).click();
   await waitPage(
-    (branch) =>
-      document
-        .querySelector(".git-branch-heading")
-        ?.textContent.includes(branch),
+    (branch) => document.querySelector(".git-branch-heading")?.textContent.includes(branch),
     newBranch,
   );
   await page.getByRole("button", { name: branch, exact: true }).click();
   await waitPage(
-    (branch) =>
-      document.querySelector(".git-branch-heading strong")?.textContent ===
-      branch,
+    (branch) => document.querySelector(".git-branch-heading strong")?.textContent === branch,
     branch,
   );
-  await page
-    .getByRole("button", { name: `Delete Branch ${newBranch}`, exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Delete Branch", exact: true })
-    .click();
+  await page.getByRole("button", { name: `Delete Branch ${newBranch}`, exact: true }).click();
+  await page.getByRole("button", { name: "Delete Branch", exact: true }).click();
   await waitPage(
-    (branch) =>
-      !document.querySelector(`[aria-label="Delete Branch ${branch}"]`),
+    (branch) => !document.querySelector(`[aria-label="Delete Branch ${branch}"]`),
     newBranch,
   );
   await page.screenshot({ path: path.join(run, "03-git-repository.png") });
-  checks.push(
-    "Discard preserves index, create/switch/safe-delete branch and repository metadata",
-  );
+  checks.push("Discard preserves index, create/switch/safe-delete branch and repository metadata");
   if (!source) {
-    checks.push(await verifyGitBranches({ page, root, branch, git, run, waitPage, resources, repository, invoke }));
+    checks.push(
+      await verifyGitBranches({
+        page,
+        root,
+        branch,
+        git,
+        run,
+        waitPage,
+        resources,
+        repository,
+        invoke,
+      }),
+    );
   }
   await page.getByRole("tab", { name: "Changes", exact: true }).click();
   const recycleFile = "litecode-git-recycle.txt";
   await writeFile(path.join(root, recycleFile), "safe to recycle\n");
-  await section("Untracked Files")
-    .getByRole("option", { name: recycleFile, exact: true })
-    .hover();
-  await page
-    .getByRole("button", { name: `Discard ${recycleFile}`, exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Discard Changes", exact: true })
-    .click();
-  await waitPage(() =>
-    document.querySelector(".git-empty")?.textContent?.includes("No changes."),
-  );
+  await section("Untracked Files").getByRole("option", { name: recycleFile, exact: true }).hover();
+  await page.getByRole("button", { name: `Discard ${recycleFile}`, exact: true }).click();
+  await page.getByRole("button", { name: "Discard Changes", exact: true }).click();
+  await waitPage(() => document.querySelector(".git-empty")?.textContent?.includes("No changes."));
   assert.equal(
     await readFile(path.join(root, recycleFile))
       .then(() => true)
@@ -707,17 +720,12 @@ async function verify() {
   await writeFile(path.join(nestedRoot, "nested.txt"), "nested content\n");
   // Expanding the folder also exercises discovery of repositories created after startup.
   await action("commands", "execute", "workbench.view.explorer");
-  await page
-    .locator(
-      'file-tree-container [data-item-path="litecode-nested-repository/"]',
-    )
-    .click();
+  await page.locator('file-tree-container [data-item-path="litecode-nested-repository/"]').click();
   await action("commands", "execute", "workbench.view.scm");
   await waitPage(
     (nested) =>
       [...document.querySelector('[aria-label="Git Repository"]').options].some(
-        (o) =>
-          o.value.toLowerCase() === nested.replace(/\\/g, "/").toLowerCase(),
+        (o) => o.value.toLowerCase() === nested.replace(/\\/g, "/").toLowerCase(),
       ),
     nestedRoot,
   );
@@ -734,43 +742,29 @@ async function verify() {
   assert.equal(await commitMessage.inputValue(), "");
   await commitMessage.fill("Nested repository draft");
   await commitDialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await section("Staged Changes")
-    .getByRole("option", { name: "nested.txt", exact: true })
-    .click();
+  await section("Staged Changes").getByRole("option", { name: "nested.txt", exact: true }).click();
   await page.locator(".git-diff-host .monaco-diff-editor").waitFor();
-  await page
-    .getByRole("combobox", { name: "Git Repository" })
-    .selectOption(repository.path);
+  await page.getByRole("combobox", { name: "Git Repository" }).selectOption(repository.path);
   await commitTrigger.click();
   assert.equal(await commitMessage.inputValue(), "Parent repository draft");
-  await action(
-    "commands",
-    "openFolder",
-    false,
-    path.join(root, "litecode-git-test"),
-  );
+  await action("commands", "openFolder", false, path.join(root, "litecode-git-test"));
   await commitDialog.waitFor({ state: "hidden" });
-  checks.push("Conflicts block keyboard submission; repository/workspace changes close dialogs and isolate drafts");
+  checks.push(
+    "Conflicts block keyboard submission; repository/workspace changes close dialogs and isolate drafts",
+  );
   await page.getByRole("tab", { name: "Changes", exact: true }).click();
   const outside = "litecode-outside-workspace.txt";
   await writeFile(path.join(root, outside), "outside the opened subfolder\n");
-  await section("Untracked Files")
-    .getByRole("option", { name: outside, exact: true })
-    .click();
+  await section("Untracked Files").getByRole("option", { name: outside, exact: true }).click();
   await page.locator(".git-diff-host .monaco-diff-editor").waitFor();
   await waitPage(
     async ({ url, path }) => {
       const s = (await import(url)).useApp.getState();
-      return Object.values(s.docs).some((d) =>
-        d.path?.replace(/\\/g, "/").endsWith(path),
-      );
+      return Object.values(s.docs).some((d) => d.path?.replace(/\\/g, "/").endsWith(path));
     },
     { url: resources.store, path: outside },
   );
-  await writeFile(
-    path.join(root, outside),
-    "outside updated by external tool\n",
-  );
+  await writeFile(path.join(root, outside), "outside updated by external tool\n");
   await waitPage(
     async ({ documents, store, path }) => {
       const module = await import(documents);
@@ -779,11 +773,7 @@ async function verify() {
         d.path?.replace(/\\/g, "/").endsWith(path),
       );
       return (
-        source &&
-        module.models
-          .get(source.id)
-          ?.getValue()
-          .includes("updated by external tool")
+        source && module.models.get(source.id)?.getValue().includes("updated by external tool")
       );
     },
     { documents: resources.documents, store: resources.store, path: outside },
@@ -801,17 +791,12 @@ async function verify() {
   for (let offset = 0; offset < 10_000; offset += 200) {
     await Promise.all(
       Array.from({ length: 200 }, (_, i) =>
-        writeFile(
-          path.join(perfDirectory, `${offset + i}.txt`),
-          "performance fixture\n",
-        ),
+        writeFile(path.join(perfDirectory, `${offset + i}.txt`), "performance fixture\n"),
       ),
     );
   }
   await waitPage(() =>
-    [...document.querySelectorAll(".git-count")].some(
-      (el) => Number(el.textContent) >= 10000,
-    ),
+    [...document.querySelectorAll(".git-count")].some((el) => Number(el.textContent) >= 10000),
   );
   const rows = await page.locator(".git-file-row").count();
   assert.ok(rows < 100, `10,000 changes rendered ${rows} rows`);
@@ -819,11 +804,7 @@ async function verify() {
     async (url) => (await import(url)).models.size,
     resources.documents,
   );
-  assert.equal(
-    loadedAfter,
-    loadedBefore,
-    "Listing files must not preload their content",
-  );
+  assert.equal(loadedAfter, loadedBefore, "Listing files must not preload their content");
   const measured = spawnSync(
     "powershell.exe",
     [
@@ -854,17 +835,14 @@ async function verify() {
     ),
   );
   await page.screenshot({ path: path.join(run, "05-large-change-list.png") });
-  checks.push(
-    `10,000 untracked files use ${rows} rendered rows; source content remains lazy`,
-  );
+  checks.push(`10,000 untracked files use ${rows} rendered rows; source content remains lazy`);
   if (source) {
     await action("commands", "openFolder", false, source);
     await action("commands", "execute", "workbench.view.scm");
     await waitPage(
       (root) =>
-        document
-          .querySelector('[aria-label="Git Repository"]')
-          ?.value.toLowerCase() === root.replace(/\\/g, "/").toLowerCase(),
+        document.querySelector('[aria-label="Git Repository"]')?.value.toLowerCase() ===
+        root.replace(/\\/g, "/").toLowerCase(),
       source,
     );
     await page.getByRole("tab", { name: "Repository", exact: true }).click();
@@ -884,9 +862,7 @@ async function verify() {
       session: sourceSnapshot.session,
       repository: sourceRepo.path,
     });
-    assert.ok(
-      sourceInfo.remotes.some((r) => /github\.com/.test(r.fetch ?? "")),
-    );
+    assert.ok(sourceInfo.remotes.some((r) => /github\.com/.test(r.fetch ?? "")));
     const fetched = await action("git", "runGitOperation", sourceRepo.path, {
       kind: "fetch",
       remote: "origin",
@@ -907,20 +883,14 @@ try {
   );
   console.log(JSON.stringify({ passed, run, checks }, null, 2));
 } catch (error) {
-  await page
-    ?.screenshot({ path: path.join(run, "failure.png"), timeout: 10000 })
-    .catch(() => {});
+  await page?.screenshot({ path: path.join(run, "failure.png"), timeout: 10000 }).catch(() => {});
   await writeFile(
     path.join(run, "failure.json"),
     JSON.stringify({ error: String(error), checks, errors, log }, null, 2),
   );
   console.error(`Evidence: ${run}`);
   console.error(log);
-  console.error(
-    await page
-      ?.evaluate(() => document.body.innerText.slice(-3500))
-      .catch(() => ""),
-  );
+  console.error(await page?.evaluate(() => document.body.innerText.slice(-3500)).catch(() => ""));
   throw error;
 } finally {
   await page
@@ -940,11 +910,7 @@ try {
       status: git(source, "status", "--porcelain=v1"),
       branch: git(source, "symbolic-ref", "HEAD"),
     };
-    assert.deepEqual(
-      after,
-      before,
-      "The user's main checkout must remain unchanged",
-    );
+    assert.deepEqual(after, before, "The user's main checkout must remain unchanged");
     await writeFile(
       path.join(run, "main-preserved.json"),
       JSON.stringify({ before, after }, null, 2),

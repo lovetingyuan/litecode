@@ -17,8 +17,9 @@ const docs = entries.map(([name], i) => ({
   path: `${root}/.agents/skills/trees/references/${name}`,
   name,
   language: "markdown",
-  text: "export function example() {}\n".repeat(10)
-    + (i === 0 ? "short line\n".repeat(69) + distantPreview + "\n" : ""),
+  text:
+    "export function example() {}\n".repeat(10) +
+    (i === 0 ? "short line\n".repeat(69) + distantPreview + "\n" : ""),
   encoding: "utf8",
   eol: "LF",
   revision: "fixture",
@@ -52,7 +53,9 @@ const urls = {},
   errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));
 page.on("request", (request) => {
-  const match = new URL(request.url()).pathname.match(/^\/src\/(?:store|editor|search|core)\/(store|documents|search|commands)\.ts$/);
+  const match = new URL(request.url()).pathname.match(
+    /^\/src\/(?:store|editor|search|core)\/(store|documents|search|commands)\.ts$/,
+  );
   if (match) {
     urls[match[1]] = request.url();
   }
@@ -97,10 +100,14 @@ const action = (module, name, ...args) =>
     name,
     args,
   });
-const patch = (data) => page.evaluate(async ({ url, data }) => {
-  const { patchSearch, useApp } = await import(url);
-  patchSearch(useApp.getState().activeSearchId, data);
-}, { url: urls.store, data });
+const patch = (data) =>
+  page.evaluate(
+    async ({ url, data }) => {
+      const { patchSearch, useApp } = await import(url);
+      patchSearch(useApp.getState().activeSearchId, data);
+    },
+    { url: urls.store, data },
+  );
 const state = () =>
   page.evaluate(async (url) => {
     const store = (await import(url)).useApp.getState();
@@ -120,7 +127,9 @@ const button = (name) => panel.getByRole("button", { name, exact: true });
 const results = panel.getByRole("tree", { name: "Search results" });
 const settle = () =>
   page.waitForFunction(() =>
-    document.querySelector(".search-panel:not([hidden]) .search-summary")?.textContent.includes("13 results in 4 files"),
+    document
+      .querySelector(".search-panel:not([hidden]) .search-summary")
+      ?.textContent.includes("13 results in 4 files"),
   );
 async function shot(name) {
   await page.mouse.move(1200, 950);
@@ -374,21 +383,39 @@ try {
   assert.ok((await search.locator(".result-preview").textContent()).startsWith("…"));
   assert.equal(await search.locator(".result-preview mark").textContent(), "function");
   await search.locator(".result-preview").click();
-  await page.evaluate(async (url) => { window.__searchEditor = (await import(url)).editor(); }, urls.documents);
-  const matchVisible = (hit) => page.waitForFunction((hit) => {
-    const editor = window.__searchEditor;
-    const start = editor.getScrolledVisiblePosition({ lineNumber: hit.line, column: hit.column });
-    const end = editor.getScrolledVisiblePosition({ lineNumber: hit.endLine, column: hit.endColumn });
-    const layout = editor.getLayoutInfo();
-    const selection = editor.getSelection();
-    return selection.startLineNumber === hit.line && selection.startColumn === hit.column
-      && selection.endLineNumber === hit.endLine && selection.endColumn === hit.endColumn
-      && start && end && start.left >= layout.contentLeft
-      && end.left <= layout.contentLeft + layout.contentWidth - layout.verticalScrollbarWidth
-      && start.top >= 0 && end.top + end.height <= layout.height;
-  }, hit);
+  await page.evaluate(async (url) => {
+    window.__searchEditor = (await import(url)).editor();
+  }, urls.documents);
+  const matchVisible = (hit) =>
+    page.waitForFunction((hit) => {
+      const editor = window.__searchEditor;
+      const start = editor.getScrolledVisiblePosition({ lineNumber: hit.line, column: hit.column });
+      const end = editor.getScrolledVisiblePosition({
+        lineNumber: hit.endLine,
+        column: hit.endColumn,
+      });
+      const layout = editor.getLayoutInfo();
+      const selection = editor.getSelection();
+      return (
+        selection.startLineNumber === hit.line &&
+        selection.startColumn === hit.column &&
+        selection.endLineNumber === hit.endLine &&
+        selection.endColumn === hit.endColumn &&
+        start &&
+        end &&
+        start.left >= layout.contentLeft &&
+        end.left <= layout.contentLeft + layout.contentWidth - layout.verticalScrollbarWidth &&
+        start.top >= 0 &&
+        end.top + end.height <= layout.height
+      );
+    }, hit);
   await matchVisible(distant);
-  assert.ok(await page.evaluate(async (url) => (await import(url)).editor().getScrollLeft() > 0, urls.documents));
+  assert.ok(
+    await page.evaluate(
+      async (url) => (await import(url)).editor().getScrollLeft() > 0,
+      urls.documents,
+    ),
+  );
   // Reopening a match must also scroll horizontally when its line is already visible.
   await page.evaluate(async (url) => (await import(url)).editor().setScrollLeft(0), urls.documents);
   await search.locator(".result-preview").click();
@@ -396,22 +423,30 @@ try {
   await patch({ results: matches });
   await search.locator(".result-preview").first().click();
   await matchVisible(matches[0]);
-  assert.equal(await page.evaluate(() => window.__searchEditor.getScrollLeft()), 0,
-    "A short-line match resets horizontal scrolling to the start");
+  assert.equal(
+    await page.evaluate(() => window.__searchEditor.getScrollLeft()),
+    0,
+    "A short-line match resets horizontal scrolling to the start",
+  );
   const near = { ...distant, column: 30, endColumn: 38, matched: "x".repeat(8) };
   await patch({ results: [distant, near] });
   await search.locator(".result-preview").first().click();
   await matchVisible(distant);
   await search.locator(".result-preview").nth(1).click();
   await matchVisible(near);
-  assert.equal(await page.evaluate(() => window.__searchEditor.getScrollLeft()), 0,
-    "A match near the start of a long line resets horizontal scrolling");
+  assert.equal(
+    await page.evaluate(() => window.__searchEditor.getScrollLeft()),
+    0,
+    "A match near the start of a long line resets horizontal scrolling",
+  );
   const edgeColumn = await page.evaluate(() => {
     const editor = window.__searchEditor;
     const layout = editor.getLayoutInfo();
     const width = layout.contentWidth - layout.verticalScrollbarWidth;
     let column = 1;
-    while (editor.getOffsetForColumn(80, column + 1) <= width) { column++; }
+    while (editor.getOffsetForColumn(80, column + 1) <= width) {
+      column++;
+    }
     return column;
   });
   const edge = { ...near, column: edgeColumn - 8, endColumn: edgeColumn };
@@ -420,14 +455,20 @@ try {
   await matchVisible(distant);
   await search.locator(".result-preview").nth(1).click();
   await matchVisible(edge);
-  assert.equal(await page.evaluate(() => window.__searchEditor.getScrollLeft()), 0,
-    "A fully visible match at the right edge does not scroll for reveal padding");
+  assert.equal(
+    await page.evaluate(() => window.__searchEditor.getScrollLeft()),
+    0,
+    "A fully visible match at the right edge does not scroll for reveal padding",
+  );
   await action("search", "nextSearchResult");
   await matchVisible(distant);
   await action("search", "nextSearchResult");
   await matchVisible(edge);
-  assert.equal(await page.evaluate(() => window.__searchEditor.getScrollLeft()), 0,
-    "Next-result navigation also prefers the start when the match fits");
+  assert.equal(
+    await page.evaluate(() => window.__searchEditor.getScrollLeft()),
+    0,
+    "Next-result navigation also prefers the start when the match fits",
+  );
   await patch({ results: matches });
   await search.locator(".result-preview").first().click();
   await matchVisible(matches[0]);
@@ -438,8 +479,13 @@ try {
     }, urls.documents),
     [1, 8, 16],
   );
-  assert.equal(await search.getByRole("button", { name: "Open in editor", exact: true }).count(), 0);
-  console.log("PASS: clipped highlight, vertical and horizontal match reveal, repeated navigation and no editor handoff");
+  assert.equal(
+    await search.getByRole("button", { name: "Open in editor", exact: true }).count(),
+    0,
+  );
+  console.log(
+    "PASS: clipped highlight, vertical and horizontal match reveal, repeated navigation and no editor handoff",
+  );
 
   await button("Clear Search Results").click();
   const many = Array.from({ length: 20_000 }, (_, i) => ({
@@ -571,9 +617,11 @@ try {
 
   // Each search keeps its form, result layout and scroll position when hidden.
   const primaryQuery = (await state()).query;
-  const primaryMode = await button("View as List").count() ? "View as List" : "View as Tree";
+  const primaryMode = (await button("View as List").count()) ? "View as List" : "View as Tree";
   await patch({ results: many });
-  await results.evaluate((e) => { e.scrollTop = 5200; });
+  await results.evaluate((e) => {
+    e.scrollTop = 5200;
+  });
   await page.waitForFunction(() => document.querySelector(".search-results").scrollTop === 5200);
   await results.locator(".result-row.match").first().click();
   const primarySelection = await results.locator(".selected").getAttribute("aria-label");
@@ -584,7 +632,9 @@ try {
   const searchInput = () => panel.getByRole("textbox", { name: "Search text", exact: true });
   assert.equal(await tabs.getByRole("tab").count(), 2);
   assert.equal(await searchInput().inputValue(), "");
-  await searchInput().evaluate((e) => { if (document.activeElement !== e) throw new Error("New search input is not focused"); });
+  await searchInput().evaluate((e) => {
+    if (document.activeElement !== e) throw new Error("New search input is not focused");
+  });
   assert.equal(await button("Toggle Replace").count(), 0);
   assert.equal(await panel.getByRole("textbox", { name: "Replace text", exact: true }).count(), 0);
   assert.equal(await page.getByRole("tab", { name: /^Search\.code-search/ }).count(), 0);
@@ -593,13 +643,22 @@ try {
   assert.equal(await panel.getByLabel("files to exclude", { exact: true }).inputValue(), "");
   await searchInput().fill("secondary query");
   await settle();
-  const secondaryId = await page.evaluate(async (url) => (await import(url)).useApp.getState().activeSearchId, urls.store);
+  const secondaryId = await page.evaluate(
+    async (url) => (await import(url)).useApp.getState().activeSearchId,
+    urls.store,
+  );
   await panel.getByLabel("files to include", { exact: true }).fill("*.txt");
   await settle();
   await button("View as Tree").click();
   await button("Collapse All Results").click();
   await panel.locator(".result-row").first().click({ button: "right" });
-  assert.equal(await panel.getByRole("menu").getByText(/Replace/).count(), 0);
+  assert.equal(
+    await panel
+      .getByRole("menu")
+      .getByText(/Replace/)
+      .count(),
+    0,
+  );
   await searchInput().click();
   const beforeSwitch = await page.evaluate(() => window.__searches);
   await primaryTab().click();
@@ -607,12 +666,19 @@ try {
   assert.equal(await button(primaryMode).count(), 1);
   assert.equal(await results.evaluate((e) => e.scrollTop), primaryScroll);
   assert.equal(await results.locator(".selected").getAttribute("aria-label"), primarySelection);
-  assert.equal(await panel.getByRole("textbox", { name: "Replace text", exact: true }).inputValue(), "method");
+  assert.equal(
+    await panel.getByRole("textbox", { name: "Replace text", exact: true }).inputValue(),
+    "method",
+  );
   await tabs.getByRole("tab", { name: "secondary query", exact: true }).click();
   assert.equal((await state()).query.include, "*.txt");
   assert.equal(await button("View as List").count(), 1);
   assert.equal(await button("Expand All Results").count(), 1);
-  assert.equal(await page.evaluate(() => window.__searches), beforeSwitch, "Switching tabs must not rerun searches");
+  assert.equal(
+    await page.evaluate(() => window.__searches),
+    beforeSwitch,
+    "Switching tabs must not rerun searches",
+  );
   await action("store", "setApp", { sidebar: null });
   await action("commands", "execute", "workbench.action.findInFiles");
   assert.equal(await tabs.getByRole("tab").count(), 2, "Hiding the sidebar preserves search tabs");
@@ -621,40 +687,82 @@ try {
   await shot("07-search-tabs");
 
   // A background request continues and cannot overwrite the visible primary search.
-  await page.evaluate(() => { window.__holdSearch = true; });
+  await page.evaluate(() => {
+    window.__holdSearch = true;
+  });
   await searchInput().fill("background query");
   await searchInput().press("Enter");
   await button("Cancel Search").waitFor();
   await page.waitForFunction(() => window.__lastSearch?.query.text === "background query");
-  await page.evaluate(() => { window.__backgroundSearch = window.__lastSearch; });
+  await page.evaluate(() => {
+    window.__backgroundSearch = window.__lastSearch;
+  });
   await primaryTab().click();
   assert.equal((await state()).results.length, many.length);
-  assert.equal(await page.locator(".statusbar").getByText("Searching…", { exact: true }).count(), 1);
-  await page.evaluate((hit) => {
-    const job = window.__backgroundSearch;
-    job.onBatch.onmessage({ requestId: job.requestId, sequence: 1, matches: [hit], done: true, errors: [], limited: false });
-  }, { ...matches[0], line: 2, endLine: 2 });
+  assert.equal(
+    await page.locator(".statusbar").getByText("Searching…", { exact: true }).count(),
+    1,
+  );
+  await page.evaluate(
+    (hit) => {
+      const job = window.__backgroundSearch;
+      job.onBatch.onmessage({
+        requestId: job.requestId,
+        sequence: 1,
+        matches: [hit],
+        done: true,
+        errors: [],
+        limited: false,
+      });
+    },
+    { ...matches[0], line: 2, endLine: 2 },
+  );
   assert.equal((await state()).results.length, many.length);
   await tabs.getByRole("tab", { name: "background query", exact: true }).click();
   assert.equal((await state()).results.length, 1);
   await results.focus();
   await page.keyboard.press("F4");
-  assert.equal(await page.evaluate(async (url) => (await import(url)).editor().getSelection().startLineNumber, urls.documents), 2);
+  assert.equal(
+    await page.evaluate(
+      async (url) => (await import(url)).editor().getSelection().startLineNumber,
+      urls.documents,
+    ),
+    2,
+  );
   await page.keyboard.press("Shift+F4");
-  assert.equal(await page.evaluate(async (url) => (await import(url)).editor().getSelection().startLineNumber, urls.documents), 2);
-  console.log("PASS: isolated form/layout/scroll, no secondary replacements, background completion and result navigation");
+  assert.equal(
+    await page.evaluate(
+      async (url) => (await import(url)).editor().getSelection().startLineNumber,
+      urls.documents,
+    ),
+    2,
+  );
+  console.log(
+    "PASS: isolated form/layout/scroll, no secondary replacements, background completion and result navigation",
+  );
 
   // The shortcut returns to the primary search from every ordinary focus context.
   for (const context of ["input", "sidebar", "editor"]) {
     await tabs.getByRole("tab", { name: "background query", exact: true }).click();
-    if (context === "input") { await searchInput().focus(); }
-    else if (context === "sidebar") { await results.focus(); }
-    else { await page.locator(".editor-group.focused .monaco-editor textarea").first().focus(); }
+    if (context === "input") {
+      await searchInput().focus();
+    } else if (context === "sidebar") {
+      await results.focus();
+    } else {
+      await page.locator(".editor-group.focused .monaco-editor textarea").first().focus();
+    }
     await page.keyboard.press("Control+Shift+F");
-    await page.waitForFunction(() => document.querySelector('#search-tab-search')?.getAttribute("aria-selected") === "true");
-    await searchInput().evaluate((e) => { if (document.activeElement !== e) throw new Error("Find in Files did not focus the primary query"); });
+    await page.waitForFunction(
+      () => document.querySelector("#search-tab-search")?.getAttribute("aria-selected") === "true",
+    );
+    await searchInput().evaluate((e) => {
+      if (document.activeElement !== e)
+        throw new Error("Find in Files did not focus the primary query");
+    });
   }
-  await action("store", "setApp", { keybindings: [{ key: "ctrl+shift+f", command: "search.action.openNewEditor" }] });
+  await action("store", "setApp", {
+    keybindings: [{ key: "ctrl+shift+f", command: "search.action.openNewEditor" }],
+  });
   await page.keyboard.press("Control+Shift+F");
   assert.equal(await tabs.getByRole("tab").count(), 3, "Custom bindings retain priority");
   const pendingSearches = await page.evaluate(() => window.__searches);
@@ -662,28 +770,47 @@ try {
   await button("Close search: close before debounce").click();
   await page.waitForTimeout(400);
   assert.equal(await page.evaluate(() => window.__searches), pendingSearches);
-  assert.equal((await state()).query.text, "background query", "Closing activates the left neighbor");
-  await action("store", "setApp", { keybindings: [{ key: "ctrl+shift+f", command: "-workbench.action.findInFiles" }] });
+  assert.equal(
+    (await state()).query.text,
+    "background query",
+    "Closing activates the left neighbor",
+  );
+  await action("store", "setApp", {
+    keybindings: [{ key: "ctrl+shift+f", command: "-workbench.action.findInFiles" }],
+  });
   await searchInput().focus();
   await page.keyboard.press("Control+Shift+F");
-  assert.equal((await state()).query.text, "background query", "User removal disables the default shortcut");
+  assert.equal(
+    (await state()).query.text,
+    "background query",
+    "User removal disables the default shortcut",
+  );
   await action("store", "setApp", { keybindings: [] });
   await page.getByRole("button", { name: "Search (Ctrl+Shift+F)", exact: true }).click();
   assert.equal(await primaryTab().getAttribute("aria-selected"), "true");
-  console.log("PASS: Ctrl+Shift+F in editor/input/sidebar, custom binding priority/removal, activity button and pending-close cancellation");
+  console.log(
+    "PASS: Ctrl+Shift+F in editor/input/sidebar, custom binding priority/removal, activity button and pending-close cancellation",
+  );
 
   // Overflow stays inside a narrow sidebar, with keyboard reveal and no drag ordering.
   await sash.focus();
-  for (let i = 0; i < 17; i++) { await sash.press("ArrowLeft"); }
-  await page.waitForFunction(() => document.querySelector(".search-view").getBoundingClientRect().width < 270);
-  for (let i = 0; i < 5; i++) { await button("New Search").click(); }
+  for (let i = 0; i < 17; i++) {
+    await sash.press("ArrowLeft");
+  }
+  await page.waitForFunction(
+    () => document.querySelector(".search-view").getBoundingClientRect().width < 270,
+  );
+  for (let i = 0; i < 5; i++) {
+    await button("New Search").click();
+  }
   const longTitle = "A long search query ".repeat(20);
   await searchInput().fill(longTitle);
   await searchInput().press("Escape");
   await page.waitForFunction(() => {
     const tabs = document.querySelector('.search-panel:not([hidden]) [role="tablist"]');
     const active = tabs.querySelector('[aria-selected="true"]');
-    const a = active.getBoundingClientRect(), b = tabs.getBoundingClientRect();
+    const a = active.getBoundingClientRect(),
+      b = tabs.getBoundingClientRect();
     return tabs.scrollWidth > tabs.clientWidth && a.left >= b.left - 1 && a.right <= b.right + 1;
   });
   const longTab = tabs.getByRole("tab", { name: longTitle.trim(), exact: true });
@@ -691,47 +818,90 @@ try {
   const overlay = panel.locator(".editor-tabs-scrollbar");
   const thumb = overlay.locator(".editor-tabs-scrollbar-thumb");
   await overlay.waitFor({ state: "visible" });
-  assert.equal(await tabs.evaluate((e) => e.offsetHeight - e.clientHeight), 0, "Search tabs reserve no native scrollbar gutter");
-  assert.equal(await overlay.evaluate((e) => e.getBoundingClientRect().height), 3, "The search scrollbar matches the editor's 3px overlay");
+  assert.equal(
+    await tabs.evaluate((e) => e.offsetHeight - e.clientHeight),
+    0,
+    "Search tabs reserve no native scrollbar gutter",
+  );
+  assert.equal(
+    await overlay.evaluate((e) => e.getBoundingClientRect().height),
+    3,
+    "The search scrollbar matches the editor's 3px overlay",
+  );
   await page.mouse.move(1200, 950);
   assert.equal(await thumb.evaluate((e) => getComputedStyle(e).opacity), "0");
   await tabs.hover();
   assert.equal(await thumb.evaluate((e) => getComputedStyle(e).opacity), "1");
   const editorThumb = page.locator(".editor-group .editor-tabs-scrollbar-thumb").first();
-  assert.equal(await thumb.evaluate((e) => getComputedStyle(e).backgroundColor), await editorThumb.evaluate((e) => getComputedStyle(e).backgroundColor));
-  await panel.locator(".search-tabs-toolbar").screenshot({ path: ".verification/search-view/09-tabs-scrollbar.png" });
+  assert.equal(
+    await thumb.evaluate((e) => getComputedStyle(e).backgroundColor),
+    await editorThumb.evaluate((e) => getComputedStyle(e).backgroundColor),
+  );
+  await panel
+    .locator(".search-tabs-toolbar")
+    .screenshot({ path: ".verification/search-view/09-tabs-scrollbar.png" });
   const wheelStart = await tabs.evaluate((e) => e.scrollLeft);
   await page.mouse.wheel(0, -100);
-  await page.waitForFunction((start) => document.querySelector('.search-panel:not([hidden]) [role="tablist"]').scrollLeft < start, wheelStart);
+  await page.waitForFunction(
+    (start) =>
+      document.querySelector('.search-panel:not([hidden]) [role="tablist"]').scrollLeft < start,
+    wheelStart,
+  );
   const wheelLeft = await tabs.evaluate((e) => e.scrollLeft);
   await page.mouse.wheel(0, 60);
-  await page.waitForFunction((left) => document.querySelector('.search-panel:not([hidden]) [role="tablist"]').scrollLeft > left, wheelLeft);
-  assert.equal(await longTab.getAttribute("aria-selected"), "true", "Wheel scrolling does not change the active search");
+  await page.waitForFunction(
+    (left) =>
+      document.querySelector('.search-panel:not([hidden]) [role="tablist"]').scrollLeft > left,
+    wheelLeft,
+  );
+  assert.equal(
+    await longTab.getAttribute("aria-selected"),
+    "true",
+    "Wheel scrolling does not change the active search",
+  );
   await longTab.focus();
   await page.keyboard.press("Home");
   await page.waitForFunction(() => document.activeElement?.id === "search-tab-search");
   await page.keyboard.press("ArrowRight");
-  await page.waitForFunction((id) => document.activeElement?.id === `search-tab-${id}`, secondaryId);
+  await page.waitForFunction(
+    (id) => document.activeElement?.id === `search-tab-${id}`,
+    secondaryId,
+  );
   await page.keyboard.press("ArrowLeft");
   await page.waitForFunction(() => document.activeElement?.id === "search-tab-search");
   await page.keyboard.press("End");
-  await page.waitForFunction(() => document.activeElement?.getAttribute("title")?.startsWith("A long search query"));
+  await page.waitForFunction(() =>
+    document.activeElement?.getAttribute("title")?.startsWith("A long search query"),
+  );
   assert.equal(await tabs.locator('[draggable="true"]').count(), 0);
-  const idsBeforeDrag = await tabs.getByRole("tab").evaluateAll((elements) => elements.map((e) => e.id));
+  const idsBeforeDrag = await tabs
+    .getByRole("tab")
+    .evaluateAll((elements) => elements.map((e) => e.id));
   await tabs.getByRole("tab").last().dragTo(tabs.getByRole("tab").first());
-  assert.deepEqual(await tabs.getByRole("tab").evaluateAll((elements) => elements.map((e) => e.id)), idsBeforeDrag);
+  assert.deepEqual(
+    await tabs.getByRole("tab").evaluateAll((elements) => elements.map((e) => e.id)),
+    idsBeforeDrag,
+  );
   await primaryTab().focus();
   await page.keyboard.press("Home");
   await page.keyboard.press("End");
   await page.waitForFunction(() => {
     const list = document.querySelector('.search-panel:not([hidden]) [role="tablist"]');
-    const a = list.querySelector('[aria-selected="true"]').getBoundingClientRect(), b = list.getBoundingClientRect();
+    const a = list.querySelector('[aria-selected="true"]').getBoundingClientRect(),
+      b = list.getBoundingClientRect();
     return a.left >= b.left - 1 && a.right <= b.right + 1;
   });
-  assert.ok(await search.evaluate((element) => element.getBoundingClientRect().height > 800), "Search panel fills the sidebar");
+  assert.ok(
+    await search.evaluate((element) => element.getBoundingClientRect().height > 800),
+    "Search panel fills the sidebar",
+  );
   await shot("08-tabs-overflow");
   await button("Close search: background query").click();
-  assert.equal((await state()).query.text, longTitle, "Closing a background tab retains the current search");
+  assert.equal(
+    (await state()).query.text,
+    longTitle,
+    "Closing a background tab retains the current search",
+  );
 
   // Workspace replacement drops extra tabs and pending work, without rerunning the main query.
   const searchesBeforeWorkspace = await page.evaluate(() => window.__searches);
@@ -745,7 +915,9 @@ try {
   assert.equal(await page.evaluate(() => window.__searches), searchesBeforeWorkspace);
   assert.equal(await button("Toggle Replace").count(), 1);
   assert.deepEqual(errors, []);
-  console.log("PASS: narrow overflow, long titles, keyboard navigation, fixed ordering and workspace reset without auto-search");
+  console.log(
+    "PASS: narrow overflow, long titles, keyboard navigation, fixed ordering and workspace reset without auto-search",
+  );
 } catch (error) {
   await page.screenshot({ path: ".verification/search-view/failure.png" }).catch(() => {});
   throw error;

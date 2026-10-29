@@ -2,16 +2,31 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { mkdir } from "node:fs/promises";
 
-export async function verifyGitBranches({ page, root, branch, git, run, waitPage, resources, repository, invoke }) {
+export async function verifyGitBranches({
+  page,
+  root,
+  branch,
+  git,
+  run,
+  waitPage,
+  resources,
+  repository,
+  invoke,
+}) {
   const button = (name) => page.getByRole("button", { name, exact: true });
   const refresh = async () => {
     await button("Refresh Source Control").click();
-    await waitPage(() => !document.querySelector('[aria-label="Refresh Source Control"]')?.disabled);
+    await waitPage(
+      () => !document.querySelector('[aria-label="Refresh Source Control"]')?.disabled,
+    );
     await button("Create Branch").waitFor();
     await waitPage(() => !document.querySelector('[aria-label="Create Branch"]')?.disabled);
   };
   const current = async (name) => {
-    await waitPage((name) => document.querySelector(".git-branch-heading strong")?.textContent === name, name);
+    await waitPage(
+      (name) => document.querySelector(".git-branch-heading strong")?.textContent === name,
+      name,
+    );
     await waitPage(() => !document.querySelector('[aria-label="Create Branch"]')?.disabled);
     assert.equal(git(root, "branch", "--show-current"), name);
   };
@@ -24,19 +39,34 @@ export async function verifyGitBranches({ page, root, branch, git, run, waitPage
     await button("OK").click();
     await current(name);
   };
-  const difference = async (text) => waitPage(
-    (text) => document.querySelector(".git-branch-heading > span:last-child")?.textContent === text, text,
-  );
+  const difference = async (text) =>
+    waitPage(
+      (text) =>
+        document.querySelector(".git-branch-heading > span:last-child")?.textContent === text,
+      text,
+    );
   const sync = async (label, text) => {
     await button(label).click();
-    await waitPage((label) => document.querySelector(`[aria-label="${label}"]`)?.getAttribute("aria-busy") !== "true", label, 310000);
+    await waitPage(
+      (label) =>
+        document.querySelector(`[aria-label="${label}"]`)?.getAttribute("aria-busy") !== "true",
+      label,
+      310000,
+    );
     await difference(text);
   };
-  const readInfo = async () => invoke("git_repository_info", {
-    expectedRoot: root, session: (await invoke("workspace_git_status", {
-      expectedRoot: root, session: null, force: true,
-    })).session, repository: repository.path,
-  });
+  const readInfo = async () =>
+    invoke("git_repository_info", {
+      expectedRoot: root,
+      session: (
+        await invoke("workspace_git_status", {
+          expectedRoot: root,
+          session: null,
+          force: true,
+        })
+      ).session,
+      repository: repository.path,
+    });
 
   assert.deepEqual(await page.locator(".git-info-field > span:first-child").allTextContents(), []);
   await difference("");
@@ -61,7 +91,13 @@ export async function verifyGitBranches({ page, root, branch, git, run, waitPage
   const bare = path.join(run, "branch-remote.git");
   await mkdir(bare);
   git(bare, "init", "--bare");
-  git(root, "remote", git(root, "remote").split(/\r?\n/).includes("origin") ? "set-url" : "add", "origin", bare.replaceAll("\\", "/"));
+  git(
+    root,
+    "remote",
+    git(root, "remote").split(/\r?\n/).includes("origin") ? "set-url" : "add",
+    "origin",
+    bare.replaceAll("\\", "/"),
+  );
   git(root, "push", "--set-upstream", "origin", branch);
   git(root, "push", "origin", `${base}:refs/heads/feature/demo`, "HEAD:refs/heads/collision");
   await refresh();
@@ -117,29 +153,50 @@ export async function verifyGitBranches({ page, root, branch, git, run, waitPage
 
   // Exercise guards in the actual renderer without starting a network operation.
   for (const guard of ["busy", "operation"]) {
-    await page.evaluate(async ({ url, repository, guard }) => {
-      const { setApp } = await import(url);
-      setApp((s) => guard === "busy"
-        ? { gitBusy: { ...s.gitBusy, [repository]: "fetch" } }
-        : { gitState: { ...s.gitState, repositories: s.gitState.repositories.map(
-          (r) => r.path === repository ? { ...r, operation: "merge" } : r,
-        ) } });
-    }, { url: resources.store, repository: repository.path, guard });
+    await page.evaluate(
+      async ({ url, repository, guard }) => {
+        const { setApp } = await import(url);
+        setApp((s) =>
+          guard === "busy"
+            ? { gitBusy: { ...s.gitBusy, [repository]: "fetch" } }
+            : {
+                gitState: {
+                  ...s.gitState,
+                  repositories: s.gitState.repositories.map((r) =>
+                    r.path === repository ? { ...r, operation: "merge" } : r,
+                  ),
+                },
+              },
+        );
+      },
+      { url: resources.store, repository: repository.path, guard },
+    );
     if (guard === "busy") {
       assert.equal(await button(`Create Branch from ${branch}`).isEnabled(), false);
       assert.equal(await button("collision").isEnabled(), false);
       assert.equal(await button("Delete Branch collision").isEnabled(), false);
       assert.equal(await button(`Copy Branch Name ${branch}`).isEnabled(), true);
     } else {
-      await waitPage(() => document.querySelector('[aria-label="Create Branch"]')?.disabled === true);
+      await waitPage(
+        () => document.querySelector('[aria-label="Create Branch"]')?.disabled === true,
+      );
       assert.equal(await button("Create Branch").isEnabled(), false);
     }
-    await page.evaluate(async ({ url, repository }) => {
-      const { setApp } = await import(url);
-      setApp((s) => ({ gitBusy: {}, gitState: { ...s.gitState, repositories: s.gitState.repositories.map(
-        (r) => r.path === repository ? { ...r, operation: null } : r,
-      ) } }));
-    }, { url: resources.store, repository: repository.path });
+    await page.evaluate(
+      async ({ url, repository }) => {
+        const { setApp } = await import(url);
+        setApp((s) => ({
+          gitBusy: {},
+          gitState: {
+            ...s.gitState,
+            repositories: s.gitState.repositories.map((r) =>
+              r.path === repository ? { ...r, operation: null } : r,
+            ),
+          },
+        }));
+      },
+      { url: resources.store, repository: repository.path },
+    );
     await refresh();
   }
 
@@ -149,8 +206,9 @@ export async function verifyGitBranches({ page, root, branch, git, run, waitPage
     return {
       truncated: name.scrollWidth > name.clientWidth,
       title: el.title,
-      actionsFit: [...row.querySelectorAll(".git-branch-actions button")].every((button) =>
-        button.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1),
+      actionsFit: [...row.querySelectorAll(".git-branch-actions button")].every(
+        (button) => button.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1,
+      ),
     };
   });
   assert.equal(layout.title, base);
@@ -186,5 +244,4 @@ export async function verifyGitBranches({ page, root, branch, git, run, waitPage
   git(root, "remote", "remove", "origin");
   await refresh();
   return "Branch row actions, source OIDs, remote reuse/creation/collision/picker, clipboard, safe deletion, worktree/busy guards, keyboard/overflow and real ahead/behind states";
-
 }

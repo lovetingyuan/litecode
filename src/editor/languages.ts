@@ -187,7 +187,11 @@ export async function formatModelText(m: monaco.editor.ITextModel, language = m.
     );
   }
   const doc = Object.values(useApp.getState().docs).find((d) => models.get(d.id) === m);
-  return trustedCall<string>("format_document", { path: doc?.path ?? null, text: m.getValue(), language });
+  return trustedCall<string>("format_document", {
+    path: doc?.path ?? null,
+    text: m.getValue(),
+    language,
+  });
 }
 
 export async function formatModel(m: monaco.editor.ITextModel) {
@@ -219,7 +223,9 @@ export async function ensureLanguage(id: string, language: string) {
     setApp({ languageStatus: errorMessage(e) });
     return;
   }
-  if (epoch !== languageEpoch || m.isDisposed()) { return; }
+  if (epoch !== languageEpoch || m.isDisposed()) {
+    return;
+  }
   if (!references.has(id)) {
     setApp({ languageStatus: `Registering ${language} document` });
     try {
@@ -264,10 +270,20 @@ export async function ensureLanguage(id: string, language: string) {
       return;
     }
   }
-  return startLanguage(serverId, serverId === "typescript" && vueEnabled ? "vue-typescript" : serverId, root, epoch);
+  return startLanguage(
+    serverId,
+    serverId === "typescript" && vueEnabled ? "vue-typescript" : serverId,
+    root,
+    epoch,
+  );
 }
 
-async function startLanguage(serverId: string, language: string, root: string | null, epoch: number) {
+async function startLanguage(
+  serverId: string,
+  language: string,
+  root: string | null,
+  epoch: number,
+) {
   if (clients.has(serverId) || failures.has(serverId)) {
     return;
   }
@@ -345,25 +361,32 @@ async function startLanguage(serverId: string, language: string, root: string | 
       });
       if (language === "vue") {
         const vueClient = client;
-        client.onNotification("tsserver/request", async ([id, command, args]: [number, string, unknown]) => {
-          let response: unknown = null;
-          try {
-            const result = await clients.get("typescript")?.sendRequest<{ body?: unknown }>(
-              "workspace/executeCommand",
-              { command: "typescript.tsserverRequest", arguments: [command, args] },
-            );
-            response = result?.body ?? null;
-          } catch (e) {
-            if (epoch === languageEpoch) {
-              notify(`Vue TypeScript: ${errorMessage(e)}`);
+        client.onNotification(
+          "tsserver/request",
+          async ([id, command, args]: [number, string, unknown]) => {
+            let response: unknown = null;
+            try {
+              const result = await clients
+                .get("typescript")
+                ?.sendRequest<{ body?: unknown }>("workspace/executeCommand", {
+                  command: "typescript.tsserverRequest",
+                  arguments: [command, args],
+                });
+              response = result?.body ?? null;
+            } catch (e) {
+              if (epoch === languageEpoch) {
+                notify(`Vue TypeScript: ${errorMessage(e)}`);
+              }
+            } finally {
+              // Always respond, including errors, so Vue can release its pending request.
+              if (epoch === languageEpoch) {
+                await vueClient
+                  .sendNotification("tsserver/response", [id, response])
+                  .catch(() => {});
+              }
             }
-          } finally {
-            // Always respond, including errors, so Vue can release its pending request.
-            if (epoch === languageEpoch) {
-              await vueClient.sendNotification("tsserver/response", [id, response]).catch(() => {});
-            }
-          }
-        });
+          },
+        );
       }
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -426,7 +449,10 @@ export function languageReport() {
   };
 }
 
-async function applyWorkspaceEdit(edit: import("vscode-languageserver-protocol").WorkspaceEdit, epoch: number) {
+async function applyWorkspaceEdit(
+  edit: import("vscode-languageserver-protocol").WorkspaceEdit,
+  epoch: number,
+) {
   try {
     if (epoch !== languageEpoch) {
       throw new Error("The workspace changed before these language-service edits were applied.");

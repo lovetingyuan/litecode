@@ -30,8 +30,8 @@ The workflow targets `main`, matching the official application's documented rele
 1. In GitHub **Settings → Pages → Custom domain**, enter `litecode.tingyuan.in` and save it **before** adding the DNS record.
 2. In Cloudflare DNS for `tingyuan.in`, add:
 
-   | Type | Name | Target | Proxy | TTL |
-   | --- | --- | --- | --- | --- |
+   | Type  | Name       | Target                   | Proxy    | TTL  |
+   | ----- | ---------- | ------------------------ | -------- | ---- |
    | CNAME | `litecode` | `lovetingyuan.github.io` | DNS only | Auto |
 
 3. The target is the GitHub account hostname. Do not include `https://`, `/litecode`, or a `*.pages.github.io` hostname. Keep CNAME flattening disabled for this record so verification can see the CNAME.

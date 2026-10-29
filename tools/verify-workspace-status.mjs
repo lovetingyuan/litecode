@@ -12,11 +12,14 @@ const errors = [];
 let storeUrl;
 page.on("pageerror", (error) => errors.push(String(error)));
 page.on("request", (request) => {
-  if (new URL(request.url()).pathname === "/src/store/store.ts") { storeUrl = request.url(); }
+  if (new URL(request.url()).pathname === "/src/store/store.ts") {
+    storeUrl = request.url();
+  }
 });
-await page.route("**/src/core/bridge.ts*", (route) => route.fulfill({
-  contentType: "application/javascript",
-  body: `
+await page.route("**/src/core/bridge.ts*", (route) =>
+  route.fulfill({
+    contentType: "application/javascript",
+    body: `
 export const desktop = false;
 export const mediaSource = path => path;
 export const errorMessage = error => error?.message ?? String(error);
@@ -34,18 +37,25 @@ export async function call(command, args) {
  throw new Error('Unexpected fixture command: '+command);
 }
 `,
-}));
+  }),
+);
 const trigger = page.locator(".workspace-status");
 const popup = page.getByRole("dialog", { name: "Project folder", exact: true });
-const openButton = page.getByRole("button", { name: "Open Project Folder in File Explorer", exact: true });
+const openButton = page.getByRole("button", {
+  name: "Open Project Folder in File Explorer",
+  exact: true,
+});
 const closed = () => popup.waitFor({ state: "hidden" });
 async function setRoot(root, branch = "main") {
-  await page.evaluate(async ({ url, root, branch }) => {
-    const { setApp, useApp } = await import(url);
-    window.workspaceStatusFixture.branch = branch;
-    setApp({ root });
-    setApp({ gitState: { ...useApp.getState().gitState, root, branch } });
-  }, { url: storeUrl, root, branch });
+  await page.evaluate(
+    async ({ url, root, branch }) => {
+      const { setApp, useApp } = await import(url);
+      window.workspaceStatusFixture.branch = branch;
+      setApp({ root });
+      setApp({ gitState: { ...useApp.getState().gitState, root, branch } });
+    },
+    { url: storeUrl, root, branch },
+  );
 }
 async function focused(locator) {
   assert.equal(await locator.evaluate((element) => element === document.activeElement), true);
@@ -61,13 +71,25 @@ try {
   await trigger.waitFor();
   assert.equal(await trigger.innerText(), "项目 name");
   assert.equal(await trigger.getAttribute("title"), "项目 name");
-  assert.equal(await trigger.evaluate((element) => element.previousElementSibling.className), "remote-indicator");
-  assert.equal(await trigger.evaluate((element) => element.nextElementSibling.title), "Current Git branch");
+  assert.equal(
+    await trigger.evaluate((element) => element.previousElementSibling.className),
+    "remote-indicator",
+  );
+  assert.equal(
+    await trigger.evaluate((element) => element.nextElementSibling.title),
+    "Current Git branch",
+  );
   await trigger.click();
   await popup.waitFor();
   assert.equal(await popup.locator(".workspace-path").innerText(), "C:\\workspace\\项目 name");
-  assert.equal(await popup.locator(".workspace-path").evaluate((element) => getComputedStyle(element).userSelect), "text");
-  const popupBox = await popup.boundingBox(), triggerBox = await trigger.boundingBox();
+  assert.equal(
+    await popup
+      .locator(".workspace-path")
+      .evaluate((element) => getComputedStyle(element).userSelect),
+    "text",
+  );
+  const popupBox = await popup.boundingBox(),
+    triggerBox = await trigger.boundingBox();
   assert.ok(popupBox.y + popupBox.height <= triggerBox.y, "Popover appears above the button");
   await page.screenshot({ path: `${output}/01-project-folder.png` });
   await trigger.click();
@@ -90,8 +112,12 @@ try {
   await trigger.click();
   await openButton.click();
   await closed();
-  assert.deepEqual(await page.evaluate(() => window.workspaceStatusFixture.calls), [{ path: root }]);
-  await page.evaluate(() => { window.workspaceStatusFixture.fail = true; });
+  assert.deepEqual(await page.evaluate(() => window.workspaceStatusFixture.calls), [
+    { path: root },
+  ]);
+  await page.evaluate(() => {
+    window.workspaceStatusFixture.fail = true;
+  });
   await trigger.click();
   await openButton.click();
   await closed();
@@ -103,7 +129,11 @@ try {
   await setRoot("D:\\other\\second project\\", null);
   await closed();
   assert.equal(await trigger.innerText(), "second project");
-  assert.equal(await page.locator('[title="Current Git branch"]').count(), 0, "Non-Git projects keep the button");
+  assert.equal(
+    await page.locator('[title="Current Git branch"]').count(),
+    0,
+    "Non-Git projects keep the button",
+  );
   await trigger.click();
   assert.equal(await popup.locator(".workspace-path").innerText(), "D:\\other\\second project\\");
   await page.keyboard.press("Escape");
@@ -115,21 +145,36 @@ try {
   await page.setViewportSize({ width: 700, height: 420 });
   await trigger.waitFor();
   assert.equal(await trigger.getAttribute("title"), longName);
-  assert.equal(await trigger.locator("span:not(.codicon)").evaluate((element) => element.scrollWidth > element.clientWidth), true);
+  assert.equal(
+    await trigger
+      .locator("span:not(.codicon)")
+      .evaluate((element) => element.scrollWidth > element.clientWidth),
+    true,
+  );
   await trigger.click();
   await popup.waitFor();
-  assert.equal(await popup.locator(".workspace-path").innerText(), longRoot.replaceAll("/", "\\").trimEnd());
+  assert.equal(
+    await popup.locator(".workspace-path").innerText(),
+    longRoot.replaceAll("/", "\\").trimEnd(),
+  );
   const box = await popup.boundingBox();
   assert.ok(box.x >= 0 && box.x + box.width <= 700 && box.y >= 0 && box.y + box.height <= 420);
-  assert.equal(await popup.evaluate((element) => element.scrollWidth <= element.clientWidth), true, "Long paths wrap without horizontal overflow");
-  const pathBox = await popup.locator(".workspace-path").boundingBox(), buttonBox = await openButton.boundingBox();
+  assert.equal(
+    await popup.evaluate((element) => element.scrollWidth <= element.clientWidth),
+    true,
+    "Long paths wrap without horizontal overflow",
+  );
+  const pathBox = await popup.locator(".workspace-path").boundingBox(),
+    buttonBox = await openButton.boundingBox();
   assert.ok(buttonBox.x >= pathBox.x + pathBox.width, "Open button stays to the right of the path");
   await page.screenshot({ path: `${output}/02-long-path.png` });
   await setRoot(null);
   await closed();
   assert.equal(await trigger.count(), 0);
   assert.deepEqual(errors, []);
-  console.log("PASS: project status placement, paths, keyboard/focus, dismissal, opening/errors, workspace changes and narrow layout");
+  console.log(
+    "PASS: project status placement, paths, keyboard/focus, dismissal, opening/errors, workspace changes and narrow layout",
+  );
 } catch (error) {
   await page.screenshot({ path: `${output}/failure.png` });
   throw error;

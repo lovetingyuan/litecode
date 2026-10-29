@@ -46,11 +46,7 @@
       "description": "终端粗体文字字重，可填写 normal、bold 或 100–900。"
     },
     "terminal.integrated.cursorStyle": {
-      "enum": [
-        "block",
-        "underline",
-        "bar"
-      ],
+      "enum": ["block", "underline", "bar"],
       "default": "block",
       "description": "终端光标样式：block 方块、underline 下划线、bar 竖线。"
     },
@@ -85,39 +81,22 @@
       "description": "新终端是否启用 Shell 集成，自动上报当前目录。禁用后分屏只能继承最后已知目录。"
     },
     "terminal.integrated.gpuAcceleration": {
-      "enum": [
-        "auto",
-        "on",
-        "off"
-      ],
+      "enum": ["auto", "on", "off"],
       "default": "auto",
       "description": "终端 WebGL 硬件加速。不可用时自动回退，不中断会话。"
     },
     "terminal.integrated.rightClickBehavior": {
-      "enum": [
-        "default",
-        "copyPaste",
-        "paste",
-        "selectWord",
-        "nothing"
-      ],
+      "enum": ["default", "copyPaste", "paste", "selectWord", "nothing"],
       "default": "default",
       "description": "终端右键行为。Windows 的 default 与 copyPaste 相同：有选区复制，否则粘贴。Shift+右键打开菜单。"
     },
     "terminal.integrated.enableMultiLinePasteWarning": {
-      "enum": [
-        "auto",
-        "always",
-        "never"
-      ],
+      "enum": ["auto", "always", "never"],
       "default": "auto",
       "description": "多行粘贴提示：auto 在 Shell 未启用括号粘贴时提示，always 始终提示，never 不提示。"
     },
     "terminal.integrated.defaultProfile.windows": {
-      "type": [
-        "string",
-        "null"
-      ],
+      "type": ["string", "null"],
       "default": null,
       "description": "新终端的默认 Shell profile。null 自动选择 PowerShell 7、Windows PowerShell 或 cmd。"
     },
@@ -147,10 +126,7 @@
               "env": {
                 "type": "object",
                 "additionalProperties": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "type": ["string", "null"]
                 }
               }
             },
@@ -164,10 +140,7 @@
       "type": "object",
       "default": {},
       "additionalProperties": {
-        "type": [
-          "string",
-          "null"
-        ]
+        "type": ["string", "null"]
       },
       "description": "新终端的环境变量覆盖；null 删除变量。支持 ${workspaceFolder}、${userHome} 和 ${env:NAME}。"
     },
@@ -177,11 +150,7 @@
       "description": "新 tab 的启动目录。空字符串使用项目根目录，无项目时使用用户主目录；相对路径基于项目。支持 ${workspaceFolder}、${userHome} 和 ${env:NAME}。"
     },
     "terminal.integrated.splitCwd": {
-      "enum": [
-        "inherited",
-        "initial",
-        "workspaceRoot"
-      ],
+      "enum": ["inherited", "initial", "workspaceRoot"],
       "default": "inherited",
       "description": "分屏启动目录：inherited 继承当前目录，initial 使用源会话启动目录，workspaceRoot 使用当前项目根目录。"
     },
@@ -343,23 +312,12 @@
       "description": "Oxfmt 可执行文件路径。null 表示先从 PATH 查找，再尝试项目和应用安装的 Oxfmt。"
     },
     "editor.lineNumbers": {
-      "enum": [
-        "off",
-        "on",
-        "relative",
-        "interval"
-      ],
+      "enum": ["off", "on", "relative", "interval"],
       "default": "on",
       "description": "行号显示方式：off 关闭，on 绝对行号，relative 相对行号，interval 每十行显示。"
     },
     "editor.renderWhitespace": {
-      "enum": [
-        "none",
-        "boundary",
-        "selection",
-        "trailing",
-        "all"
-      ],
+      "enum": ["none", "boundary", "selection", "trailing", "all"],
       "default": "selection",
       "description": "空白字符显示方式：none 不显示，boundary 显示边界空白，selection 仅选区，trailing 仅行尾，all 全部。"
     },
@@ -384,9 +342,7 @@
                 "type": "string"
               }
             },
-            "required": [
-              "column"
-            ],
+            "required": ["column"],
             "additionalProperties": false
           }
         ]
@@ -395,12 +351,7 @@
       "description": "垂直参考线的列位置，例如 [80, 120]，也支持 {\"column\": 80, \"color\": \"#808080\"}。空数组不显示。"
     },
     "editor.renderLineHighlight": {
-      "enum": [
-        "none",
-        "gutter",
-        "line",
-        "all"
-      ],
+      "enum": ["none", "gutter", "line", "all"],
       "default": "line",
       "description": "当前行高亮区域：none 关闭，gutter 行号区域，line 文本区域，all 两者。"
     },
@@ -410,11 +361,7 @@
       "description": "是否显示缩进参考线。"
     },
     "editor.guides.bracketPairs": {
-      "enum": [
-        true,
-        "active",
-        false
-      ],
+      "enum": [true, "active", false],
       "default": true,
       "description": "括号对参考线：true 显示全部，active 仅当前括号对，false 关闭。"
     },
@@ -451,34 +398,17 @@
       "description": "编辑器字符间距，单位为像素。"
     },
     "editor.cursorStyle": {
-      "enum": [
-        "line",
-        "block",
-        "underline",
-        "line-thin",
-        "block-outline",
-        "underline-thin"
-      ],
+      "enum": ["line", "block", "underline", "line-thin", "block-outline", "underline-thin"],
       "default": "line",
       "description": "编辑器光标样式。"
     },
     "editor.cursorBlinking": {
-      "enum": [
-        "blink",
-        "smooth",
-        "phase",
-        "expand",
-        "solid"
-      ],
+      "enum": ["blink", "smooth", "phase", "expand", "solid"],
       "default": "blink",
       "description": "编辑器光标闪烁方式；solid 为常亮。"
     },
     "editor.cursorSmoothCaretAnimation": {
-      "enum": [
-        "off",
-        "explicit",
-        "on"
-      ],
+      "enum": ["off", "explicit", "on"],
       "default": "off",
       "description": "光标平滑动画：off 关闭，explicit 仅手动移动，on 始终启用。"
     },
@@ -520,11 +450,7 @@
           "type": "boolean"
         },
         {
-          "enum": [
-            "on",
-            "off",
-            "offWhenInlineCompletions"
-          ]
+          "enum": ["on", "off", "offWhenInlineCompletions"]
         },
         {
           "type": "object",
@@ -535,11 +461,7 @@
                   "type": "boolean"
                 },
                 {
-                  "enum": [
-                    "on",
-                    "off",
-                    "offWhenInlineCompletions"
-                  ]
+                  "enum": ["on", "off", "offWhenInlineCompletions"]
                 }
               ]
             },
@@ -549,11 +471,7 @@
                   "type": "boolean"
                 },
                 {
-                  "enum": [
-                    "on",
-                    "off",
-                    "offWhenInlineCompletions"
-                  ]
+                  "enum": ["on", "off", "offWhenInlineCompletions"]
                 }
               ]
             },
@@ -563,11 +481,7 @@
                   "type": "boolean"
                 },
                 {
-                  "enum": [
-                    "on",
-                    "off",
-                    "offWhenInlineCompletions"
-                  ]
+                  "enum": ["on", "off", "offWhenInlineCompletions"]
                 }
               ]
             }
@@ -595,11 +509,7 @@
       "description": "输入语言定义的触发字符时是否自动显示补全。"
     },
     "editor.acceptSuggestionOnEnter": {
-      "enum": [
-        "on",
-        "smart",
-        "off"
-      ],
+      "enum": ["on", "smart", "off"],
       "default": "on",
       "description": "是否用 Enter 接受补全：smart 仅在补全会改变文本时接受，off 仅插入换行。"
     },
@@ -609,11 +519,7 @@
       "description": "是否自动显示函数参数提示，需要语言服务支持。"
     },
     "editor.hover.enabled": {
-      "enum": [
-        "on",
-        "off",
-        "onKeyboardModifier"
-      ],
+      "enum": ["on", "off", "onKeyboardModifier"],
       "default": "on",
       "description": "悬停提示：on 开启，off 关闭，onKeyboardModifier 按住 Ctrl 或 Alt 时显示。"
     },
@@ -625,42 +531,22 @@
       "description": "显示悬停提示的延迟，单位为毫秒。"
     },
     "editor.inlayHints.enabled": {
-      "enum": [
-        "on",
-        "onUnlessPressed",
-        "offUnlessPressed",
-        "off"
-      ],
+      "enum": ["on", "onUnlessPressed", "offUnlessPressed", "off"],
       "default": "on",
       "description": "行内提示开关，需要语言服务支持；onUnlessPressed 和 offUnlessPressed 用 Ctrl+Alt 临时切换。"
     },
     "editor.autoClosingBrackets": {
-      "enum": [
-        "always",
-        "languageDefined",
-        "beforeWhitespace",
-        "never"
-      ],
+      "enum": ["always", "languageDefined", "beforeWhitespace", "never"],
       "default": "languageDefined",
       "description": "括号自动闭合方式：always 始终，languageDefined 按语言规则，beforeWhitespace 仅空白字符前，never 关闭。"
     },
     "editor.autoClosingQuotes": {
-      "enum": [
-        "always",
-        "languageDefined",
-        "beforeWhitespace",
-        "never"
-      ],
+      "enum": ["always", "languageDefined", "beforeWhitespace", "never"],
       "default": "languageDefined",
       "description": "引号自动闭合方式：always 始终，languageDefined 按语言规则，beforeWhitespace 仅空白字符前，never 关闭。"
     },
     "editor.autoSurround": {
-      "enum": [
-        "languageDefined",
-        "quotes",
-        "brackets",
-        "never"
-      ],
+      "enum": ["languageDefined", "quotes", "brackets", "never"],
       "default": "languageDefined",
       "description": "选中文本后自动包围方式：languageDefined 按语言规则，quotes 仅引号，brackets 仅括号，never 关闭。"
     },

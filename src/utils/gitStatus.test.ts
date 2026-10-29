@@ -13,16 +13,27 @@ const ignored = (path: string | null, git = entries) =>
 describe("Git unmerged decorations", () => {
   const conflicts: GitEntry[] = [{ path: "src/组件.ts", status: "conflicted" }];
   it("recognizes normalized paths and displays a distinct unmerged badge", () => {
-    expect(isGitConflicted("\\\\?\\C:\\PROJECT\\src\\组件.ts", "C:/project", "C:/project", conflicts)).toBe(true);
-    expect(gitConflictDecoration("C:/project/src/组件.ts", "C:/project", "C:/project", conflicts))
-      .toMatchObject({ text: "!", title: "Git: Unmerged changes" });
-    expect(isGitConflicted("C:/project/src/other.ts", "C:/project", "C:/project", conflicts)).toBe(false);
+    expect(
+      isGitConflicted("\\\\?\\C:\\PROJECT\\src\\组件.ts", "C:/project", "C:/project", conflicts),
+    ).toBe(true);
+    expect(
+      gitConflictDecoration("C:/project/src/组件.ts", "C:/project", "C:/project", conflicts),
+    ).toMatchObject({ text: "!", title: "Git: Unmerged changes" });
+    expect(isGitConflicted("C:/project/src/other.ts", "C:/project", "C:/project", conflicts)).toBe(
+      false,
+    );
   });
   it("rejects stale workspaces, outside paths and untitled files, and refreshes after staging", () => {
     expect(isGitConflicted(null, "C:/project", "C:/project", conflicts)).toBe(false);
-    expect(isGitConflicted("C:/project2/src/组件.ts", "C:/project", "C:/project", conflicts)).toBe(false);
-    expect(isGitConflicted("C:/project/src/组件.ts", "C:/project", "C:/old", conflicts)).toBe(false);
-    expect(gitConflictDecoration("C:/project/src/组件.ts", "C:/project", "C:/project", [])).toBeNull();
+    expect(isGitConflicted("C:/project2/src/组件.ts", "C:/project", "C:/project", conflicts)).toBe(
+      false,
+    );
+    expect(isGitConflicted("C:/project/src/组件.ts", "C:/project", "C:/old", conflicts)).toBe(
+      false,
+    );
+    expect(
+      gitConflictDecoration("C:/project/src/组件.ts", "C:/project", "C:/project", []),
+    ).toBeNull();
   });
 });
 

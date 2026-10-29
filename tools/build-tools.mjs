@@ -26,11 +26,15 @@ for (const name of ["package.json", "package-lock.json"]) {
 const copied = new Set();
 async function copyPackage(name, from = path.resolve("package.json")) {
   const require = createRequire(from);
-  const directory = require.resolve.paths(name)
+  const directory = require.resolve
+    .paths(name)
     .map((base) => path.join(base, name))
     .find((candidate) => {
-      try { return require.resolve(path.join(candidate, "package.json")); }
-      catch { return false; }
+      try {
+        return require.resolve(path.join(candidate, "package.json"));
+      } catch {
+        return false;
+      }
     });
   if (!directory) throw new Error(`Cannot package ${name} from ${from}`);
   if (copied.has(directory)) return;
@@ -39,7 +43,9 @@ async function copyPackage(name, from = path.resolve("package.json")) {
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error(`Language tool is outside node_modules: ${directory}`);
   }
-  await cp(directory, path.join("src-tauri/tools/typescript/node_modules", relative), { recursive: true });
+  await cp(directory, path.join("src-tauri/tools/typescript/node_modules", relative), {
+    recursive: true,
+  });
   const manifest = path.join(directory, "package.json");
   const info = JSON.parse(await readFile(manifest, "utf8"));
   for (const dependency of Object.keys(info.dependencies ?? {})) {

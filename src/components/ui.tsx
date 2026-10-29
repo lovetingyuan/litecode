@@ -13,7 +13,11 @@ export function FileIcon({ language }: { language: string }) {
     markdown: ["markdown", "#519aba"],
   };
   const [name, color] = icons[language.replace(/react$/, "")] ?? ["file", "#a6a6a6"];
-  return <span style={{ color }}><Icon name={name} /></span>;
+  return (
+    <span style={{ color }}>
+      <Icon name={name} />
+    </span>
+  );
 }
 export function IconButton({
   icon,

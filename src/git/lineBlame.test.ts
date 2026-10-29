@@ -1,15 +1,38 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { blameAge, blameRange, blameRepository, createBlameLoader, type BlameTask } from "./lineBlame";
+import {
+  blameAge,
+  blameRange,
+  blameRepository,
+  createBlameLoader,
+  type BlameTask,
+} from "./lineBlame";
 import type { GitFileBlame, GitRepository } from "../types/types";
 
-const repository = (path: string): GitRepository => ({ path, name: "repo", branch: "main", detached: false, operation: null, changes: [] });
-const data: GitFileBlame = { head: "head", ranges: [{ startLine: 1, lineCount: 2, commit: "first" }], commits: { first: { author: "Alice", authorTime: 100, summary: "initial" } } };
+const repository = (path: string): GitRepository => ({
+  path,
+  name: "repo",
+  branch: "main",
+  detached: false,
+  operation: null,
+  changes: [],
+});
+const data: GitFileBlame = {
+  head: "head",
+  ranges: [{ startLine: 1, lineCount: 2, commit: "first" }],
+  commits: { first: { author: "Alice", authorTime: 100, summary: "initial" } },
+};
 afterEach(() => vi.useRealTimers());
 
 describe("line attribution", () => {
   it("selects the deepest containing repository with path boundaries and Windows casing", () => {
-    const parent = repository("C:/repo"), nested = repository("C:/repo/nested"), other = repository("C:/repo-two");
-    expect(blameRepository("c:\\REPO\\nested\\中文 file.ts", [nested, parent, other])).toEqual({ repository: nested, path: "中文 file.ts", oldPath: null });
+    const parent = repository("C:/repo"),
+      nested = repository("C:/repo/nested"),
+      other = repository("C:/repo-two");
+    expect(blameRepository("c:\\REPO\\nested\\中文 file.ts", [nested, parent, other])).toEqual({
+      repository: nested,
+      path: "中文 file.ts",
+      oldPath: null,
+    });
     expect(blameRepository("C:/repo-two/file.ts", [parent])).toBeNull();
     expect(blameRepository("C:/repo/file.ts", [nested, parent])?.repository).toBe(parent);
     expect(blameRepository("C:/elsewhere/file.ts", [parent])).toBeNull();
@@ -17,12 +40,27 @@ describe("line attribution", () => {
   });
   it("preserves rename metadata and supports namespaced and UNC paths", () => {
     const repo = repository("//server/share/repo");
-    repo.changes.push({ path: "new.ts", oldPath: "old.ts", indexStatus: "renamed", worktreeStatus: null, conflicted: false, stamp: "1" });
-    expect(blameRepository("\\\\?\\UNC\\server\\share\\repo\\new.ts", [repo])?.oldPath).toBe("old.ts");
-    expect(blameRepository("\\\\?\\C:\\repo\\file.ts", [repository("C:/repo")])?.path).toBe("file.ts");
+    repo.changes.push({
+      path: "new.ts",
+      oldPath: "old.ts",
+      indexStatus: "renamed",
+      worktreeStatus: null,
+      conflicted: false,
+      stamp: "1",
+    });
+    expect(blameRepository("\\\\?\\UNC\\server\\share\\repo\\new.ts", [repo])?.oldPath).toBe(
+      "old.ts",
+    );
+    expect(blameRepository("\\\\?\\C:\\repo\\file.ts", [repository("C:/repo")])?.path).toBe(
+      "file.ts",
+    );
   });
   it("looks up committed and uncommitted intervals without attributing virtual trailing lines", () => {
-    const ranges = [{ startLine: 1, lineCount: 2, commit: "a" }, { startLine: 3, lineCount: 1, commit: null }, { startLine: 4, lineCount: 3, commit: "b" }];
+    const ranges = [
+      { startLine: 1, lineCount: 2, commit: "a" },
+      { startLine: 3, lineCount: 1, commit: null },
+      { startLine: 4, lineCount: 3, commit: "b" },
+    ];
     expect(blameRange(ranges, 1)?.commit).toBe("a");
     expect(blameRange(ranges, 2)?.commit).toBe("a");
     expect(blameRange(ranges, 3)?.commit).toBeNull();
@@ -46,7 +84,8 @@ describe("blame request lifecycle", () => {
     vi.useFakeTimers();
     const publish = vi.fn();
     const loader = createBlameLoader(publish);
-    const first = { key: "version-1", read: vi.fn().mockResolvedValue(data) }, last = { key: "version-2", read: vi.fn().mockResolvedValue(data) };
+    const first = { key: "version-1", read: vi.fn().mockResolvedValue(data) },
+      last = { key: "version-2", read: vi.fn().mockResolvedValue(data) };
     loader.update(first);
     await vi.advanceTimersByTimeAsync(150);
     loader.update(last);
@@ -63,8 +102,17 @@ describe("blame request lifecycle", () => {
     const publish = vi.fn();
     const loader = createBlameLoader(publish);
     let finish!: (value: GitFileBlame) => void;
-    const first: BlameTask = { key: "file-1", read: vi.fn(() => new Promise<GitFileBlame | null>((resolve) => { finish = resolve; })) };
-    const skipped = { key: "file-2", read: vi.fn().mockResolvedValue(data) }, last = { key: "file-3", read: vi.fn().mockResolvedValue(data) };
+    const first: BlameTask = {
+      key: "file-1",
+      read: vi.fn(
+        () =>
+          new Promise<GitFileBlame | null>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    };
+    const skipped = { key: "file-2", read: vi.fn().mockResolvedValue(data) },
+      last = { key: "file-3", read: vi.fn().mockResolvedValue(data) };
     loader.update(first);
     await vi.advanceTimersByTimeAsync(200);
     loader.update(skipped);
@@ -88,7 +136,13 @@ describe("blame request lifecycle", () => {
     await vi.advanceTimersByTimeAsync(200);
     expect(publish).toHaveBeenLastCalledWith(null);
     let finish!: (value: GitFileBlame) => void;
-    loader.update({ key: "file", read: () => new Promise((resolve) => { finish = resolve; }) });
+    loader.update({
+      key: "file",
+      read: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
     await vi.advanceTimersByTimeAsync(200);
     loader.update(null);
     publish.mockClear();
@@ -110,7 +164,13 @@ describe("blame request lifecycle", () => {
     await vi.advanceTimersByTimeAsync(200);
     publish.mockClear();
     let finish!: (value: GitFileBlame) => void;
-    const refresh = { key: first.key, read: () => new Promise<GitFileBlame>((resolve) => { finish = resolve; }) };
+    const refresh = {
+      key: first.key,
+      read: () =>
+        new Promise<GitFileBlame>((resolve) => {
+          finish = resolve;
+        }),
+    };
     loader.update(refresh);
     await vi.advanceTimersByTimeAsync(200);
     expect(publish).not.toHaveBeenCalled();
@@ -127,7 +187,13 @@ describe("blame request lifecycle", () => {
     const publish = vi.fn();
     const loader = createBlameLoader(publish);
     let finish!: (value: GitFileBlame) => void;
-    loader.update({ key: "file", read: () => new Promise((resolve) => { finish = resolve; }) });
+    loader.update({
+      key: "file",
+      read: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
     await vi.advanceTimersByTimeAsync(200);
     loader.update({ key: "file", read: () => Promise.reject(new Error("unavailable")) });
     publish.mockClear();

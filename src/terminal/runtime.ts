@@ -23,12 +23,7 @@ import {
   useTerminal,
   type Profile,
 } from "./state";
-import {
-  plainTerminalText,
-  reportedDirectory,
-  terminalOptions,
-  terminalSetting,
-} from "./settings";
+import { plainTerminalText, reportedDirectory, terminalOptions, terminalSetting } from "./settings";
 import { quoteDroppedPaths } from "./drop";
 
 type Created = {
@@ -111,10 +106,7 @@ export function newTerminal(profile?: string) {
   void refreshProfiles().catch(report);
   return id;
 }
-export async function splitTerminal(
-  direction: SplitDirection = "right",
-  source = activePane(),
-) {
+export async function splitTerminal(direction: SplitDirection = "right", source = activePane()) {
   const runtime = source && runtimes.get(source);
   if (!source || !runtime) {
     return;
@@ -128,10 +120,7 @@ export async function splitTerminal(
   ) {
     return;
   }
-  if (
-    !useTerminal.getState().panes[source]?.reportedCwd &&
-    get("splitCwd") === "inherited"
-  ) {
+  if (!useTerminal.getState().panes[source]?.reportedCwd && get("splitCwd") === "inherited") {
     notify(
       "Shell has not reported its current directory. The split will use its last known directory.",
     );
@@ -146,7 +135,7 @@ export function focusTerminal(id = activePane()) {
     return;
   }
   const state = useTerminal.getState();
-  const tab = state.tabs.find(tab => layoutGroups(tab.layout).includes(id));
+  const tab = state.tabs.find((tab) => layoutGroups(tab.layout).includes(id));
   if (tab && tab.id !== state.activeTab) {
     useTerminal.setState({ activeTab: tab.id });
     requestAnimationFrame(() => runtimes.get(id)?.terminal.focus());
@@ -164,16 +153,13 @@ export function nextTerminal(delta: number) {
     return;
   }
   selectTab(
-    s.tabs[
-      (s.tabs.findIndex((t) => t.id === s.activeTab) + delta + s.tabs.length) %
-        s.tabs.length
-    ].id,
+    s.tabs[(s.tabs.findIndex((t) => t.id === s.activeTab) + delta + s.tabs.length) % s.tabs.length]
+      .id,
   );
 }
 export function moveFocus(direction: "left" | "right" | "up" | "down") {
   const id = activePane();
-  const current =
-    id && document.querySelector<HTMLElement>(`[data-terminal-pane="${id}"]`);
+  const current = id && document.querySelector<HTMLElement>(`[data-terminal-pane="${id}"]`);
   if (!current) {
     return;
   }
@@ -181,9 +167,7 @@ export function moveFocus(direction: "left" | "right" | "up" | "down") {
   const x = box.x + box.width / 2,
     y = box.y + box.height / 2;
   const horizontal = direction === "left" || direction === "right";
-  const candidates = Array.from(
-    document.querySelectorAll<HTMLElement>("[data-terminal-pane]"),
-  )
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>("[data-terminal-pane]"))
     .filter((el) => el !== current && el.getBoundingClientRect().width > 0)
     .map((el) => {
       const r = el.getBoundingClientRect();
@@ -197,9 +181,7 @@ export function moveFocus(direction: "left" | "right" | "up" | "down") {
         score: Math.abs(along) + Math.abs(across) * 2,
       };
     })
-    .filter((c) =>
-      direction === "left" || direction === "up" ? c.along < -1 : c.along > 1,
-    )
+    .filter((c) => (direction === "left" || direction === "up" ? c.along < -1 : c.along > 1))
     .sort((a, b) => a.score - b.score);
   if (candidates[0]) {
     focusTerminal(candidates[0].id);
@@ -292,11 +274,7 @@ function updateCwd(id: string, r: Runtime, cwd: string) {
   if (r.sessionId) {
     r.cwdUpdate = r.cwdUpdate
       .catch(() => {})
-      .then(() =>
-        r.disposed
-          ? undefined
-          : call("terminal_update_cwd", { id: r.sessionId, cwd }),
-      )
+      .then(() => (r.disposed ? undefined : call("terminal_update_cwd", { id: r.sessionId, cwd })))
       .catch((error) => {
         if (!r.disposed) {
           patchPane(id, { reportedCwd: false });
@@ -311,11 +289,7 @@ function sendInput(id: string, r: Runtime, text: string | Uint8Array) {
     .catch(() => {})
     .then(async () => {
       await r.starting;
-      if (
-        r.disposed ||
-        !r.sessionId ||
-        useTerminal.getState().panes[id]?.status !== "running"
-      ) {
+      if (r.disposed || !r.sessionId || useTerminal.getState().panes[id]?.status !== "running") {
         return;
       }
       for (let offset = 0; offset < bytes.length; offset += 64 * 1024) {
@@ -360,7 +334,9 @@ async function startPane(id: string, r: Runtime) {
       return;
     }
     r.sessionId = created.id;
-    if (created.windowsBuild) { r.terminal.options.windowsPty = { backend: "conpty", buildNumber: created.windowsBuild }; }
+    if (created.windowsBuild) {
+      r.terminal.options.windowsPty = { backend: "conpty", buildNumber: created.windowsBuild };
+    }
     r.integration = created.integration;
     r.shellKind = created.profile.kind;
     patchPane(id, {
@@ -393,19 +369,11 @@ function scheduleFit(r: Runtime) {
   }
   r.frame = requestAnimationFrame(() => {
     r.frame = undefined;
-    if (
-      !r.visible ||
-      !r.node.isConnected ||
-      r.node.clientWidth < 20 ||
-      r.node.clientHeight < 20
-    ) {
+    if (!r.visible || !r.node.isConnected || r.node.clientWidth < 20 || r.node.clientHeight < 20) {
       return;
     }
     r.fit.fit();
-    if (
-      r.sessionId &&
-      (r.cols !== r.terminal.cols || r.rows !== r.terminal.rows)
-    ) {
+    if (r.sessionId && (r.cols !== r.terminal.cols || r.rows !== r.terminal.rows)) {
       r.cols = Math.min(1000, r.terminal.cols);
       r.rows = Math.min(1000, r.terminal.rows);
       void call("terminal_resize", {
@@ -493,9 +461,7 @@ function createRuntime(id: string): Runtime {
     }
     if (
       event.kind === "closed" &&
-      ["error", "exited"].includes(
-        useTerminal.getState().panes[id]?.status ?? "",
-      )
+      ["error", "exited"].includes(useTerminal.getState().panes[id]?.status ?? "")
     ) {
       return;
     }
@@ -507,8 +473,7 @@ function createRuntime(id: string): Runtime {
         closePane(id);
         return;
       }
-      const message =
-        event.error ?? `Shell exited with code ${event.exitCode ?? "unknown"}.`;
+      const message = event.error ?? `Shell exited with code ${event.exitCode ?? "unknown"}.`;
       patchPane(id, {
         status: event.kind === "exit" ? "exited" : "error",
         exitCode: event.exitCode ?? undefined,
@@ -521,7 +486,13 @@ function createRuntime(id: string): Runtime {
     });
   };
   terminal.onData((text) => sendInput(id, r, text));
-  terminal.onBinary(data => sendInput(id, r, Uint8Array.from(data, character => character.charCodeAt(0))));
+  terminal.onBinary((data) =>
+    sendInput(
+      id,
+      r,
+      Uint8Array.from(data, (character) => character.charCodeAt(0)),
+    ),
+  );
   terminal.onSelectionChange(() => {
     if (terminal.hasSelection()) {
       terminalSelections.add(id);
@@ -566,8 +537,7 @@ function createRuntime(id: string): Runtime {
   }
   terminal.registerLinkProvider({
     provideLinks: (y, callback) => {
-      const line =
-        terminal.buffer.active.getLine(y - 1)?.translateToString() ?? "";
+      const line = terminal.buffer.active.getLine(y - 1)?.translateToString() ?? "";
       const links: ILink[] = [];
       const urls = Array.from(line.matchAll(/https?:\/\/\S+/g));
       const pattern =
@@ -578,11 +548,7 @@ function createRuntime(id: string): Runtime {
           continue;
         }
         const index = match.index ?? 0;
-        if (
-          urls.some(
-            (url) => index >= url.index! && index < url.index! + url[0].length,
-          )
-        ) {
+        if (urls.some((url) => index >= url.index! && index < url.index! + url[0].length)) {
           continue;
         }
         links.push({
@@ -606,10 +572,7 @@ function createRuntime(id: string): Runtime {
     (event) => {
       event.preventDefault();
       event.stopImmediatePropagation();
-      void pasteTerminal(
-        id,
-        event.clipboardData?.getData("text/plain") ?? "",
-      ).catch(report);
+      void pasteTerminal(id, event.clipboardData?.getData("text/plain") ?? "").catch(report);
     },
     true,
   );
@@ -689,14 +652,11 @@ export async function pasteTerminal(id = activePane(), text?: string) {
   if (!r || r.disposed) {
     return;
   }
-  text ??= desktop
-    ? ((await readText()) ?? "")
-    : await navigator.clipboard.readText();
+  text ??= desktop ? ((await readText()) ?? "") : await navigator.clipboard.readText();
   const warning = get("enableMultiLinePasteWarning");
   if (
     /\r|\n/.test(text) &&
-    (warning === "always" ||
-      (warning === "auto" && !r.terminal.modes.bracketedPasteMode))
+    (warning === "always" || (warning === "auto" && !r.terminal.modes.bracketedPasteMode))
   ) {
     if (
       (await ask(
@@ -738,12 +698,7 @@ export function zoomTerminal(delta: number, id = activePane()) {
       : Math.min(100, Math.max(6, (r.terminal.options.fontSize ?? 14) + delta));
   scheduleFit(r);
 }
-export function findTerminal(
-  text: string,
-  previous = false,
-  regex = false,
-  caseSensitive = false,
-) {
+export function findTerminal(text: string, previous = false, regex = false, caseSensitive = false) {
   const id = activePane(),
     r = id && runtimes.get(id);
   if (!r) {
@@ -761,10 +716,7 @@ export function findTerminal(
     return false;
   }
 }
-export function selectTerminalWord(
-  id: string,
-  event: { clientX: number; clientY: number },
-) {
+export function selectTerminalWord(id: string, event: { clientX: number; clientY: number }) {
   const r = runtimes.get(id);
   if (!r) {
     return;
@@ -778,12 +730,8 @@ export function selectTerminalWord(
     Math.floor((event.clientX - screen.x) / (screen.width / r.terminal.cols)),
   );
   const row =
-    Math.max(
-      0,
-      Math.floor(
-        (event.clientY - screen.y) / (screen.height / r.terminal.rows),
-      ),
-    ) + r.terminal.buffer.active.viewportY;
+    Math.max(0, Math.floor((event.clientY - screen.y) / (screen.height / r.terminal.rows))) +
+    r.terminal.buffer.active.viewportY;
   const text = r.terminal.buffer.active.getLine(row)?.translateToString() ?? "";
   let start = col,
     end = col;

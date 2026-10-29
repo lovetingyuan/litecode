@@ -139,7 +139,13 @@ export type GitInfo = {
   lastFetch: number | null;
   operation: string | null;
   remotes: { name: string; fetch: string | null; push: string | null }[];
-  branches: { name: string; current: boolean; remote: boolean; upstream: string | null; worktree: boolean }[];
+  branches: {
+    name: string;
+    current: boolean;
+    remote: boolean;
+    upstream: string | null;
+    worktree: boolean;
+  }[];
 };
 export type GitDiffResource = {
   workspace: string;
@@ -150,10 +156,21 @@ export type GitDiffResource = {
   conflicted: boolean;
   sourceId?: string;
 };
-export type GitDiffContent = { before: string; after: string; source: string | null; summary: string | null };
+export type GitDiffContent = {
+  before: string;
+  after: string;
+  source: string | null;
+  summary: string | null;
+};
 export type GitBlameRange = { startLine: number; lineCount: number; commit: string | null };
 export type GitBlameCommit = { author: string; authorTime: number; summary: string };
-export type GitCommitDetails = { sha: string; message: string; author: string; authorEmail: string; authorTime: number };
+export type GitCommitDetails = {
+  sha: string;
+  message: string;
+  author: string;
+  authorEmail: string;
+  authorTime: number;
+};
 export type GitFileBlame = {
   head: string | null;
   ranges: GitBlameRange[];

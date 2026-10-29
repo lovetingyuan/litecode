@@ -33,16 +33,12 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
         }
         const current = gitState.repositories
           ?.find((r) => r.path === repository)
-          ?.changes.find(
-            (c) => (staged ? (c.indexPath ?? c.path) : c.path) === path,
-          );
+          ?.changes.find((c) => (staged ? (c.indexPath ?? c.path) : c.path) === path);
         const next = await readGitDiff({
           workspace,
           repository,
           path,
-          oldPath: staged
-            ? (current?.indexOldPath ?? null)
-            : (current?.worktreeOldPath ?? null),
+          oldPath: staged ? (current?.indexOldPath ?? null) : (current?.worktreeOldPath ?? null),
           staged,
           conflicted: current?.conflicted ?? false,
         });
@@ -67,16 +63,7 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
     return () => {
       cancelled = true;
     };
-  }, [
-    doc.id,
-    repository,
-    path,
-    oldPath,
-    staged,
-    conflicted,
-    workspace,
-    gitState,
-  ]);
+  }, [doc.id, repository, path, oldPath, staged, conflicted, workspace, gitState]);
 
   useEffect(() => {
     const container = host.current;
@@ -147,22 +134,26 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
         editors.set(group.id, code);
         subscriptions.push(installMergeConflictEditor(code, () => {}));
         subscriptions.push(code.onDidFocusEditorText(() => setApp({ activeGroup: group.id })));
-        subscriptions.push(code.onDidBlurEditorWidget(() => {
-          if (source) {
-            void autoSave("onFocusChange", source);
-          }
-        }));
-        subscriptions.push(code.onDidChangeCursorSelection((event) => {
-          if (useApp.getState().activeGroup === group.id) {
-            setApp({
-              cursor: {
-                line: event.selection.positionLineNumber,
-                column: event.selection.positionColumn,
-                selected: modified.getValueLengthInRange(event.selection),
-              },
-            });
-          }
-        }));
+        subscriptions.push(
+          code.onDidBlurEditorWidget(() => {
+            if (source) {
+              void autoSave("onFocusChange", source);
+            }
+          }),
+        );
+        subscriptions.push(
+          code.onDidChangeCursorSelection((event) => {
+            if (useApp.getState().activeGroup === group.id) {
+              setApp({
+                cursor: {
+                  line: event.selection.positionLineNumber,
+                  column: event.selection.positionColumn,
+                  selected: modified.getValueLengthInRange(event.selection),
+                },
+              });
+            }
+          }),
+        );
         const view = useApp.getState().groups.find((g) => g.id === group.id)?.views[doc.id];
         if (view) {
           editor.restoreViewState(view as monaco.editor.IDiffEditorViewState);
@@ -233,9 +224,7 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
             icon="go-to-file"
             label="Open Source File"
             onClick={() =>
-              void openGitSource(diff.repository, diff.path).catch((e) =>
-                notify(errorMessage(e)),
-              )
+              void openGitSource(diff.repository, diff.path).catch((e) => notify(errorMessage(e)))
             }
           />
         </div>
@@ -250,11 +239,7 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
           Loading comparison…
         </div>
       )}
-      <div
-        className="git-diff-host"
-        ref={host}
-        hidden={!!error || !!content?.summary}
-      />
+      <div className="git-diff-host" ref={host} hidden={!!error || !!content?.summary} />
     </div>
   );
 }

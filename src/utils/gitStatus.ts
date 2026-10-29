@@ -83,17 +83,32 @@ export function isGitIgnored(
   return ignored;
 }
 
-export function isGitConflicted(path: string | null, root: string | null, treeRoot: string | null, entries: readonly GitEntry[]): boolean {
-  if (!path || !root || root !== treeRoot || !entries.length) { return false; }
+export function isGitConflicted(
+  path: string | null,
+  root: string | null,
+  treeRoot: string | null,
+  entries: readonly GitEntry[],
+): boolean {
+  if (!path || !root || root !== treeRoot || !entries.length) {
+    return false;
+  }
   const base = visible(root).replace(/\/$/, "") + "/";
   const value = visible(path);
   const ignoreCase = /^[a-z]:\//i.test(base) || base.startsWith("//");
   const key = ignoreCase ? value.toLowerCase() : value;
   const prefix = ignoreCase ? base.toLowerCase() : base;
-  return key.startsWith(prefix) && indexFor(entries, ignoreCase).statuses.get(key.slice(prefix.length)) === "conflicted";
+  return (
+    key.startsWith(prefix) &&
+    indexFor(entries, ignoreCase).statuses.get(key.slice(prefix.length)) === "conflicted"
+  );
 }
 
-export function gitConflictDecoration(path: string, root: string | null, treeRoot: string | null, entries: readonly GitEntry[]) {
+export function gitConflictDecoration(
+  path: string,
+  root: string | null,
+  treeRoot: string | null,
+  entries: readonly GitEntry[],
+) {
   return isGitConflicted(path, root, treeRoot, entries)
     ? { text: "!", title: "Git: Unmerged changes", parts: [{ text: "!", color: "#e4676b" }] }
     : null;

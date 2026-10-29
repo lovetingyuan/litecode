@@ -10,7 +10,10 @@ function fixture() {
       copied: [{ from: "C:/external/a.txt", to: "C:/project/a.txt" }],
       failed: [],
     })),
-    pasteInternal: vi.fn(async (moves: FileMove[], _cut: boolean, _signal: AbortSignal) => ({ copied: moves, failed: [] as { path: string; message: string }[] })),
+    pasteInternal: vi.fn(async (moves: FileMove[], _cut: boolean, _signal: AbortSignal) => ({
+      copied: moves,
+      failed: [] as { path: string; message: string }[],
+    })),
   };
   return {
     clipboard: createExplorerClipboard(services),
@@ -66,7 +69,8 @@ describe("Explorer file clipboard", () => {
   it("rejects internal clipboard changes before disk operations", async () => {
     const { clipboard, services, signal } = fixture();
     await clipboard.remember(["C:/project/original.txt"], false);
-    services.read.mockResolvedValueOnce({ sequence: 1, paths: [] })
+    services.read
+      .mockResolvedValueOnce({ sequence: 1, paths: [] })
       .mockResolvedValueOnce({ sequence: 2, paths: [] });
     await expect(clipboard.paste("C:/project", "C:/project", signal)).rejects.toThrow(
       "clipboard changed",
@@ -86,10 +90,14 @@ describe("Explorer file clipboard", () => {
     const report = await clipboard.paste("C:/project", "C:/project/target", signal);
     expect(report?.copied).toEqual([{ from: "C:/project/b.txt", to: "C:/project/target/b.txt" }]);
     expect(report?.failed).toHaveLength(1);
-    expect(services.pasteInternal).toHaveBeenCalledExactlyOnceWith([
-      { from: "C:/project/folder/", to: "C:/project/target/folder" },
-      { from: "C:/project/b.txt", to: "C:/project/target/b.txt" },
-    ], true, signal);
+    expect(services.pasteInternal).toHaveBeenCalledExactlyOnceWith(
+      [
+        { from: "C:/project/folder/", to: "C:/project/target/folder" },
+        { from: "C:/project/b.txt", to: "C:/project/target/b.txt" },
+      ],
+      true,
+      signal,
+    );
     await clipboard.paste("C:/project", "C:/project/target", signal);
     expect(services.pasteInternal).toHaveBeenCalledTimes(2);
     expect(services.pasteInternal).toHaveBeenLastCalledWith(

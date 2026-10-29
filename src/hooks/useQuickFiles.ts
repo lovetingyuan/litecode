@@ -17,7 +17,10 @@ export function useQuickFiles(
   const active = query !== null;
   const service = useRef<QuickFileSearch | null>(null);
   const [pending, startTransition] = useTransition();
-  const indexInput = useMemo(() => ({ root, fileIndexVersion, settingsKey }), [root, fileIndexVersion, settingsKey]);
+  const indexInput = useMemo(
+    () => ({ root, fileIndexVersion, settingsKey }),
+    [root, fileIndexVersion, settingsKey],
+  );
   const excludes = useMemo(
     () => (JSON.parse(settingsKey) as { excludes: IExpression }).excludes,
     [settingsKey],
@@ -27,7 +30,10 @@ export function useQuickFiles(
     paths: string[];
     excludes: IExpression;
   } | null>(null);
-  const listing = useRef<{ input: typeof indexInput; promise: Promise<{ root: string | null; paths: string[]; excludes: IExpression }> } | null>(null);
+  const listing = useRef<{
+    input: typeof indexInput;
+    promise: Promise<{ root: string | null; paths: string[]; excludes: IExpression }>;
+  } | null>(null);
   const effectiveExcludes = index?.input === indexInput ? index.excludes : excludes;
   // Include index inputs in the token; compiler memoization can drop unused dependencies.
   const request = useMemo(
@@ -53,7 +59,9 @@ export function useQuickFiles(
     };
   }, []);
   useEffect(() => {
-    if (!active || index?.input === indexInput) {return;}
+    if (!active || index?.input === indexInput) {
+      return;
+    }
     let cancelled = false;
     service.current?.cancel();
     if (!root) {
@@ -75,7 +83,9 @@ export function useQuickFiles(
         setIndex({ input: indexInput, paths: snapshot.paths, excludes: snapshot.excludes });
       })
       .catch((error) => {
-        if (listing.current === task) { listing.current = null; }
+        if (listing.current === task) {
+          listing.current = null;
+        }
         if (cancelled) {
           return;
         }

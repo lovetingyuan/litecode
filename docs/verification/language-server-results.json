@@ -5,14 +5,7 @@
     "capabilities": {
       "textDocumentSync": 2,
       "completionProvider": {
-        "triggerCharacters": [
-          "\"",
-          ":",
-          ".",
-          "/",
-          "-",
-          "@"
-        ],
+        "triggerCharacters": ["\"", ":", ".", "/", "-", "@"],
         "resolveProvider": false
       },
       "hoverProvider": true,
@@ -38,14 +31,7 @@
     "capabilities": {
       "textDocumentSync": 2,
       "completionProvider": {
-        "triggerCharacters": [
-          "\"",
-          ":",
-          ".",
-          "/",
-          "-",
-          "@"
-        ],
+        "triggerCharacters": ["\"", ":", ".", "/", "-", "@"],
         "resolveProvider": false
       },
       "hoverProvider": true,
@@ -71,14 +57,7 @@
     "capabilities": {
       "textDocumentSync": 2,
       "completionProvider": {
-        "triggerCharacters": [
-          "\"",
-          ":",
-          ".",
-          "/",
-          "-",
-          "@"
-        ],
+        "triggerCharacters": ["\"", ":", ".", "/", "-", "@"],
         "resolveProvider": false
       },
       "hoverProvider": true,
@@ -104,14 +83,7 @@
     "capabilities": {
       "textDocumentSync": 2,
       "completionProvider": {
-        "triggerCharacters": [
-          "<",
-          "/",
-          " ",
-          "=",
-          "\"",
-          "."
-        ],
+        "triggerCharacters": ["<", "/", " ", "=", "\"", "."],
         "resolveProvider": false
       },
       "hoverProvider": true,
@@ -137,14 +109,7 @@
     "capabilities": {
       "textDocumentSync": 2,
       "completionProvider": {
-        "triggerCharacters": [
-          "\"",
-          ":",
-          ".",
-          "/",
-          "-",
-          "@"
-        ],
+        "triggerCharacters": ["\"", ":", ".", "/", "-", "@"],
         "resolveProvider": false
       },
       "hoverProvider": true,
@@ -171,14 +136,7 @@
     "capabilities": {
       "textDocumentSync": 2,
       "completionProvider": {
-        "triggerCharacters": [
-          ".",
-          "\"",
-          "'",
-          "/",
-          "@",
-          "<"
-        ],
+        "triggerCharacters": [".", "\"", "'", "/", "@", "<"],
         "resolveProvider": true
       },
       "codeActionProvider": true,
@@ -209,14 +167,8 @@
       "referencesProvider": true,
       "selectionRangeProvider": true,
       "signatureHelpProvider": {
-        "triggerCharacters": [
-          "(",
-          ",",
-          "<"
-        ],
-        "retriggerCharacters": [
-          ")"
-        ]
+        "triggerCharacters": ["(", ",", "<"],
+        "retriggerCharacters": [")"]
       },
       "workspaceSymbolProvider": true,
       "implementationProvider": true,
@@ -282,14 +234,7 @@
     "capabilities": {
       "textDocumentSync": 2,
       "completionProvider": {
-        "triggerCharacters": [
-          ".",
-          "\"",
-          "'",
-          "/",
-          "@",
-          "<"
-        ],
+        "triggerCharacters": [".", "\"", "'", "/", "@", "<"],
         "resolveProvider": true
       },
       "codeActionProvider": true,
@@ -320,14 +265,8 @@
       "referencesProvider": true,
       "selectionRangeProvider": true,
       "signatureHelpProvider": {
-        "triggerCharacters": [
-          "(",
-          ",",
-          "<"
-        ],
-        "retriggerCharacters": [
-          ")"
-        ]
+        "triggerCharacters": ["(", ",", "<"],
+        "retriggerCharacters": [")"]
       },
       "workspaceSymbolProvider": true,
       "implementationProvider": true,
@@ -469,45 +408,22 @@
         }
       },
       "codeActionProvider": {
-        "codeActionKinds": [
-          "refactor"
-        ],
+        "codeActionKinds": ["refactor"],
         "resolveProvider": true
       },
       "documentOnTypeFormattingProvider": {
         "firstTriggerCharacter": ";",
-        "moreTriggerCharacter": [
-          "}",
-          "\n"
-        ]
+        "moreTriggerCharacter": ["}", "\n"]
       },
       "experimental": {
         "autoInsertionProvider": {
-          "triggerCharacters": [
-            "}",
-            "=",
-            ">",
-            "/",
-            "\\w"
-          ],
+          "triggerCharacters": ["}", "=", ">", "/", "\\w"],
           "configurationSections": [
-            [
-              "vue.autoInsert.bracketSpacing"
-            ],
-            [
-              "html.autoCreateQuotes"
-            ],
-            [
-              "html.autoClosingTags",
-              "javascript.autoClosingTags",
-              "typescript.autoClosingTags"
-            ],
-            [
-              "html.autoClosingTags"
-            ],
-            [
-              "vue.autoInsert.dotValue"
-            ]
+            ["vue.autoInsert.bracketSpacing"],
+            ["html.autoCreateQuotes"],
+            ["html.autoClosingTags", "javascript.autoClosingTags", "typescript.autoClosingTags"],
+            ["html.autoClosingTags"],
+            ["vue.autoInsert.dotValue"]
           ]
         },
         "documentDropEditsProvider": true
@@ -521,14 +437,7 @@
     "capabilities": {
       "textDocumentSync": 2,
       "completionProvider": {
-        "triggerCharacters": [
-          ".",
-          "\"",
-          "'",
-          "/",
-          "@",
-          "<"
-        ],
+        "triggerCharacters": [".", "\"", "'", "/", "@", "<"],
         "resolveProvider": true
       },
       "codeActionProvider": true,
@@ -559,14 +468,8 @@
       "referencesProvider": true,
       "selectionRangeProvider": true,
       "signatureHelpProvider": {
-        "triggerCharacters": [
-          "(",
-          ",",
-          "<"
-        ],
-        "retriggerCharacters": [
-          ")"
-        ]
+        "triggerCharacters": ["(", ",", "<"],
+        "retriggerCharacters": [")"]
       },
       "workspaceSymbolProvider": true,
       "implementationProvider": true,

@@ -41,11 +41,7 @@ import { MediaStatus } from "./MediaStatus";
 import { GitLineStatus } from "./GitLineStatus";
 import { useExternalDrop } from "../hooks/useExternalDrop";
 import { recoverInterruptedReplacements } from "../search/replacements";
-import {
-  changeIndent,
-  changeEncoding,
-  changeEol,
-} from "../editor/editorStatus";
+import { changeIndent, changeEncoding, changeEol } from "../editor/editorStatus";
 const TerminalView = lazy(() => import("./TerminalView"));
 const GitView = lazy(() => import("./GitView").then((module) => ({ default: module.GitView })));
 
@@ -55,7 +51,9 @@ function start() {
     await initializeEditor();
     initializeLanguages();
     const boot = await bootstrap();
-    if (boot.root) { rememberWorkspaceTrust(boot.root, boot.workspaceRestricted === true); }
+    if (boot.root) {
+      rememberWorkspaceTrust(boot.root, boot.workspaceRestricted === true);
+    }
     setApp({
       root: boot.root,
       settings: boot.settings,
@@ -69,7 +67,15 @@ function start() {
     const session = boot.session ?? {};
     for (const doc of session.gitDiffs ?? []) {
       if (doc.gitDiff && boot.root && normalize(doc.gitDiff.workspace) === normalize(boot.root)) {
-        setApp((s) => ({ docs: { ...s.docs, [doc.id]: { ...doc, dirty: !!(doc.gitDiff?.sourceId && s.docs[doc.gitDiff.sourceId]?.dirty) } } }));
+        setApp((s) => ({
+          docs: {
+            ...s.docs,
+            [doc.id]: {
+              ...doc,
+              dirty: !!(doc.gitDiff?.sourceId && s.docs[doc.gitDiff.sourceId]?.dirty),
+            },
+          },
+        }));
       }
     }
     if (session.query) {
@@ -112,7 +118,14 @@ function start() {
       sidebarWidth: Number.isFinite(session.sidebarWidth)
         ? Math.max(170, session.sidebarWidth!)
         : 260,
-      sidebar: session.sidebar === "" ? null : session.sidebar === "search" ? "search" : session.sidebar === "git" ? "git" : "explorer",
+      sidebar:
+        session.sidebar === ""
+          ? null
+          : session.sidebar === "search"
+            ? "search"
+            : session.sidebar === "git"
+              ? "git"
+              : "explorer",
       gitRepository: session.gitRepository ?? null,
       gitTab: session.gitTab ?? "changes",
       gitLayout: session.gitLayout ?? "list",
@@ -127,7 +140,9 @@ function start() {
       await refreshTree();
     }
     await refreshDocuments();
-    if (desktop) { void recoverInterruptedReplacements().catch((error) => notify(errorMessage(error))); }
+    if (desktop) {
+      void recoverInterruptedReplacements().catch((error) => notify(errorMessage(error)));
+    }
   })());
 }
 
@@ -144,13 +159,24 @@ export default function App() {
     return installKeys();
   }, []);
   useEffect(() => {
-    if (!s.ready) {return;}
+    if (!s.ready) {
+      return;
+    }
     let disposed = false;
     let cleanup: (() => void) | undefined;
-    void initializeUpdates().then((stop) => {
-      if (disposed) {stop();} else {cleanup = stop;}
-    }).catch((error) => console.error("Could not initialize updates", errorMessage(error)));
-    return () => { disposed = true; cleanup?.(); };
+    void initializeUpdates()
+      .then((stop) => {
+        if (disposed) {
+          stop();
+        } else {
+          cleanup = stop;
+        }
+      })
+      .catch((error) => console.error("Could not initialize updates", errorMessage(error)));
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
   }, [s.ready]);
   useEffect(() => {
     if (!s.ready) {
@@ -174,7 +200,18 @@ export default function App() {
     void (async () => {
       const onChange = await listen<WorkspaceChanges>("workspace-changed", ({ payload }) => {
         void handleWorkspaceChanges(payload).then((accepted) => {
-          if (accepted) {void refreshDocuments(payload.rescan ? undefined : [...payload.changes.map(({ path }) => `${payload.root.replace(/[\\/]+$/, "")}/${path}`), ...(payload.gitPaths ?? [])]);}
+          if (accepted) {
+            void refreshDocuments(
+              payload.rescan
+                ? undefined
+                : [
+                    ...payload.changes.map(
+                      ({ path }) => `${payload.root.replace(/[\\/]+$/, "")}/${path}`,
+                    ),
+                    ...(payload.gitPaths ?? []),
+                  ],
+            );
+          }
         });
       });
       if (disposed) {
@@ -199,11 +236,14 @@ export default function App() {
       }
       const win = getCurrentWindow();
       const syncMaximized = () => {
-        void win.isMaximized().then((value) => {
-          if (!disposed) {
-            setMaximized(value);
-          }
-        }).catch((e) => notify(errorMessage(e)));
+        void win
+          .isMaximized()
+          .then((value) => {
+            if (!disposed) {
+              setMaximized(value);
+            }
+          })
+          .catch((e) => notify(errorMessage(e)));
       };
       const onResize = await win.onResized(syncMaximized);
       if (disposed) {
@@ -273,321 +313,357 @@ export default function App() {
   }
   return (
     <>
-    <div className="workbench" inert={locked}>
-      <header className="titlebar" data-tauri-drag-region>
-        <div className="app-mark">
-          <img src="/litecode.svg" alt="LiteCode" width={32} height={32} draggable={false} />
-        </div>
-        <nav className="menubar" aria-label="Application menu" inert={openingWorkspace}>
-          {["File", "Edit", "Selection", "View", "Go", "Help"].map((menu) => (
-            <Menu.Root key={menu}>
-              <Menu.Trigger>{menu}</Menu.Trigger>
-              <Menu.Portal>
-                <Menu.Positioner className="z-90" side="bottom" align="start" sideOffset={0}>
-                  <Menu.Popup className="context-menu application-menu">
-                    {commands
-                      .filter((c) => c.menu === menu)
-                      .map((c) => (
-                        <Menu.Item key={c.id} onClick={() => void execute(c.id)}>
-                          <span>{c.label}</span>
-                          {c.key && <kbd>{c.key}</kbd>}
-                        </Menu.Item>
-                      ))}
-                  </Menu.Popup>
-                </Menu.Positioner>
-              </Menu.Portal>
-            </Menu.Root>
-          ))}
-        </nav>
-        <div className="title-center" data-tauri-drag-region />
-        <div className="title-updates" inert={openingWorkspace}><UpdateButton /></div>
-        <div className="title-layout" inert={openingWorkspace}>
-          <IconButton
-            icon="arrow-left"
-            label="Go Back (Alt+Left)"
-            onClick={() => void execute("workbench.action.navigateBack")}
-            disabled={s.historyIndex <= 0}
-          />
-          <IconButton
-            icon="arrow-right"
-            label="Go Forward (Alt+Right)"
-            onClick={() => void execute("workbench.action.navigateForward")}
-            disabled={s.historyIndex >= s.history.length - 1}
-          />
-          <IconButton icon="search" label="Search (Ctrl+P)" onClick={() => setApp({ quick: "" })} />
-          <IconButton
-            icon="layout-sidebar-left"
-            label="Toggle Primary Side Bar"
-            onClick={() => void execute("workbench.action.toggleSidebarVisibility")}
-          />
-          <IconButton
-            icon="layout"
-            label={s.view === "terminal" ? "Split Terminal" : "Split Editor"}
-            onClick={() =>
-              void execute(
-                s.view === "terminal"
-                  ? "workbench.action.terminal.split"
-                  : "workbench.action.splitEditor",
-              )
-            }
-          />
-        </div>
-        <div className="window-controls">
-          <button aria-label="Minimize" onClick={() => windowAction("minimize")}>
-            <Icon name="chrome-minimize" />
-          </button>
-          <button
-            aria-label={maximized ? "Restore" : "Maximize"}
-            onClick={() => windowAction("maximize")}
-          >
-            <Icon name={maximized ? "chrome-restore" : "chrome-maximize"} />
-          </button>
-          <button
-            className="window-close"
-            aria-label="Close Window"
-            onClick={() => windowAction("close")}
-          >
-            <Icon name="chrome-close" />
-          </button>
-        </div>
-      </header>
-      <div className="workbench-body" inert={openingWorkspace} aria-busy={openingWorkspace}>
-        <nav className="activitybar" aria-label="Views">
-          <div>
-            <button
-              className={
-                s.view === "editor" && s.sidebar === "explorer" ? "active" : ""
-              }
-              aria-label="Explorer (Ctrl+Shift+E)"
-              title="Explorer (Ctrl+Shift+E)"
+      <div className="workbench" inert={locked}>
+        <header className="titlebar" data-tauri-drag-region>
+          <div className="app-mark">
+            <img src="/litecode.svg" alt="LiteCode" width={32} height={32} draggable={false} />
+          </div>
+          <nav className="menubar" aria-label="Application menu" inert={openingWorkspace}>
+            {["File", "Edit", "Selection", "View", "Go", "Help"].map((menu) => (
+              <Menu.Root key={menu}>
+                <Menu.Trigger>{menu}</Menu.Trigger>
+                <Menu.Portal>
+                  <Menu.Positioner className="z-90" side="bottom" align="start" sideOffset={0}>
+                    <Menu.Popup className="context-menu application-menu">
+                      {commands
+                        .filter((c) => c.menu === menu)
+                        .map((c) => (
+                          <Menu.Item key={c.id} onClick={() => void execute(c.id)}>
+                            <span>{c.label}</span>
+                            {c.key && <kbd>{c.key}</kbd>}
+                          </Menu.Item>
+                        ))}
+                    </Menu.Popup>
+                  </Menu.Positioner>
+                </Menu.Portal>
+              </Menu.Root>
+            ))}
+          </nav>
+          <div className="title-center" data-tauri-drag-region />
+          <div className="title-updates" inert={openingWorkspace}>
+            <UpdateButton />
+          </div>
+          <div className="title-layout" inert={openingWorkspace}>
+            <IconButton
+              icon="arrow-left"
+              label="Go Back (Alt+Left)"
+              onClick={() => void execute("workbench.action.navigateBack")}
+              disabled={s.historyIndex <= 0}
+            />
+            <IconButton
+              icon="arrow-right"
+              label="Go Forward (Alt+Right)"
+              onClick={() => void execute("workbench.action.navigateForward")}
+              disabled={s.historyIndex >= s.history.length - 1}
+            />
+            <IconButton
+              icon="search"
+              label="Search (Ctrl+P)"
+              onClick={() => setApp({ quick: "" })}
+            />
+            <IconButton
+              icon="layout-sidebar-left"
+              label="Toggle Primary Side Bar"
+              onClick={() => void execute("workbench.action.toggleSidebarVisibility")}
+            />
+            <IconButton
+              icon="layout"
+              label={s.view === "terminal" ? "Split Terminal" : "Split Editor"}
               onClick={() =>
-                setApp({
-                  view: "editor",
-                  sidebar:
-                    s.view === "editor" && s.sidebar === "explorer"
-                      ? null
-                      : "explorer",
-                })
+                void execute(
+                  s.view === "terminal"
+                    ? "workbench.action.terminal.split"
+                    : "workbench.action.splitEditor",
+                )
               }
-            >
-              <Icon name="files" />
+            />
+          </div>
+          <div className="window-controls">
+            <button aria-label="Minimize" onClick={() => windowAction("minimize")}>
+              <Icon name="chrome-minimize" />
             </button>
             <button
-              className={
-                s.view === "editor" && s.sidebar === "search" ? "active" : ""
-              }
-              aria-label="Search (Ctrl+Shift+F)"
-              title="Search (Ctrl+Shift+F)"
-              onClick={() => void execute("workbench.action.findInFiles")}
+              aria-label={maximized ? "Restore" : "Maximize"}
+              onClick={() => windowAction("maximize")}
             >
-              <Icon name="search" />
+              <Icon name={maximized ? "chrome-restore" : "chrome-maximize"} />
             </button>
             <button
-              disabled={!s.ready}
-              className={s.view === "terminal" ? "active" : ""}
-              aria-label="Terminal (Ctrl+`)"
-              title="Terminal (Ctrl+`)"
-              onClick={() =>
-                void execute("workbench.action.terminal.toggleTerminal")
-              }
+              className="window-close"
+              aria-label="Close Window"
+              onClick={() => windowAction("close")}
             >
-              <Icon name="terminal" />
-            </button>
-            <button disabled={!s.ready}
-              className={s.view === "editor" && s.sidebar === "git" ? "active" : ""}
-              aria-label="Source Control (Ctrl+Shift+G)" title="Source Control (Ctrl+Shift+G)"
-              onClick={() => setApp({ view: "editor", sidebar: s.view === "editor" && s.sidebar === "git" ? null : "git" })}>
-              <Icon name="source-control" />
+              <Icon name="chrome-close" />
             </button>
           </div>
-          <button
-            title="Manage"
-            aria-label="Manage"
-            onClick={() => setApp({ quick: ">Preferences:" })}
-          >
-            <Icon name="settings-gear" />
-          </button>
-        </nav>
-        {s.ready && (
-          <WorkbenchLayout
-            sidebar={
-              <aside className="sidebar">
-                <div className="sidebar-view" hidden={s.sidebar !== "explorer"}>
-                  <Explorer
-                    openFolder={() => void openFolder().catch((e) => notify(errorMessage(e)))}
-                  />
-                </div>
-                <div className="sidebar-view" hidden={s.sidebar !== "search"}>
-                  <SearchView />
-                </div>
-                <div className="sidebar-view" hidden={s.sidebar !== "git"}>
-                  {s.sidebar === "git" && <Suspense fallback={<div className="startup">Loading Source Control…</div>}><GitView /></Suspense>}
-                </div>
-              </aside>
-            }
-          >
-            <main className="editors" aria-label="Editors">
-              <div
-                className={`editor-groups${showWelcome ? " welcome-hidden" : ""}${s.view === "terminal" ? " workbench-editor-hidden" : ""}`}
-                inert={showWelcome || s.view === "terminal"}
-                aria-hidden={showWelcome || s.view === "terminal" || undefined}
+        </header>
+        <div className="workbench-body" inert={openingWorkspace} aria-busy={openingWorkspace}>
+          <nav className="activitybar" aria-label="Views">
+            <div>
+              <button
+                className={s.view === "editor" && s.sidebar === "explorer" ? "active" : ""}
+                aria-label="Explorer (Ctrl+Shift+E)"
+                title="Explorer (Ctrl+Shift+E)"
+                onClick={() =>
+                  setApp({
+                    view: "editor",
+                    sidebar: s.view === "editor" && s.sidebar === "explorer" ? null : "explorer",
+                  })
+                }
               >
-                {s.editorLayout && <EditorLayoutView node={s.editorLayout} />}
-              </div>
-              {showWelcome && s.view === "editor" && <WelcomePage />}
-              {s.view === "terminal" && (
-                <Suspense
-                  fallback={<div className="startup">Starting terminal…</div>}
+                <Icon name="files" />
+              </button>
+              <button
+                className={s.view === "editor" && s.sidebar === "search" ? "active" : ""}
+                aria-label="Search (Ctrl+Shift+F)"
+                title="Search (Ctrl+Shift+F)"
+                onClick={() => void execute("workbench.action.findInFiles")}
+              >
+                <Icon name="search" />
+              </button>
+              <button
+                disabled={!s.ready}
+                className={s.view === "terminal" ? "active" : ""}
+                aria-label="Terminal (Ctrl+`)"
+                title="Terminal (Ctrl+`)"
+                onClick={() => void execute("workbench.action.terminal.toggleTerminal")}
+              >
+                <Icon name="terminal" />
+              </button>
+              <button
+                disabled={!s.ready}
+                className={s.view === "editor" && s.sidebar === "git" ? "active" : ""}
+                aria-label="Source Control (Ctrl+Shift+G)"
+                title="Source Control (Ctrl+Shift+G)"
+                onClick={() =>
+                  setApp({
+                    view: "editor",
+                    sidebar: s.view === "editor" && s.sidebar === "git" ? null : "git",
+                  })
+                }
+              >
+                <Icon name="source-control" />
+              </button>
+            </div>
+            <button
+              title="Manage"
+              aria-label="Manage"
+              onClick={() => setApp({ quick: ">Preferences:" })}
+            >
+              <Icon name="settings-gear" />
+            </button>
+          </nav>
+          {s.ready && (
+            <WorkbenchLayout
+              sidebar={
+                <aside className="sidebar">
+                  <div className="sidebar-view" hidden={s.sidebar !== "explorer"}>
+                    <Explorer
+                      openFolder={() => void openFolder().catch((e) => notify(errorMessage(e)))}
+                    />
+                  </div>
+                  <div className="sidebar-view" hidden={s.sidebar !== "search"}>
+                    <SearchView />
+                  </div>
+                  <div className="sidebar-view" hidden={s.sidebar !== "git"}>
+                    {s.sidebar === "git" && (
+                      <Suspense fallback={<div className="startup">Loading Source Control…</div>}>
+                        <GitView />
+                      </Suspense>
+                    )}
+                  </div>
+                </aside>
+              }
+            >
+              <main className="editors" aria-label="Editors">
+                <div
+                  className={`editor-groups${showWelcome ? " welcome-hidden" : ""}${s.view === "terminal" ? " workbench-editor-hidden" : ""}`}
+                  inert={showWelcome || s.view === "terminal"}
+                  aria-hidden={showWelcome || s.view === "terminal" || undefined}
                 >
-                  <TerminalView />
-                </Suspense>
+                  {s.editorLayout && <EditorLayoutView node={s.editorLayout} />}
+                </div>
+                {showWelcome && s.view === "editor" && <WelcomePage />}
+                {s.view === "terminal" && (
+                  <Suspense fallback={<div className="startup">Starting terminal…</div>}>
+                    <TerminalView />
+                  </Suspense>
+                )}
+              </main>
+            </WorkbenchLayout>
+          )}
+          {!s.ready && (
+            <div className="startup" role="status">
+              {fatal ? (
+                <>
+                  <Icon name="error" />
+                  <p>{fatal}</p>
+                  <button onClick={() => location.reload()}>Reload</button>
+                </>
+              ) : (
+                <>
+                  <span className="spinner" />
+                  <p>Starting editor services…</p>
+                </>
               )}
-            </main>
-          </WorkbenchLayout>
-        )}
-        {!s.ready && (
-          <div className="startup" role="status">
-            {fatal ? (
-              <>
-                <Icon name="error" />
-                <p>{fatal}</p>
-                <button onClick={() => location.reload()}>Reload</button>
-              </>
-            ) : (
-              <>
-                <span className="spinner" />
-                <p>Starting editor services…</p>
-              </>
+            </div>
+          )}
+        </div>
+        {openingWorkspace && (
+          <div className="workspace-opening startup" role="status" aria-live="polite">
+            <span className="spinner" aria-hidden="true" />
+            <p>Opening folder…</p>
+            {s.openingWorkspace && (
+              <p className="workspace-opening-path">{pathTitle(s.openingWorkspace)}</p>
             )}
           </div>
         )}
-      </div>
-      {openingWorkspace && (
-        <div className="workspace-opening startup" role="status" aria-live="polite">
-          <span className="spinner" aria-hidden="true" />
-          <p>Opening folder…</p>
-          {s.openingWorkspace && <p className="workspace-opening-path">{pathTitle(s.openingWorkspace)}</p>}
-        </div>
-      )}
-      <footer className="statusbar" inert={openingWorkspace}>
-        <div className="status-left">
-          <span className="remote-indicator" title="Local window">
-            <Icon name="remote" />
-          </span>
-          {s.root && (
-            <Popover.Root key={s.root}>
-              <Popover.Trigger className="workspace-status" title={rootName} aria-label={`Project Folder: ${rootName}`}>
-                <Icon name="folder" />
-                <span>{rootName}</span>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Positioner className="z-90" side="top" align="start" sideOffset={4} collisionPadding={8}>
-                  <Popover.Popup className="workspace-popup" aria-label="Project folder" initialFocus={false}>
-                    <span className="workspace-path">{pathTitle(s.root)}</span>
-                    <Popover.Close
-                      render={<IconButton icon="folder-opened" label="Open Project Folder in File Explorer" />}
-                      onClick={() => void call("open_directory", { path: s.root }).catch((error) => notify(errorMessage(error)))}
-                    />
-                  </Popover.Popup>
-                </Popover.Positioner>
-              </Popover.Portal>
-            </Popover.Root>
-          )}
-          {s.gitState.branch && (
-            <button
-              type="button"
-              className="status-item"
-              title="Current Git branch"
-              aria-label={`Show Git Repository: ${s.gitState.branch}`}
-              onClick={() => {
-                setApp({ view: "editor", sidebar: "git", gitTab: "info" });
-                scheduleBackup();
-              }}
-            >
-              <Icon name="source-control" />
-              {s.gitState.branch}
-            </button>
-          )}
-          <button
-            title="Show Problems"
-            onClick={() => void editor()?.getAction("editor.action.marker.next")?.run()}
-          >
-            <Icon name="error" />
-            {diagnostics.errors}
-            <Icon name="warning" />
-            {diagnostics.warnings}
-          </button>
-        </div>
-        <div className="status-right">
-          <GitLineStatus doc={s.view === "editor" && doc && isTextView(doc, group) ? doc : undefined} />
-          {s.view === "editor" && doc && isTextView(doc, group) && (
-            <>
-              <button onClick={() => setApp({ quick: ":" })}>
-                Ln {s.cursor.line}, Col {s.cursor.column}
-                {s.cursor.selected ? ` (${s.cursor.selected} selected)` : ""}
-              </button>
-              <IndentationStatus documentId={doc.id} />
-              <button className="encoding-status" onClick={changeEncoding}>
-                {doc.encoding.toUpperCase().replace("UTF8", "UTF-8")}
-              </button>
-              <button onClick={changeEol}>{doc.eol}</button>
-              <button onClick={() => void execute("litecode.setLanguage")}>
-                {doc.language === "plaintext" ? "Plain Text" : doc.language}
-              </button>
-            </>
-          )}
-          {s.view === "editor" && doc && group && !doc.gitDiff && !isTextView(doc, group) && (
-            <MediaStatus doc={doc} group={group} />
-          )}
-          {s.searchSessions.some((search) => search.searching) && <span>Searching…</span>}
-          <span className="status-item" title={s.languageStatus}>
-            <Icon name="check" />
-          </span>
-          <button
-            title="Notifications"
-            onClick={() => notify(s.notice ?? "No new notifications.")}
-            aria-label="Notifications"
-          >
-            <Icon name="bell" />
-          </button>
-        </div>
-      </footer>
-      {s.notice && (
-        <div className="notification" role="status">
-          <Icon name="info" />
-          <p>
-            {s.notice}
-            {s.noticeLink && (
-              <>
-                {"\nGitHub: "}
-                <a
-                  href={s.noticeLink}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    void openUrl(event.currentTarget.href).catch((error) => notify(errorMessage(error)));
-                  }}
+        <footer className="statusbar" inert={openingWorkspace}>
+          <div className="status-left">
+            <span className="remote-indicator" title="Local window">
+              <Icon name="remote" />
+            </span>
+            {s.root && (
+              <Popover.Root key={s.root}>
+                <Popover.Trigger
+                  className="workspace-status"
+                  title={rootName}
+                  aria-label={`Project Folder: ${rootName}`}
                 >
-                  {s.noticeLink}
-                </a>
+                  <Icon name="folder" />
+                  <span>{rootName}</span>
+                </Popover.Trigger>
+                <Popover.Portal>
+                  <Popover.Positioner
+                    className="z-90"
+                    side="top"
+                    align="start"
+                    sideOffset={4}
+                    collisionPadding={8}
+                  >
+                    <Popover.Popup
+                      className="workspace-popup"
+                      aria-label="Project folder"
+                      initialFocus={false}
+                    >
+                      <span className="workspace-path">{pathTitle(s.root)}</span>
+                      <Popover.Close
+                        render={
+                          <IconButton
+                            icon="folder-opened"
+                            label="Open Project Folder in File Explorer"
+                          />
+                        }
+                        onClick={() =>
+                          void call("open_directory", { path: s.root }).catch((error) =>
+                            notify(errorMessage(error)),
+                          )
+                        }
+                      />
+                    </Popover.Popup>
+                  </Popover.Positioner>
+                </Popover.Portal>
+              </Popover.Root>
+            )}
+            {s.gitState.branch && (
+              <button
+                type="button"
+                className="status-item"
+                title="Current Git branch"
+                aria-label={`Show Git Repository: ${s.gitState.branch}`}
+                onClick={() => {
+                  setApp({ view: "editor", sidebar: "git", gitTab: "info" });
+                  scheduleBackup();
+                }}
+              >
+                <Icon name="source-control" />
+                {s.gitState.branch}
+              </button>
+            )}
+            <button
+              title="Show Problems"
+              onClick={() => void editor()?.getAction("editor.action.marker.next")?.run()}
+            >
+              <Icon name="error" />
+              {diagnostics.errors}
+              <Icon name="warning" />
+              {diagnostics.warnings}
+            </button>
+          </div>
+          <div className="status-right">
+            <GitLineStatus
+              doc={s.view === "editor" && doc && isTextView(doc, group) ? doc : undefined}
+            />
+            {s.view === "editor" && doc && isTextView(doc, group) && (
+              <>
+                <button onClick={() => setApp({ quick: ":" })}>
+                  Ln {s.cursor.line}, Col {s.cursor.column}
+                  {s.cursor.selected ? ` (${s.cursor.selected} selected)` : ""}
+                </button>
+                <IndentationStatus documentId={doc.id} />
+                <button className="encoding-status" onClick={changeEncoding}>
+                  {doc.encoding.toUpperCase().replace("UTF8", "UTF-8")}
+                </button>
+                <button onClick={changeEol}>{doc.eol}</button>
+                <button onClick={() => void execute("litecode.setLanguage")}>
+                  {doc.language === "plaintext" ? "Plain Text" : doc.language}
+                </button>
               </>
             )}
-          </p>
-          <IconButton
-            icon="close"
-            label="Dismiss Notification"
-            onClick={() => setApp({ notice: null })}
-          />
-        </div>
-      )}
-      {s.ready && (
-        <>
-          <QuickOpen />
-          <DiffViewer />
-        </>
-      )}
-      <DialogHost />
-    </div>
-    <UpdateDialog />
+            {s.view === "editor" && doc && group && !doc.gitDiff && !isTextView(doc, group) && (
+              <MediaStatus doc={doc} group={group} />
+            )}
+            {s.searchSessions.some((search) => search.searching) && <span>Searching…</span>}
+            <span className="status-item" title={s.languageStatus}>
+              <Icon name="check" />
+            </span>
+            <button
+              title="Notifications"
+              onClick={() => notify(s.notice ?? "No new notifications.")}
+              aria-label="Notifications"
+            >
+              <Icon name="bell" />
+            </button>
+          </div>
+        </footer>
+        {s.notice && (
+          <div className="notification" role="status">
+            <Icon name="info" />
+            <p>
+              {s.notice}
+              {s.noticeLink && (
+                <>
+                  {"\nGitHub: "}
+                  <a
+                    href={s.noticeLink}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void openUrl(event.currentTarget.href).catch((error) =>
+                        notify(errorMessage(error)),
+                      );
+                    }}
+                  >
+                    {s.noticeLink}
+                  </a>
+                </>
+              )}
+            </p>
+            <IconButton
+              icon="close"
+              label="Dismiss Notification"
+              onClick={() => setApp({ notice: null })}
+            />
+          </div>
+        )}
+        {s.ready && (
+          <>
+            <QuickOpen />
+            <DiffViewer />
+          </>
+        )}
+        <DialogHost />
+      </div>
+      <UpdateDialog />
     </>
   );
 }

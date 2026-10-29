@@ -26,22 +26,31 @@ export function refreshGit(cache: DirectoryCache | null, force = false): Promise
         const force = task.force;
         task.force = false;
         try {
-          const gitState = await call<GitSnapshot>("workspace_git_status", { expectedRoot: cache.root, session: cache.session, ...(force ? { force } : {}) });
-          if (!cache.disposed && gitState.root && directoryPath(gitState.root).toLowerCase() === directoryPath(cache.root).toLowerCase() && (cache.session === null || cache.session === gitState.session)) {
+          const gitState = await call<GitSnapshot>("workspace_git_status", {
+            expectedRoot: cache.root,
+            session: cache.session,
+            ...(force ? { force } : {}),
+          });
+          if (
+            !cache.disposed &&
+            gitState.root &&
+            directoryPath(gitState.root).toLowerCase() ===
+              directoryPath(cache.root).toLowerCase() &&
+            (cache.session === null || cache.session === gitState.session)
+          ) {
             if (gitState.warnings.length) {
               notify(gitState.warnings.join("\n"));
+            } else {
+              setApp({ gitState });
             }
-            else { setApp({ gitState }); }
           }
-        }
-        catch (error) {
+        } catch (error) {
           if (!cache.disposed) {
             notify(errorMessage(error));
           }
         }
       }
-    }
-    finally {
+    } finally {
       if (running === task) {
         running = null;
       }

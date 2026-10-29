@@ -20,3 +20,23 @@ In the age of AI coding, a lightweight editor still has a place. LiteCode keeps 
 ## Tech stack
 
 Built with Tauri 2 and Rust, React and TypeScript, Monaco Editor, and xterm.js.
+
+## Development commands
+
+Run `npm ci` first. Desktop development requires Node.js 24+, Rust, and the Windows build tools.
+
+| Command                  | Purpose                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| `npm run tauri -- dev`   | Start the desktop app and Vite dev server.                                     |
+| `npm run tauri -- build` | Build the desktop installer.                                                   |
+| `npm run dev`            | Start only the frontend dev server.                                            |
+| `npm run build`          | Type-check and build the frontend.                                             |
+| `npm run lint`           | Lint; add `-- --fix` to apply fixes.                                           |
+| `npm run format`         | Format files with Oxfmt, excluding generated language tools.                   |
+| `npm test`               | Run unit tests.                                                                |
+| `npm run test:e2e`       | Run desktop verification with the debug app built and Vite running.            |
+| `npm run release`        | Run the signed release workflow; see [release instructions](docs/releases.md). |
+
+`build:tools` packages the Web, TypeScript, and Vue language services. Tauri runs it automatically before development and builds; run `npm run build:tools` manually when rebuilding tools for a direct Cargo build. `postinstall` applies the required Trees scroll patch automatically after installing dependencies.
+
+Specialized checks run directly: `node tools/verify-languages.mjs` after packaging language tools, `node tools/verify-vue.mjs` with the debug app built and Vite running, and `node tools/verify-updates-desktop.mjs` after `npm run build`. See [language verification](docs/verification/LANGUAGE_CAPABILITIES.md) and [update verification](docs/releases.md#verification).

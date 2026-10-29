@@ -14,15 +14,28 @@ const files = Array.from(
   { length: 140 },
   (_, index) => `file-${String(index).padStart(3, "0")}.txt`,
 );
-const paths = ["alpha/", "alpha/deep/", first, "beta/", "beta/nested/", second,
-  "CaseDir/", "CaseDir/Mixed.TXT", "unrelated/", "unrelated/keep.txt", ...files];
+const paths = [
+  "alpha/",
+  "alpha/deep/",
+  first,
+  "beta/",
+  "beta/nested/",
+  second,
+  "CaseDir/",
+  "CaseDir/Mixed.TXT",
+  "unrelated/",
+  "unrelated/keep.txt",
+  ...files,
+];
 const output = ".verification/explorer-sync";
 const urls = {};
 const errors = [];
 let restored = false;
 page.on("pageerror", (error) => errors.push(String(error)));
 page.on("request", (request) => {
-  if (new URL(request.url()).pathname === "/src/explorer/workspaceTree.ts") { urls.workspaceTree = request.url(); }
+  if (new URL(request.url()).pathname === "/src/explorer/workspaceTree.ts") {
+    urls.workspaceTree = request.url();
+  }
   const name = new URL(request.url()).pathname.match(
     /^\/src\/(?:editor|store|components)\/(documents|store|Explorer)\.tsx?$/,
   )?.[1];
@@ -30,7 +43,9 @@ page.on("request", (request) => {
     urls[name] = request.url();
   }
 });
-await page.addInitScript(() => { window.directoryReplies = 0; });
+await page.addInitScript(() => {
+  window.directoryReplies = 0;
+});
 await page.route("**/src/core/bridge.ts*", (route) =>
   route.fulfill({
     contentType: "application/javascript",
@@ -89,7 +104,8 @@ export async function call(command, args) {
   }),
 );
 const tree = page.locator("file-tree-container");
-const row = (path) => tree.locator(`[data-item-path="${path}"]:not([data-file-tree-sticky-row])`).first();
+const row = (path) =>
+  tree.locator(`[data-item-path="${path}"]:not([data-file-tree-sticky-row])`).first();
 const selected = () => tree.locator('[aria-selected="true"]');
 const tab = (path, group = 0) =>
   page
@@ -161,11 +177,14 @@ async function selectionIs(path) {
   );
 }
 async function patchTree(nextPaths, delay = 0) {
-  await page.evaluate(({ nextPaths, delay, url }) => {
-    window.scanPaths = nextPaths;
-    window.directoryDelay = delay;
-    window.patchPromise = import(url).then(({ refreshTree }) => refreshTree());
-  }, { nextPaths, delay, url: urls.workspaceTree });
+  await page.evaluate(
+    ({ nextPaths, delay, url }) => {
+      window.scanPaths = nextPaths;
+      window.directoryDelay = delay;
+      window.patchPromise = import(url).then(({ refreshTree }) => refreshTree());
+    },
+    { nextPaths, delay, url: urls.workspaceTree },
+  );
 }
 async function patchAndWait(nextPaths) {
   await patchTree(nextPaths);
@@ -186,7 +205,9 @@ async function manualRefresh(success = true) {
   }
   await page.waitForFunction(async (url) => {
     const { workspaceDirectories } = await import(url);
-    return ![...(workspaceDirectories()?.directories.values() ?? [])].some((entry) => entry.promise);
+    return ![...(workspaceDirectories()?.directories.values() ?? [])].some(
+      (entry) => entry.promise,
+    );
   }, urls.workspaceTree);
   await settle();
 }
@@ -202,7 +223,10 @@ try {
   const toolbarLabels = ["New File", "New Folder", "Refresh Explorer", "Collapse Folders"];
   await page.getByRole("button", { name: "New File", exact: true }).focus();
   for (let index = 0; index < toolbarLabels.length; index++) {
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), toolbarLabels[index]);
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
+      toolbarLabels[index],
+    );
     if (index < toolbarLabels.length - 1) await page.keyboard.press("Tab");
   }
   for (const height of [820, 600]) {
@@ -436,7 +460,8 @@ try {
   await settle();
   await action("store", "setApp", {
     gitState: {
-      root, session: 1,
+      root,
+      session: 1,
       git: [{ path: first, status: "modified" }],
       branch: "main",
       warnings: [],
@@ -488,12 +513,24 @@ try {
   await collapseButton.click();
   await manualRefresh();
   await revealed(second);
-  assert.equal(await row("alpha/").getAttribute("aria-expanded"), "false", "Refresh only expands the active file's ancestors");
-  assert.equal(await refreshButton.evaluate((button) => document.activeElement === button), true, "Refresh retains button focus");
+  assert.equal(
+    await row("alpha/").getAttribute("aria-expanded"),
+    "false",
+    "Refresh only expands the active file's ancestors",
+  );
+  assert.equal(
+    await refreshButton.evaluate((button) => document.activeElement === button),
+    true,
+    "Refresh retains button focus",
+  );
   await heading.click();
   await manualRefresh();
   await revealed(second);
-  assert.equal(await heading.getAttribute("aria-expanded"), "true", "Refresh reopens a collapsed workspace");
+  assert.equal(
+    await heading.getAttribute("aria-expanded"),
+    "true",
+    "Refresh reopens a collapsed workspace",
+  );
 
   // Delay directory results: reveal must wait for the newly loaded ancestors.
   await open("arriving/deep/new.txt");
@@ -503,12 +540,17 @@ try {
   }, paths);
   await manualRefresh();
   await revealed("arriving/deep/new.txt");
-  await page.evaluate(() => { window.scanPaths = undefined; window.directoryDelay = 0; });
+  await page.evaluate(() => {
+    window.scanPaths = undefined;
+    window.directoryDelay = 0;
+  });
   await patchAndWait(paths);
 
   await open(first);
   await revealed(first);
-  await page.evaluate(() => { window.scanDelay = 300; });
+  await page.evaluate(() => {
+    window.scanDelay = 300;
+  });
   const starts = await page.evaluate(() => window.scanStarts);
   await refreshButton.click();
   await page.waitForFunction((count) => window.scanStarts > count, starts);
@@ -517,33 +559,54 @@ try {
   await collapseButton.click();
   await page.waitForFunction((count) => window.scanSettled >= count, starts + 1);
   await revealed(second);
-  await page.evaluate(() => { window.scanDelay = 80; });
+  await page.evaluate(() => {
+    window.scanDelay = 80;
+  });
 
   await collapseButton.click();
-  await page.evaluate(() => { window.scanError = "Fixture refresh failure"; });
+  await page.evaluate(() => {
+    window.scanError = "Fixture refresh failure";
+  });
   await manualRefresh(false);
-  assert.equal(await row("beta/").getAttribute("aria-expanded"), "false", "Failed refresh does not reopen folders");
+  assert.equal(
+    await row("beta/").getAttribute("aria-expanded"),
+    "false",
+    "Failed refresh does not reopen folders",
+  );
   assert.equal(await page.getByRole("status").innerText(), "Fixture refresh failure");
-  await page.evaluate(() => { window.scanError = undefined; });
+  await page.evaluate(() => {
+    window.scanError = undefined;
+  });
   await page.getByRole("button", { name: "Dismiss Notification" }).click();
 
   for (const kind of ["untitled", "outside", "missing", "none"]) {
     if (kind === "untitled") await action("documents", "newDocument");
-    if (kind === "outside") await action("documents", "openPath", "C:/outside/file.txt", { pinned: true });
+    if (kind === "outside")
+      await action("documents", "openPath", "C:/outside/file.txt", { pinned: true });
     if (kind === "missing") await open("not-indexed.txt");
     if (kind === "none") {
       await page.evaluate(async (url) => {
         const { useApp, setApp } = await import(url);
         const state = useApp.getState();
-        setApp({ groups: state.groups.map((group) => group.id === state.activeGroup ? { ...group, active: null } : group) });
+        setApp({
+          groups: state.groups.map((group) =>
+            group.id === state.activeGroup ? { ...group, active: null } : group,
+          ),
+        });
       }, urls.store);
     }
     await manualRefresh();
-    assert.equal(await row("beta/").getAttribute("aria-expanded"), "false", `${kind} file does not reopen folders`);
+    assert.equal(
+      await row("beta/").getAttribute("aria-expanded"),
+      "false",
+      `${kind} file does not reopen folders`,
+    );
   }
   await open(second);
   await revealed(second);
-  console.log("PASS: manual refresh reveals the latest active file after directory reads, retains focus, handles invalid files and errors; toolbar stays visible and keyboard accessible");
+  console.log(
+    "PASS: manual refresh reveals the latest active file after directory reads, retains focus, handles invalid files and errors; toolbar stays visible and keyboard accessible",
+  );
 
   await open("arriving/deep/new.txt");
   await patchAndWait([...paths, "arriving/deep/new.txt"]);
@@ -640,7 +703,9 @@ try {
   await patchAndWait(["same/deep/a.txt"]);
   await row("same/").click();
   await row("same/deep/").click();
-  await page.evaluate(() => { window.scanDelay = 300; });
+  await page.evaluate(() => {
+    window.scanDelay = 300;
+  });
   const workspaceRefreshStarts = await page.evaluate(() => window.scanStarts);
   await refreshButton.click();
   await page.waitForFunction((count) => window.scanStarts > count, workspaceRefreshStarts);
@@ -684,12 +749,10 @@ try {
           .querySelector("[data-file-tree-virtualized-scroll]")
           ?.getBoundingClientRect()
           .toJSON(),
-        rows: [...host.shadowRoot.querySelectorAll("[data-item-path]")]
-          .slice(0, 12)
-          .map((row) => ({
-            path: row.dataset.itemPath,
-            bounds: row.getBoundingClientRect().toJSON(),
-          })),
+        rows: [...host.shadowRoot.querySelectorAll("[data-item-path]")].slice(0, 12).map((row) => ({
+          path: row.dataset.itemPath,
+          bounds: row.getBoundingClientRect().toJSON(),
+        })),
       }))
       .catch(() => null),
   );

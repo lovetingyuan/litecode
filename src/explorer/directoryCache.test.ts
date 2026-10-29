@@ -1,15 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 import { DirectoryCache } from "./directoryCache";
 import type { DirectorySnapshot } from "../types/types";
-const snapshot = (paths: string[], session = 1): DirectorySnapshot => ({ root: "C:/project", session, directory: "", paths, warnings: [] });
+const snapshot = (paths: string[], session = 1): DirectorySnapshot => ({
+  root: "C:/project",
+  session,
+  directory: "",
+  paths,
+  warnings: [],
+});
 function deferred() {
   let resolve!: (value: DirectorySnapshot) => void;
-  const promise = new Promise<DirectorySnapshot>((done) => { resolve = done; });
+  const promise = new Promise<DirectorySnapshot>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }
 describe("Lazy workspace directories", () => {
   it("defers watcher reads until a rename releases its directory guard", async () => {
-    const read = vi.fn().mockResolvedValueOnce(snapshot(["old.txt"])).mockResolvedValue(snapshot(["new.txt"]));
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot(["old.txt"]))
+      .mockResolvedValue(snapshot(["new.txt"]));
     const cache = new DirectoryCache("C:/project", read);
     await cache.load("");
     const release = cache.hold([""]);
@@ -22,7 +33,11 @@ describe("Lazy workspace directories", () => {
   });
   it("discards in-flight snapshots while a rename is guarded, then rereads disk", async () => {
     const pending = deferred();
-    const read = vi.fn().mockResolvedValueOnce(snapshot(["old.txt"])).mockReturnValueOnce(pending.promise).mockResolvedValue(snapshot(["new.txt"]));
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot(["old.txt"]))
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValue(snapshot(["new.txt"]));
     const cache = new DirectoryCache("C:/project", read);
     await cache.load("");
     const loading = cache.load("", true);
@@ -36,7 +51,17 @@ describe("Lazy workspace directories", () => {
     expect(read).toHaveBeenCalledTimes(3);
   });
   it("remaps moved directories without retaining them in their old parent", async () => {
-    const read = vi.fn().mockImplementation(async (directory) => snapshot(directory === "" ? ["src/", "dst/"] : directory === "src" ? ["src/moved/"] : ["src/moved/a.txt"]));
+    const read = vi
+      .fn()
+      .mockImplementation(async (directory) =>
+        snapshot(
+          directory === ""
+            ? ["src/", "dst/"]
+            : directory === "src"
+              ? ["src/moved/"]
+              : ["src/moved/a.txt"],
+        ),
+      );
     const cache = new DirectoryCache("C:/project", read);
     await cache.load("");
     await cache.load("src");
@@ -63,7 +88,10 @@ describe("Lazy workspace directories", () => {
   });
   it("re-reads a directory when invalidated while reading", async () => {
     const first = deferred();
-    const read = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce(snapshot(["new.txt"]));
+    const read = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(snapshot(["new.txt"]));
     const cache = new DirectoryCache("C:/project", read);
     const pending = cache.load("");
     await Promise.resolve();
@@ -74,7 +102,9 @@ describe("Lazy workspace directories", () => {
     expect(cache.entry("").paths).toEqual(["new.txt"]);
   });
   it("loads only ancestors for reveal, preserving canonical spelling", async () => {
-    const read = vi.fn(async (directory) => snapshot(directory === "" ? ["Src/", "other/"] : ["Src/Mixed.TXT"]));
+    const read = vi.fn(async (directory) =>
+      snapshot(directory === "" ? ["Src/", "other/"] : ["Src/Mixed.TXT"]),
+    );
     const cache = new DirectoryCache("C:/project", read);
     expect(await cache.ensurePath("src/mixed.txt")).toBe("Src/Mixed.TXT");
     expect(read.mock.calls.map(([path]) => path)).toEqual(["", "Src"]);
@@ -92,7 +122,11 @@ describe("Lazy workspace directories", () => {
     expect(cache.entry("").paths).toEqual([]);
   });
   it("preserves cached children after failure and retries explicitly", async () => {
-    const read = vi.fn().mockResolvedValueOnce(snapshot(["keep.txt"])).mockRejectedValueOnce(new Error("denied")).mockResolvedValueOnce(snapshot([]));
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot(["keep.txt"]))
+      .mockRejectedValueOnce(new Error("denied"))
+      .mockResolvedValueOnce(snapshot([]));
     const cache = new DirectoryCache("C:/project", read);
     await cache.load("");
     await cache.load("", true);

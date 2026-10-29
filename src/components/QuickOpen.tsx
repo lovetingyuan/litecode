@@ -50,9 +50,7 @@ export function QuickOpen() {
   const [symbolItems, setSymbolItems] = useState<SymbolItem[]>([]);
   const saved = useRef<ReturnType<typeof session> | null>(null);
   const savedView = useRef<"editor" | "terminal">("editor");
-  const activePosition = useRef<{ lineNumber: number; column: number } | null>(
-    null,
-  );
+  const activePosition = useRef<{ lineNumber: number; column: number } | null>(null);
   const committed = useRef(false);
   const pendingChoice = useRef<{
     index: number;
@@ -312,15 +310,13 @@ export function QuickOpen() {
         }));
     }
     if (query.startsWith("%")) {
-      return results
-        .slice(0, 100)
-        .map((m, i) => ({
-          id: `${i}`,
-          label: m.preview,
-          description: `${relative(m.path)}:${m.line}:${m.column}`,
-          path: m.path,
-          run: (side: boolean) => openMatch(m, side, side ? splitGroup() : undefined),
-        }));
+      return results.slice(0, 100).map((m, i) => ({
+        id: `${i}`,
+        label: m.preview,
+        description: `${relative(m.path)}:${m.line}:${m.column}`,
+        path: m.path,
+        run: (side: boolean) => openMatch(m, side, side ? splitGroup() : undefined),
+      }));
     }
     const parsed = parseLocation(query);
     const list = fileItems;
@@ -564,11 +560,7 @@ const QuickResults = memo(function QuickResults({
       <span className="quick-label">
         {item.positions
           ? [...item.label].map((char, index) =>
-              item.positions!.includes(index) ? (
-                <mark key={index}>{char}</mark>
-              ) : (
-                char
-              ),
+              item.positions!.includes(index) ? <mark key={index}>{char}</mark> : char,
             )
           : item.label}
       </span>

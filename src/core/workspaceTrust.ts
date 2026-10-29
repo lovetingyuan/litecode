@@ -9,19 +9,29 @@ export type WorkspaceOpenInfo = { path: string; trusted: boolean; alreadyOpen: b
 export type WorkspaceTrustDecision = { root: string; trusted: boolean };
 
 export function rememberWorkspaceTrust(root: string, isRestricted: boolean) {
-  if (isRestricted) { restricted.add(root); } else { restricted.delete(root); }
+  if (isRestricted) {
+    restricted.add(root);
+  } else {
+    restricted.delete(root);
+  }
 }
 
-export async function prepareWorkspaceOpen(path: string): Promise<(WorkspaceOpenInfo & { trust?: WorkspaceTrustDecision }) | null> {
+export async function prepareWorkspaceOpen(
+  path: string,
+): Promise<(WorkspaceOpenInfo & { trust?: WorkspaceTrustDecision }) | null> {
   cancelWorkspaceTrustPrompt();
   const info = await call<WorkspaceOpenInfo>("workspace_open_info", { path });
-  if (info.trusted || info.alreadyOpen) { return info; }
+  if (info.trusted || info.alreadyOpen) {
+    return info;
+  }
   const choice = await ask(
     "Do you trust the authors of this folder?",
     `Terminals, language services and formatters can execute code from this folder. Restricted Mode keeps text editing available.\n\n${info.path}`,
     ["Restricted Mode", "Trust Workspace"],
   );
-  if (!choice) { return null; }
+  if (!choice) {
+    return null;
+  }
   return { ...info, trust: { root: info.path, trusted: choice === "Trust Workspace" } };
 }
 
@@ -87,7 +97,9 @@ function requestTrust(root: string) {
 function requestFormatterTrust(root: string | null, directory: string, path: unknown) {
   const key = `formatter:${root ?? ""}:${directory}`;
   const existing = prompts.get(key);
-  if (existing) { return existing.pending; }
+  if (existing) {
+    return existing.pending;
+  }
   const controller = new AbortController();
   const pending = (async () => {
     const choice = await ask(
@@ -96,7 +108,11 @@ function requestFormatterTrust(root: string | null, directory: string, path: unk
       ["Trust Formatters", "Cancel"],
       { signal: controller.signal },
     );
-    if (choice !== "Trust Formatters" || controller.signal.aborted || useApp.getState().root !== root) {
+    if (
+      choice !== "Trust Formatters" ||
+      controller.signal.aborted ||
+      useApp.getState().root !== root
+    ) {
       return false;
     }
     await call("trust_formatter", { path: path ?? null, expectedRoot: root, directory });
@@ -119,19 +135,36 @@ export async function trustedCall<T>(
       return await call<T>(command, currentArgs);
     } catch (error) {
       const { code, trustPath } = (error ?? {}) as { code?: string; trustPath?: string };
-      if (useApp.getState().root !== root) { throw error; }
-      if (command === "format_document" && code === "formatterTrust" && typeof trustPath === "string" && trustPath) {
-        if (attempted.has(trustPath)) { throw error; }
+      if (useApp.getState().root !== root) {
+        throw error;
+      }
+      if (
+        command === "format_document" &&
+        code === "formatterTrust" &&
+        typeof trustPath === "string" &&
+        trustPath
+      ) {
+        if (attempted.has(trustPath)) {
+          throw error;
+        }
         attempted.add(trustPath);
-        if (!(await requestFormatterTrust(root, trustPath, currentArgs?.path))) { throw error; }
+        if (!(await requestFormatterTrust(root, trustPath, currentArgs?.path))) {
+          throw error;
+        }
       } else if (code === "workspaceTrust" && root && !attempted.has("workspace")) {
-        if (useApp.getState().openingWorkspace != null) { throw error; }
+        if (useApp.getState().openingWorkspace != null) {
+          throw error;
+        }
         attempted.add("workspace");
-        if (!(await requestTrust(root))) { throw error; }
+        if (!(await requestTrust(root))) {
+          throw error;
+        }
       } else {
         throw error;
       }
-      if (useApp.getState().root !== root) { throw error; }
+      if (useApp.getState().root !== root) {
+        throw error;
+      }
     }
   }
 }

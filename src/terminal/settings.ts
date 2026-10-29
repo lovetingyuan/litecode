@@ -1,10 +1,7 @@
 import type { ITerminalOptions } from "@xterm/xterm";
 import schema from "../config/settings-schema.json";
 
-export function terminalSetting(
-  settings: Record<string, unknown>,
-  name: string,
-): unknown {
+export function terminalSetting(settings: Record<string, unknown>, name: string): unknown {
   const key = `terminal.integrated.${name}` as keyof typeof schema.properties;
   const rule = schema.properties[key] as
     | {
@@ -22,11 +19,7 @@ export function terminalSetting(
   if (value === undefined || (rule.enum && !rule.enum.includes(value))) {
     return rule.default;
   }
-  const types = Array.isArray(rule.type)
-    ? rule.type
-    : rule.type
-      ? [rule.type]
-      : [];
+  const types = Array.isArray(rule.type) ? rule.type : rule.type ? [rule.type] : [];
   if (
     types.length &&
     !types.some((type) =>
@@ -35,9 +28,7 @@ export function terminalSetting(
         : type === "integer"
           ? typeof value === "number" && Number.isInteger(value)
           : type === "object"
-            ? typeof value === "object" &&
-              value !== null &&
-              !Array.isArray(value)
+            ? typeof value === "object" && value !== null && !Array.isArray(value)
             : typeof value === type,
     )
   ) {
@@ -58,10 +49,7 @@ export function terminalSetting(
   }
   return value;
 }
-function weight(
-  value: unknown,
-  fallback: "normal" | "bold",
-): ITerminalOptions["fontWeight"] {
+function weight(value: unknown, fallback: "normal" | "bold"): ITerminalOptions["fontWeight"] {
   if (value === "normal" || value === "bold") {
     return value;
   }
@@ -70,15 +58,11 @@ function weight(
     ? (number as ITerminalOptions["fontWeight"])
     : fallback;
 }
-export function terminalOptions(
-  settings: Record<string, unknown>,
-): ITerminalOptions {
+export function terminalOptions(settings: Record<string, unknown>): ITerminalOptions {
   const get = (name: string) => terminalSetting(settings, name);
   return {
     fontFamily: String(
-      get("fontFamily") ||
-        settings["editor.fontFamily"] ||
-        'Consolas, "Courier New", monospace',
+      get("fontFamily") || settings["editor.fontFamily"] || 'Consolas, "Courier New", monospace',
     ),
     fontSize: get("fontSize") as number,
     fontWeight: weight(get("fontWeight"), "normal"),
@@ -136,9 +120,7 @@ export function reportedDirectory(osc: number, data: string): string | null {
       const url = new URL(data);
       if (
         url.protocol !== "file:" ||
-        (url.hostname &&
-          url.hostname !== "localhost" &&
-          !/^[a-z0-9_-]+$/i.test(url.hostname))
+        (url.hostname && url.hostname !== "localhost" && !/^[a-z0-9_-]+$/i.test(url.hostname))
       ) {
         return null;
       }
@@ -147,9 +129,7 @@ export function reportedDirectory(osc: number, data: string): string | null {
       return null;
     }
   }
-  return path &&
-    (/^[a-z]:[\\/]/i.test(path) || path.startsWith("/")) &&
-    !/[\x00-\x1f]/.test(path)
+  return path && (/^[a-z]:[\\/]/i.test(path) || path.startsWith("/")) && !/[\x00-\x1f]/.test(path)
     ? path
     : null;
 }
