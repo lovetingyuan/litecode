@@ -1,0 +1,9 @@
+json: passed
+jsonc: passed
+json: passed
+html: passed
+css: passed
+typescript (bundled): passed
+typescript (workspace): passed
+vue (vue-template): passed
+vue (vue-typescript): passed

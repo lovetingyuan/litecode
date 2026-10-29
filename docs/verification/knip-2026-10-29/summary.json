@@ -1,0 +1,150 @@
+{
+  "date": "2026-10-29",
+  "timezone": "Asia/Shanghai",
+  "recordedAt": "2026-10-29T14:17:43.531Z",
+  "head": "dbc4626bd580ec9892a124e6cea9a56131d04b60",
+  "initialWorkspace": "clean",
+  "node": "v24.12.0",
+  "npm": "11.6.2",
+  "knip": "6.42.1",
+  "commands": {
+    "baseline": "npm exec --yes --package=knip@6.42.1 -- knip --no-progress --reporter json",
+    "frontend": "npm exec --yes --package=knip@6.42.1 -- knip --config docs/verification/knip-2026-10-29/knip.config.json --no-progress --reporter json"
+  },
+  "scans": {
+    "baseline": {
+      "counts": {
+        "binaries": 2,
+        "catalog": 0,
+        "catalogReferences": 0,
+        "dependencies": 2,
+        "devDependencies": 9,
+        "duplicates": 0,
+        "enumMembers": 0,
+        "exports": 8,
+        "files": 52,
+        "namespaceMembers": 0,
+        "optionalPeerDependencies": 0,
+        "types": 4,
+        "unlisted": 9,
+        "unresolved": 0
+      },
+      "total": 86,
+      "exitCode": 1,
+      "stderrBytes": 0
+    },
+    "frontend": {
+      "counts": {
+        "binaries": 0,
+        "catalog": 0,
+        "catalogReferences": 0,
+        "dependencies": 2,
+        "devDependencies": 2,
+        "duplicates": 0,
+        "enumMembers": 0,
+        "exports": 7,
+        "files": 0,
+        "namespaceMembers": 0,
+        "optionalPeerDependencies": 0,
+        "types": 4,
+        "unlisted": 6,
+        "unresolved": 0
+      },
+      "total": 21,
+      "exitCode": 1,
+      "stderrBytes": 0
+    }
+  },
+  "remediation": {
+    "recordedAt": "2026-10-29T14:29:48.321Z",
+    "scans": {
+      "after-baseline": {
+        "counts": {
+          "binaries": 2,
+          "catalog": 0,
+          "catalogReferences": 0,
+          "dependencies": 1,
+          "devDependencies": 8,
+          "duplicates": 0,
+          "enumMembers": 0,
+          "exports": 0,
+          "files": 52,
+          "namespaceMembers": 0,
+          "optionalPeerDependencies": 0,
+          "types": 0,
+          "unlisted": 0,
+          "unresolved": 0
+        },
+        "total": 63,
+        "exitCode": 1
+      },
+      "after-frontend": {
+        "counts": {
+          "binaries": 0,
+          "catalog": 0,
+          "catalogReferences": 0,
+          "dependencies": 1,
+          "devDependencies": 3,
+          "duplicates": 0,
+          "enumMembers": 0,
+          "exports": 0,
+          "files": 0,
+          "namespaceMembers": 0,
+          "optionalPeerDependencies": 0,
+          "types": 0,
+          "unlisted": 0,
+          "unresolved": 0
+        },
+        "total": 4,
+        "exitCode": 1
+      },
+      "after": {
+        "counts": {
+          "binaries": 0,
+          "catalog": 0,
+          "catalogReferences": 0,
+          "dependencies": 0,
+          "devDependencies": 0,
+          "duplicates": 0,
+          "enumMembers": 0,
+          "exports": 0,
+          "files": 0,
+          "namespaceMembers": 0,
+          "optionalPeerDependencies": 0,
+          "types": 0,
+          "unlisted": 0,
+          "unresolved": 0
+        },
+        "total": 0,
+        "exitCode": 0
+      }
+    },
+    "retainedFlaggedFiles": 52,
+    "deletedFiles": ["docs/verification/test.txt"],
+    "removedPackages": ["@tauri-apps/plugin-dialog", "@playwright/test"],
+    "addedDirectDependencies": [
+      "@codingame/monaco-vscode-files-service-override",
+      "@codingame/monaco-vscode-languages-service-override",
+      "vscode",
+      "vscode-jsonrpc",
+      "vscode-languageserver-protocol",
+      "playwright",
+      "preact"
+    ],
+    "retainedLockEntriesUnchanged": true,
+    "checks": {
+      "lint": "passed",
+      "unitTests": {
+        "files": 42,
+        "tests": 702,
+        "status": "passed"
+      },
+      "format": "passed",
+      "productionBuild": "passed with bundler warnings",
+      "toolsBuild": "passed",
+      "website": "passed",
+      "languages": "initial Vue tsserver process exit 3221225794; isolated full retry passed all 9 cases"
+    },
+    "fullDesktopRegression": "not run"
+  }
+}

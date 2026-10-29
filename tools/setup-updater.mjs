@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 export const signingKeyPath = path.join(homedir(), ".tauri", "litecode", "updater.key");
 
-export async function setupUpdater() {
+async function setupUpdater() {
   const configPath = path.join(root, "src-tauri/tauri.conf.json");
   const config = JSON.parse(await readFile(configPath, "utf8"));
   const exists = await access(signingKeyPath).then(

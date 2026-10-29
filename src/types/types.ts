@@ -1,4 +1,3 @@
-export type AppError = { code: string; message: string };
 export type DiskDocument = {
   path: string;
   text: string;
@@ -21,7 +20,7 @@ export type DiffRequest = {
   conflict?: ConflictContext;
   error?: string;
 };
-export type FileKind = "text" | "image" | "svg" | "video" | "audio" | "binary";
+type FileKind = "text" | "image" | "svg" | "video" | "audio" | "binary";
 export type FileInfo = { kind: FileKind; size: number; stamp: string };
 export type MediaView = {
   mode?: "text" | "image" | "markdown";

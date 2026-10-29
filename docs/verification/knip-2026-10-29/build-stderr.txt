@@ -1,0 +1,32 @@
+[plugin rolldown:vite-resolve] Module "node:fs/promises" has been externalized for browser compatibility, imported by "D:/lovetingyuan/litecode/node_modules/@vscode/diff/dist/wire.js". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:fs/promises" has been externalized for browser compatibility, imported by "D:/lovetingyuan/litecode/node_modules/@vscode/diff/dist/wire.js". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:fs/promises" has been externalized for browser compatibility, imported by "D:/lovetingyuan/litecode/node_modules/@vscode/diff/dist/wire.js". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:fs/promises" has been externalized for browser compatibility, imported by "D:/lovetingyuan/litecode/node_modules/@vscode/diff/dist/wire.js". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:fs/promises" has been externalized for browser compatibility, imported by "D:/lovetingyuan/litecode/node_modules/@vscode/diff/dist/wire.js". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:fs/promises" has been externalized for browser compatibility, imported by "D:/lovetingyuan/litecode/node_modules/@vscode/diff/dist/wire.js". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[PLUGIN_TIMINGS] JavaScript callbacks ran for 2.6s of this 17.9s build (15%).
+The slowest callbacks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+  - plugin vite:worker-import-meta-url transform (15%, 2.6s, 1 call)
+See https://rolldown.rs/reference/InputOptions.checks#bundlertimings for more details.
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 2000 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[INEFFECTIVE_DYNAMIC_IMPORT] src/editor/languages.ts is dynamically imported by src/core/commands.ts but also statically imported by src/components/App.tsx, src/components/QuickOpen.tsx, src/core/commands.ts, src/editor/documents.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/editor/documents.ts is dynamically imported by src/core/updates.ts, src/terminal/runtime.ts but also statically imported by src/components/App.tsx, src/components/DiffViewer.tsx, src/components/EditorBreadcrumbs.tsx, src/components/EditorGrid.tsx, src/components/EditorGroup.tsx, ..., dynamic import will not move module into another chunk.
+
+[PLUGIN_TIMINGS] JavaScript callbacks ran for 20.5s of this 21.8s build (94%).
+The slowest callbacks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+  - plugin @tailwindcss/vite:generate:build transform (69%, 15.0s, 178 calls)
+  - plugin @rolldown/plugin-babel transform (12%, 2.6s, 81 calls)
+Additional callback time came from the callbacks below and from callbacks under 1s.
+5 callbacks are listed without a time. Their calls overlapped, so the time inside one call includes work from other calls. To find their cost, profile the build with `node --cpu-prof`:
+  - plugin vite:css transform (178 calls)
+  - plugin one-monaco-for-grammars resolveId (25991 calls)
+  - plugin vite:worker load (2 calls)
+  … and 2 more
+See https://rolldown.rs/reference/InputOptions.checks#bundlertimings for more details.
+

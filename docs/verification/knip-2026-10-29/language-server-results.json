@@ -1,0 +1,531 @@
+[
+  {
+    "language": "json",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": ["\"", ":", ".", "/", "-", "@"],
+        "resolveProvider": false
+      },
+      "hoverProvider": true,
+      "documentSymbolProvider": true,
+      "foldingRangeProvider": true,
+      "selectionRangeProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": false,
+      "renameProvider": false,
+      "definitionProvider": false,
+      "referencesProvider": false,
+      "documentLinkProvider": {
+        "resolveProvider": false
+      },
+      "colorProvider": true,
+      "codeActionProvider": false
+    }
+  },
+  {
+    "language": "jsonc",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": ["\"", ":", ".", "/", "-", "@"],
+        "resolveProvider": false
+      },
+      "hoverProvider": true,
+      "documentSymbolProvider": true,
+      "foldingRangeProvider": true,
+      "selectionRangeProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": false,
+      "renameProvider": false,
+      "definitionProvider": false,
+      "referencesProvider": false,
+      "documentLinkProvider": {
+        "resolveProvider": false
+      },
+      "colorProvider": true,
+      "codeActionProvider": false
+    }
+  },
+  {
+    "language": "json",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": ["\"", ":", ".", "/", "-", "@"],
+        "resolveProvider": false
+      },
+      "hoverProvider": true,
+      "documentSymbolProvider": true,
+      "foldingRangeProvider": true,
+      "selectionRangeProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": false,
+      "renameProvider": false,
+      "definitionProvider": false,
+      "referencesProvider": false,
+      "documentLinkProvider": {
+        "resolveProvider": false
+      },
+      "colorProvider": true,
+      "codeActionProvider": false
+    }
+  },
+  {
+    "language": "html",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": ["<", "/", " ", "=", "\"", "."],
+        "resolveProvider": false
+      },
+      "hoverProvider": true,
+      "documentSymbolProvider": true,
+      "foldingRangeProvider": true,
+      "selectionRangeProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": true,
+      "renameProvider": true,
+      "definitionProvider": false,
+      "referencesProvider": false,
+      "documentLinkProvider": {
+        "resolveProvider": false
+      },
+      "colorProvider": false,
+      "codeActionProvider": false
+    }
+  },
+  {
+    "language": "css",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": ["\"", ":", ".", "/", "-", "@"],
+        "resolveProvider": false
+      },
+      "hoverProvider": true,
+      "documentSymbolProvider": true,
+      "foldingRangeProvider": true,
+      "selectionRangeProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": true,
+      "renameProvider": true,
+      "definitionProvider": true,
+      "referencesProvider": true,
+      "documentLinkProvider": {
+        "resolveProvider": false
+      },
+      "colorProvider": true,
+      "codeActionProvider": true
+    }
+  },
+  {
+    "language": "typescript",
+    "typescriptSource": "bundled",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": [".", "\"", "'", "/", "@", "<"],
+        "resolveProvider": true
+      },
+      "codeActionProvider": true,
+      "codeLensProvider": {
+        "resolveProvider": true
+      },
+      "definitionProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": true,
+      "documentSymbolProvider": true,
+      "executeCommandProvider": {
+        "commands": [
+          "_typescript.applyRefactoring",
+          "_typescript.configurePlugin",
+          "_typescript.organizeImports",
+          "_typescript.applyRenameFile",
+          "_typescript.goToSourceDefinition",
+          "_typescript.applyCodeActionCommand",
+          "_typescript.applyFixAllCodeAction",
+          "typescript.tsserverRequest"
+        ]
+      },
+      "hoverProvider": true,
+      "inlayHintProvider": true,
+      "linkedEditingRangeProvider": false,
+      "renameProvider": true,
+      "referencesProvider": true,
+      "selectionRangeProvider": true,
+      "signatureHelpProvider": {
+        "triggerCharacters": ["(", ",", "<"],
+        "retriggerCharacters": [")"]
+      },
+      "workspaceSymbolProvider": true,
+      "implementationProvider": true,
+      "typeDefinitionProvider": true,
+      "foldingRangeProvider": true,
+      "semanticTokensProvider": {
+        "documentSelector": null,
+        "legend": {
+          "tokenTypes": [
+            "class",
+            "enum",
+            "interface",
+            "namespace",
+            "typeParameter",
+            "type",
+            "parameter",
+            "variable",
+            "enumMember",
+            "property",
+            "function",
+            "member"
+          ],
+          "tokenModifiers": [
+            "declaration",
+            "static",
+            "async",
+            "readonly",
+            "defaultLibrary",
+            "local"
+          ]
+        },
+        "full": true,
+        "range": true
+      },
+      "workspace": {
+        "fileOperations": {
+          "willRename": {
+            "filters": [
+              {
+                "scheme": "file",
+                "pattern": {
+                  "glob": "**/*.{ts,js,jsx,tsx,mjs,mts,cjs,cts}",
+                  "matches": "file"
+                }
+              },
+              {
+                "scheme": "file",
+                "pattern": {
+                  "glob": "**",
+                  "matches": "folder"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "language": "typescript",
+    "typescriptSource": "workspace",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": [".", "\"", "'", "/", "@", "<"],
+        "resolveProvider": true
+      },
+      "codeActionProvider": true,
+      "codeLensProvider": {
+        "resolveProvider": true
+      },
+      "definitionProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": true,
+      "documentSymbolProvider": true,
+      "executeCommandProvider": {
+        "commands": [
+          "_typescript.applyRefactoring",
+          "_typescript.configurePlugin",
+          "_typescript.organizeImports",
+          "_typescript.applyRenameFile",
+          "_typescript.goToSourceDefinition",
+          "_typescript.applyCodeActionCommand",
+          "_typescript.applyFixAllCodeAction",
+          "typescript.tsserverRequest"
+        ]
+      },
+      "hoverProvider": true,
+      "inlayHintProvider": true,
+      "linkedEditingRangeProvider": false,
+      "renameProvider": true,
+      "referencesProvider": true,
+      "selectionRangeProvider": true,
+      "signatureHelpProvider": {
+        "triggerCharacters": ["(", ",", "<"],
+        "retriggerCharacters": [")"]
+      },
+      "workspaceSymbolProvider": true,
+      "implementationProvider": true,
+      "typeDefinitionProvider": true,
+      "foldingRangeProvider": true,
+      "semanticTokensProvider": {
+        "documentSelector": null,
+        "legend": {
+          "tokenTypes": [
+            "class",
+            "enum",
+            "interface",
+            "namespace",
+            "typeParameter",
+            "type",
+            "parameter",
+            "variable",
+            "enumMember",
+            "property",
+            "function",
+            "member"
+          ],
+          "tokenModifiers": [
+            "declaration",
+            "static",
+            "async",
+            "readonly",
+            "defaultLibrary",
+            "local"
+          ]
+        },
+        "full": true,
+        "range": true
+      },
+      "workspace": {
+        "fileOperations": {
+          "willRename": {
+            "filters": [
+              {
+                "scheme": "file",
+                "pattern": {
+                  "glob": "**/*.{ts,js,jsx,tsx,mjs,mts,cjs,cts}",
+                  "matches": "file"
+                }
+              },
+              {
+                "scheme": "file",
+                "pattern": {
+                  "glob": "**",
+                  "matches": "folder"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "language": "vue",
+    "typescriptSource": "vue-template",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "workspace": {
+        "workspaceFolders": {
+          "supported": true,
+          "changeNotifications": true
+        }
+      },
+      "selectionRangeProvider": true,
+      "foldingRangeProvider": true,
+      "linkedEditingRangeProvider": true,
+      "colorProvider": true,
+      "documentSymbolProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "referencesProvider": true,
+      "definitionProvider": true,
+      "hoverProvider": true,
+      "documentHighlightProvider": true,
+      "renameProvider": {
+        "prepareProvider": true
+      },
+      "documentLinkProvider": {},
+      "inlayHintProvider": {},
+      "completionProvider": {
+        "triggerCharacters": [
+          "\"",
+          ":",
+          "@",
+          ".",
+          "<",
+          "=",
+          "/",
+          ">",
+          "+",
+          "^",
+          "*",
+          "(",
+          ")",
+          "#",
+          "[",
+          "]",
+          "$",
+          "-",
+          "{",
+          "}"
+        ],
+        "resolveProvider": true
+      },
+      "semanticTokensProvider": {
+        "full": true,
+        "range": true,
+        "legend": {
+          "tokenTypes": [
+            "namespace",
+            "class",
+            "enum",
+            "interface",
+            "typeParameter",
+            "type",
+            "parameter",
+            "variable",
+            "property",
+            "enumMember",
+            "function",
+            "method",
+            "component"
+          ],
+          "tokenModifiers": [
+            "declaration",
+            "readonly",
+            "static",
+            "async",
+            "defaultLibrary",
+            "local"
+          ]
+        }
+      },
+      "codeActionProvider": {
+        "codeActionKinds": ["refactor"],
+        "resolveProvider": true
+      },
+      "documentOnTypeFormattingProvider": {
+        "firstTriggerCharacter": ";",
+        "moreTriggerCharacter": ["}", "\n"]
+      },
+      "experimental": {
+        "autoInsertionProvider": {
+          "triggerCharacters": ["}", "=", ">", "/", "\\w"],
+          "configurationSections": [
+            ["vue.autoInsert.bracketSpacing"],
+            ["html.autoCreateQuotes"],
+            ["html.autoClosingTags", "javascript.autoClosingTags", "typescript.autoClosingTags"],
+            ["html.autoClosingTags"],
+            ["vue.autoInsert.dotValue"]
+          ]
+        },
+        "documentDropEditsProvider": true
+      }
+    }
+  },
+  {
+    "language": "vue",
+    "typescriptSource": "vue-typescript",
+    "passed": true,
+    "capabilities": {
+      "textDocumentSync": 2,
+      "completionProvider": {
+        "triggerCharacters": [".", "\"", "'", "/", "@", "<"],
+        "resolveProvider": true
+      },
+      "codeActionProvider": true,
+      "codeLensProvider": {
+        "resolveProvider": true
+      },
+      "definitionProvider": true,
+      "documentFormattingProvider": true,
+      "documentRangeFormattingProvider": true,
+      "documentHighlightProvider": true,
+      "documentSymbolProvider": true,
+      "executeCommandProvider": {
+        "commands": [
+          "_typescript.applyRefactoring",
+          "_typescript.configurePlugin",
+          "_typescript.organizeImports",
+          "_typescript.applyRenameFile",
+          "_typescript.goToSourceDefinition",
+          "_typescript.applyCodeActionCommand",
+          "_typescript.applyFixAllCodeAction",
+          "typescript.tsserverRequest"
+        ]
+      },
+      "hoverProvider": true,
+      "inlayHintProvider": true,
+      "linkedEditingRangeProvider": false,
+      "renameProvider": true,
+      "referencesProvider": true,
+      "selectionRangeProvider": true,
+      "signatureHelpProvider": {
+        "triggerCharacters": ["(", ",", "<"],
+        "retriggerCharacters": [")"]
+      },
+      "workspaceSymbolProvider": true,
+      "implementationProvider": true,
+      "typeDefinitionProvider": true,
+      "foldingRangeProvider": true,
+      "semanticTokensProvider": {
+        "documentSelector": null,
+        "legend": {
+          "tokenTypes": [
+            "class",
+            "enum",
+            "interface",
+            "namespace",
+            "typeParameter",
+            "type",
+            "parameter",
+            "variable",
+            "enumMember",
+            "property",
+            "function",
+            "member"
+          ],
+          "tokenModifiers": [
+            "declaration",
+            "static",
+            "async",
+            "readonly",
+            "defaultLibrary",
+            "local"
+          ]
+        },
+        "full": true,
+        "range": true
+      },
+      "workspace": {
+        "fileOperations": {
+          "willRename": {
+            "filters": [
+              {
+                "scheme": "file",
+                "pattern": {
+                  "glob": "**/*.{ts,js,jsx,tsx,mjs,mts,cjs,cts}",
+                  "matches": "file"
+                }
+              },
+              {
+                "scheme": "file",
+                "pattern": {
+                  "glob": "**",
+                  "matches": "folder"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

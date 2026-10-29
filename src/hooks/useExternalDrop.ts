@@ -40,9 +40,7 @@ export function useExternalDrop(ready: boolean) {
       clearInterval(scroll);
       hoverDirectory = undefined;
     }
-    function target(
-      event: DragEvent,
-    ): {
+    function target(event: DragEvent): {
       tree: ExplorerDropTarget | null;
       group: string;
       element: HTMLElement;

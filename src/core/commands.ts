@@ -72,7 +72,7 @@ function splitEditor(context?: EditorContext, direction?: SplitDirection) {
     return splitGroup(undefined, undefined, direction);
   }
 }
-export function editorTarget(context?: EditorContext) {
+function editorTarget(context?: EditorContext) {
   const s = useApp.getState();
   const group = s.groups.find((g) => g.id === (context?.groupId ?? s.activeGroup));
   const id = context?.documentId ?? group?.active;
@@ -114,7 +114,7 @@ function pinEditor(context: EditorContext | undefined, sticky: boolean) {
     setSticky(target.doc.id, target.group.id, sticky);
   }
 }
-export function quick(value: string) {
+function quick(value: string) {
   setApp({ quick: value });
 }
 let openingFolder = false;
@@ -191,7 +191,7 @@ export async function openFolder(newWindow = false, recentPath?: string) {
     openingFolder = false;
   }
 }
-export async function openFile() {
+async function openFile() {
   const path = await call<string | null>("pick_path", { kind: "file" });
   if (path) {
     await openPath(path, { pinned: true });

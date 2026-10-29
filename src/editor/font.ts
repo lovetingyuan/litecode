@@ -2,7 +2,7 @@ import schema from "../config/settings-schema.json";
 import type { CSSProperties } from "react";
 
 export const defaultFontFamily = schema.properties["editor.fontFamily"].default;
-export const defaultFontLigatures = schema.properties["editor.fontLigatures"].default;
+const defaultFontLigatures = schema.properties["editor.fontLigatures"].default;
 
 export function renderedFontFamily(fontFamily: string) {
   // WebView2's zh-CN monospace fallback is NSimSun. Choose the sans-serif CJK

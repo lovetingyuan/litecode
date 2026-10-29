@@ -1,5 +1,5 @@
 export type ConflictSpan = { start: number; end: number };
-export type ConflictRegion = { header: ConflictSpan; content: ConflictSpan; name: string };
+type ConflictRegion = { header: ConflictSpan; content: ConflictSpan; name: string };
 export type InlineMergeConflict = {
   range: ConflictSpan;
   current: ConflictRegion;

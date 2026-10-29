@@ -12,9 +12,7 @@ export const isTextView = (doc: Doc, group?: Group) =>
   (doc.kind !== "svg" || group?.mediaViews?.[doc.id]?.mode === "text");
 export const isImageView = (doc: Doc, group?: Group) =>
   doc.kind === "image" || (doc.kind === "svg" && !isTextView(doc, group));
-export const zoomLevels = [
-  0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5, 2, 3, 5, 7, 10, 15, 20,
-];
+const zoomLevels = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5, 2, 3, 5, 7, 10, 15, 20];
 export const clampScale = (scale: number) => Math.max(0.1, Math.min(20, scale));
 export const stepScale = (scale: number, direction: number) =>
   direction > 0

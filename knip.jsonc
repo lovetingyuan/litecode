@@ -1,0 +1,39 @@
+{
+  "$schema": "https://unpkg.com/knip@6.42.1/schema.json",
+  "entry": [
+    "index.html",
+    "src/main.tsx",
+    "website/{index,en/index,404}.html",
+    // Plain script/link tags in the static site are not followed by Knip.
+    "website/assets/{language,theme,main}.js",
+    "website/assets/style.css",
+    "tools/verify-*.mjs",
+    "!tools/verify-git-{blame,branches,diff}.mjs",
+    "!tools/verify-explorer-offscreen-creation.mjs",
+    "tools/capture-*.mjs",
+    "tools/benchmark-explorer-model.mjs",
+    "tools/notices.mjs",
+    "tools/report-verification.mjs",
+    "tools/web-language-server.mjs",
+    // Copied into @pierre/trees by installCreationModules before use.
+    "tools/trees/InlineEditInput.js",
+  ],
+  "project": [
+    "src/**/*.{ts,tsx,css,json}",
+    "tools/**/*.{js,mjs}",
+    "website/**/*.{js,css,html}",
+    "*.{js,mjs,ts,html}",
+  ],
+  // Browser verification imports Vite URLs inside page.evaluate callbacks.
+  "paths": { "/src/*": ["src/*"] },
+  "ignoreDependencies": [
+    // Vite import.meta.glob and runtime syntax-resource paths.
+    "monaco-languages",
+    // Copied by build-tools.mjs, loaded by Rust via filesystem paths.
+    "@vue/language-server",
+    "@vue/typescript-plugin",
+    "typescript-language-server",
+  ],
+  // Windows utilities and the externally installed screenshot/video encoder.
+  "ignoreBinaries": ["taskkill.exe", "tar.exe", "where.exe", "ffmpeg"],
+}

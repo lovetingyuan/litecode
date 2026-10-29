@@ -1,0 +1,15 @@
+{
+  "checks": [
+    "/: metadata, links, assets, 360/768/1440px, explicit/system/persisted themes",
+    "/en/: metadata, links, assets, 360/768/1440px, explicit/system/persisted themes",
+    "/litecode/: metadata, links, assets, 360/768/1440px, explicit/system/persisted themes",
+    "/litecode/en/: metadata, links, assets, 360/768/1440px, explicit/system/persisted themes",
+    "Mobile menu, Escape/focus return, section navigation, keyboard skip link, reduced motion",
+    "Both languages without JavaScript; themes with local storage blocked",
+    "40 real-browser language cases: region tags, ordered preferences, fallbacks, saved/URL intent, blocked storage, crawlers, subpaths, query/anchor preservation and no loops",
+    "Manual language switches persist, index.html selects correctly, storage-blocked switches survive reload, and native links switch both ways without JavaScript",
+    "Five visual captures, six real 1280×820 images per page, sitemap/robots and nested 404"
+  ],
+  "errors": [],
+  "output": "D:\\lovetingyuan\\litecode\\.verification\\website-review"
+}

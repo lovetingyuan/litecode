@@ -1,0 +1,13 @@
+
+> litecode@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.5 D:/lovetingyuan/litecode
+
+
+ Test Files  42 passed (42)
+      Tests  702 passed (702)
+   Start at  22:24:38
+   Duration  15.88s (tests 44%, transform 41%, import 14%, worker 1%)
+

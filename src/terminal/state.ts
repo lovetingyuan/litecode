@@ -26,7 +26,7 @@ export type Pane = {
   exitCode?: number;
   attempt?: number;
 };
-export type TerminalTab = {
+type TerminalTab = {
   id: string;
   name?: string;
   activePane: string;

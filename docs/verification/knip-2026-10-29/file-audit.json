@@ -1,0 +1,490 @@
+{
+  "date": "2026-10-29",
+  "timezone": "Asia/Shanghai",
+  "retained": [
+    {
+      "file": "tools/benchmark-explorer-model.mjs",
+      "decision": "retain",
+      "reason": "EXPLORER_PERFORMANCE.md 记录的手动基准测试入口，使用 LITECODE_BENCH_ROOT。",
+      "references": ["docs/verification/EXPLORER_PERFORMANCE.md"],
+      "sha256": "e83b0290b521c53b01b84d9a7e0a341b5563de4ba2591a58ab75ace7b213fc72",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/capture-inline-conflicts-reference.mjs",
+      "decision": "retain",
+      "reason": "docs/inline-conflicts.md 记录的 VS Code 冲突渲染对照入口，包含颜色和字体断言。",
+      "references": ["docs/inline-conflicts.md"],
+      "sha256": "18b974034f90936d808ca8fa9d166ae28f97d207b28b7ab5b753f9b45ecb9f5b",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/capture-website.mjs",
+      "decision": "retain",
+      "reason": "docs/website.md 记录的真实桌面截图入口，生成网站截图资源。",
+      "references": ["docs/website.md"],
+      "sha256": "4809164db7fb11354ca01e8d9d7a5ac352d839193019e01d03bdd086f7f46d15",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/explorer-fixture.mjs",
+      "decision": "retain",
+      "reason": "被 breadcrumbs、editor、explorer 等 10 份浏览器验证脚本直接导入的共享 IPC fixture。",
+      "references": [
+        "tools/verify-breadcrumbs.mjs",
+        "tools/verify-editor-deletion.mjs",
+        "tools/verify-editor-tabs.mjs",
+        "tools/verify-explorer-creation.mjs",
+        "tools/verify-explorer-editor-drag.mjs",
+        "tools/verify-explorer-moves.mjs",
+        "tools/verify-explorer-scroll.mjs",
+        "tools/verify-layout.mjs",
+        "tools/verify-search-view.mjs",
+        "tools/verify-tab-menu.mjs"
+      ],
+      "sha256": "1cdf07c0f69d2f6787167dd7970e9ca84417849b0252f767e664556de011aeda",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/notices.mjs",
+      "decision": "retain",
+      "reason": "依赖许可证和 inventory 生成入口，输出 docs/licenses 与打包 notices。",
+      "references": [],
+      "sha256": "40e3234ff0ba232f38db72850b224ee447c1793764d2a5118759cd5b783d5c21",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/report-verification.mjs",
+      "decision": "retain",
+      "reason": "读取 verify-desktop / package-portable 产出的现有记录，生成 PERFORMANCE.md 和 UI 环境记录。",
+      "references": [],
+      "sha256": "9fe34155422c66ae3a85d638b82b7749276269832cbe88fbd0c71316ad46ad60",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-breadcrumbs.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "254a86f96550c5a52eb06a090e5683491678ae2d9d5f90408f25deec4e3a68d5",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-config-syntax.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "ed065e71697d39fc8e93dbc8d0c508d1eefd175c487d67503538fe90ae058f4a",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-conflicts-desktop.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "d37485212bc551344b6330ebb617615c0b26abec476840db2607254b3df2a7dc",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-document-backup.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/verification/document-backup-2026-10-28.md"],
+      "sha256": "54ba4ce3056f09042faaa3696572ffdb3df2929a8e6678b61c0fcd6bbcb9e959",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-editor-deletion.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/verification/editor-deletion-2026-10-27.md"],
+      "sha256": "1ea54bf7c9bddad9421f76a572f9d5075e86f68eddadfcf839b9620c3ae118ac",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-editor-status.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "62853a4ea3b03f5aec2bf7e6d4706b6bf742ebe2fb2c3224274c604c7c07abc3",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-editor-tabs.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/git.md", "docs/verification/GIT_IGNORE.md"],
+      "sha256": "7d7e87c1703dc5db02fffac4481c681881869b429fec4786fd2eeb8425eea931",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-explorer-creation-desktop.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/explorer-creation.md"],
+      "sha256": "01a9d4e342d5442e1a09ad79879cce4f1bc586c40264dd816f1e91f4cc5ff179",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-explorer-creation.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/explorer-creation.md"],
+      "sha256": "2994a3fa6fb534e50eb97c0e8b8479d2bc8f7e264e89d939fb42ab239ce67c1e",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-explorer-editor-drag.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "6c234d032b1d34b4f3e90b7ec667512a5ef4e6120881a220c06d30ad0049d021",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-explorer-large.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/verification/EXPLORER_PERFORMANCE.md"],
+      "sha256": "ad7c8ccb7309b112e10080f35980955ceedfdbf1a6c4780271421c4e5b7d1d91",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-explorer-moves-desktop.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "058dc9f906049304acb91598746402f71872eb420241a33d768996af24aa4742",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-explorer-moves.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/verification/EXPLORER_SCROLL.md"],
+      "sha256": "7f2043e21abafcafb5ea84ddf9f3a482151a534447e0e71342cae30cf9844da4",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-explorer-offscreen-creation.mjs",
+      "decision": "retain",
+      "reason": "被 verify-explorer-creation.mjs 和其 desktop 版本直接导入的虚拟滚动验证辅助模块。",
+      "references": [
+        "tools/verify-explorer-creation-desktop.mjs",
+        "tools/verify-explorer-creation.mjs"
+      ],
+      "sha256": "c94065a6c93e813199bd3e74d7cd8330b918025d4e35897e281858bbe53d30a2",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-explorer-paste.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/verification/explorer-paste-2026-10-27.md"],
+      "sha256": "2f7082ebffc238564e1a830af696a2da37ef221cbecf02ce42b13e6a8752623f",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-explorer-scroll.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/explorer-creation.md", "docs/verification/EXPLORER_SCROLL.md"],
+      "sha256": "3121cc3b257c1f0e361115b968c6cae4d0b619b161434575bcc1757740efcb4f",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-explorer-sync.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/verification/EXPLORER_SCROLL.md", "docs/verification/GIT_IGNORE.md"],
+      "sha256": "f193713eca0266c50df500792cecd2ebb497ff2d92cc2bb51a48537e98775d21",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-external-drops-desktop.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "dcfad935f38d8337a9d4aa10283c4d41c9f8319503c92c1ea148ff432eb0b749",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-fonts.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "6c7c97a4f33eaf264b512281ca83b6c37f52d365a001486f289bccbd0a2e08f5",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-formatter-trust.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "583cf8caea0e5ba1c19d28e8b057a4d1883a317a9fcef35142e5aba93049c95b",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-git-cancel.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "e169d2a575daf4b58a13a676ddb57fe6c97d7e0393a711d22ec1c849975c251f",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-git-panes.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/git.md"],
+      "sha256": "5e0f03f9126cc6e9b38d17885cbb47c50387d287093677ba0ebce74d4a202456",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-inline-conflicts.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/inline-conflicts.md", "tools/capture-inline-conflicts-reference.mjs"],
+      "sha256": "0321e57c54e7df31fbdba5a4c3746d404775c25bd0c02549837a62fa8e686862",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-languages.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [
+        "README.md",
+        "docs/verification/LANGUAGE_CAPABILITIES.md",
+        "docs/verification/MATRIX.md"
+      ],
+      "sha256": "e140cea3fbd8e71aa06e3d4ae13354efe35aa96f7fe2695d83879541e6e3be2c",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-layout.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "0c92d5567998645fb45eab2e5d7a51d76878cf0d6a5e16e3c9687f803832eea6",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-line-blame.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/git.md"],
+      "sha256": "634504982148fcd3a404460e39d6f34bcfc386381928588f5fe863611708c3e7",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-markdown.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "dbd117628e3a08553c1198d0bf16e839e5671e778f0ee380f506503d5721aa72",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-media.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "5abe49869cd8dda2f01a6f2689176996c3dbe940953a036cadc8a8f7dc06638c",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-planning-trust.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "1a624e3a7c211bcfe10d15eace3f1805ebbb745654edfeed006386c2cc5239b3",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-quick-open.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "4f671b2b1ef812b194b7dd4321110d9bfcba2e227f73142c5d186365eb12410f",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-recovery-desktop.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/verification/document-backup-2026-10-28.md"],
+      "sha256": "8f4ecf93afeda40cabef95d6d598922b53ee6a5fed78fcadbc923c41a6780557",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-release.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/terminal.md"],
+      "sha256": "a115ad6708be056f8d0e3d0da274e4f4066e44e3d043d6c8c9a7c23c8bccb84a",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-search-view.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "30e43522c9b79e250ebacd29a44a0d4c203e964fe7a821b84ea92ea59d9f56be",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-settings.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "98745804340c433cd05b872d05707999859b9290f97f076349bf6beb880ae2dc",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-tab-menu.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "21db1c05146408378213f53b7c256b42d394ea53018ccd17d322caae0893a3d5",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-terminal-desktop.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/terminal.md"],
+      "sha256": "46af944a0149cffe1b92661b2531b1c5f4cf80e3ca808eaa46e94366c1afd6a1",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-updates-desktop.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["README.md", "docs/releases.md"],
+      "sha256": "8fea03681a0cac08639a80ff5a4dea134ea98358f51aa3f23d9fabd3d23f88bc",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-vue.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["README.md", "docs/verification/LANGUAGE_CAPABILITIES.md"],
+      "sha256": "1552216b85377c94eb06ebfda160338592d981186bbff26abe4f462135aeda1e",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-website.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": ["docs/website.md"],
+      "sha256": "62e82f49e21dc0aebedc170284c8f6305f458b548753da3ebf7931a380195f41",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/verify-workspace-status.mjs",
+      "decision": "retain",
+      "reason": "独立执行的功能回归检查入口，保留当前功能的断言与隔离 fixture；不要求被产品入口导入。",
+      "references": [],
+      "sha256": "a32507244cd5ed2595ef38b0eb2a0461674c1acc22be3cc78dbee914e72f42bc",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "tools/web-language-server.mjs",
+      "decision": "retain",
+      "reason": "tools/build-tools.mjs 的 esbuild 入口，生成 Web 语言服务。",
+      "references": ["tools/build-tools.mjs"],
+      "sha256": "b0a6f0a3c106d026e53256ef472feec3ebd107ce08b2f710040d82e7f53897e1",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "src-tauri/tools/web-language-server.cjs",
+      "decision": "retain",
+      "reason": "Web 语言服务生成产物；由 Tauri bundle.resources 打包，src-tauri/src/tools.rs 在运行时启动。",
+      "references": [
+        "src-tauri/src/tools.rs",
+        "tools/build-tools.mjs",
+        "tools/verify-languages.mjs"
+      ],
+      "sha256": "1f452b9be11971e23bb4d80d4e584877a951b78b642a5f8d1fb008be0ca13dbc",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "website/assets/language.js",
+      "decision": "retain",
+      "reason": "中英文网站 HTML 的 script/link 标签直接加载；GitHub Pages 工作流发布 website 目录，网站浏览器验证通过。",
+      "references": ["website/en/index.html", "website/index.html"],
+      "sha256": "a97e391ad011bede48ca57e488f2c6fe9711b1f9040fe5412bcddf0efa3713bb",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "website/assets/main.js",
+      "decision": "retain",
+      "reason": "中英文网站 HTML 的 script/link 标签直接加载；GitHub Pages 工作流发布 website 目录，网站浏览器验证通过。",
+      "references": [
+        "src-tauri/src/quick_files.rs",
+        "src-tauri/src/recovery/tests.rs",
+        "src-tauri/src/state.rs",
+        "src/editor/monaco.test.ts",
+        "src/utils/quickFileFilters.test.ts",
+        "tools/capture-website.mjs",
+        "tools/verify-conflicts-desktop.mjs",
+        "tools/verify-desktop.mjs",
+        "tools/verify-document-backup.mjs",
+        "tools/verify-explorer-creation-desktop.mjs",
+        "tools/verify-explorer-large.mjs",
+        "tools/verify-explorer-moves-desktop.mjs",
+        "tools/verify-explorer-paste.mjs",
+        "tools/verify-external-drops-desktop.mjs",
+        "tools/verify-fonts.mjs",
+        "tools/verify-formatter-trust.mjs",
+        "tools/verify-git-cancel.mjs",
+        "tools/verify-git-ignore.mjs",
+        "tools/verify-git.mjs",
+        "tools/verify-inline-conflicts.mjs",
+        "tools/verify-markdown.mjs",
+        "tools/verify-media.mjs",
+        "tools/verify-planning-trust.mjs",
+        "tools/verify-quick-open.mjs",
+        "tools/verify-recovery-desktop.mjs",
+        "tools/verify-release.mjs",
+        "tools/verify-terminal-desktop.mjs",
+        "tools/verify-updates-desktop.mjs",
+        "tools/verify-vue.mjs",
+        "vitest.config.ts",
+        "website/en/index.html",
+        "website/index.html"
+      ],
+      "sha256": "f6446be4e26a573d84838d19c9bbfb31d6665bf1c905c4c4dd4bfe6f8e7cc245",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "website/assets/style.css",
+      "decision": "retain",
+      "reason": "中英文网站 HTML 的 script/link 标签直接加载；GitHub Pages 工作流发布 website 目录，网站浏览器验证通过。",
+      "references": [
+        "src/components/EditorGrid.tsx",
+        "tools/capture-website.mjs",
+        "tools/verify-release.mjs",
+        "website/en/index.html",
+        "website/index.html"
+      ],
+      "sha256": "9904e6f8928b58f65242dac104a04e745c06f7d7272c6c48df4e55a6e4d02e6b",
+      "unchangedFromHeadIgnoringLineEndings": true
+    },
+    {
+      "file": "website/assets/theme.js",
+      "decision": "retain",
+      "reason": "中英文网站 HTML 的 script/link 标签直接加载；GitHub Pages 工作流发布 website 目录，网站浏览器验证通过。",
+      "references": ["website/en/index.html", "website/index.html"],
+      "sha256": "f1d27c11035b7932449bc5c62bc19d1f81e5019a44019dd1e3b9d26905f95c52",
+      "unchangedFromHeadIgnoringLineEndings": true
+    }
+  ],
+  "deleted": [
+    {
+      "file": "docs/verification/test.txt",
+      "reason": "原内容仅为 test；删除前对仓库执行完整路径及脚本文件名检索，未找到引用或生成/消费契约。",
+      "sha256": "f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2"
+    }
+  ]
+}

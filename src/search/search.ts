@@ -62,7 +62,7 @@ export function closeSearchTab(id: string) {
   }
 }
 
-export function resetSearchTabs() {
+function resetSearchTabs() {
   const query = searchSession(primarySearchId)!.query;
   for (const search of useApp.getState().searchSessions) {
     cancelSearch(search.id);

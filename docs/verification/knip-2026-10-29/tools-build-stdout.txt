@@ -1,0 +1,4 @@
+
+> litecode@0.1.0 build:tools
+> node tools/build-tools.mjs
+

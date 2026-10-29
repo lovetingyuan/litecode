@@ -7,7 +7,7 @@ import { createDirectorySync } from "./explorerSync";
 import { refreshGit } from "./workspaceGit";
 let current: DirectoryCache | null = null;
 let expanded = new Set<string>();
-export function resetWorkspaceTree() {
+function resetWorkspaceTree() {
   current?.dispose();
   current = null;
   expanded = new Set();

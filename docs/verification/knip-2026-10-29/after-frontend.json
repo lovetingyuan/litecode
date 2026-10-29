@@ -1,0 +1,25 @@
+{
+  "issues": [
+    {
+      "file": "package.json",
+      "binaries": [],
+      "catalog": [],
+      "catalogReferences": [],
+      "dependencies": [{ "name": "monaco-languages", "line": 39, "col": 6, "pos": 1345 }],
+      "devDependencies": [
+        { "name": "@vue/language-server", "line": 58, "col": 6, "pos": 1968 },
+        { "name": "@vue/typescript-plugin", "line": 59, "col": 6, "pos": 2006 },
+        { "name": "playwright", "line": 65, "col": 6, "pos": 2187 }
+      ],
+      "duplicates": [],
+      "enumMembers": [],
+      "exports": [],
+      "files": [],
+      "namespaceMembers": [],
+      "optionalPeerDependencies": [],
+      "types": [],
+      "unlisted": [],
+      "unresolved": []
+    }
+  ]
+}

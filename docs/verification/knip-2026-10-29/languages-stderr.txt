@@ -1,0 +1,34 @@
+file:///D:/lovetingyuan/litecode/tools/verify-languages.mjs:26
+      reject(new Error(`${language} exited (${code}): ${stderr}`));
+             ^
+
+Error: vue exited (1): file:///C:/Users/tingyuan/AppData/Local/Temp/litecode-typescript-%E4%B8%AD%E6%96%87%20GaPYA6/app/tools/typescript/node_modules/typescript-language-server/lib/cli.mjs:25383
+
+          throw new Error(message);
+
+                ^
+
+
+
+Error: tsserver process has exited (exit code: 3221225794, signal: null). Stopping the server.
+
+    at file:///C:/Users/tingyuan/AppData/Local/Temp/litecode-typescript-%E4%B8%AD%E6%96%87%20GaPYA6/app/tools/typescript/node_modules/typescript-language-server/lib/cli.mjs:25383:17
+
+    at node:internal/process/task_queues:149:7
+
+    at AsyncResource.runInAsyncScope (node:async_hooks:214:14)
+
+    at AsyncResource.runMicrotask (node:internal/process/task_queues:146:8)
+
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+
+
+
+Node.js v24.12.0
+
+
+    at ChildProcess.<anonymous> (file:///D:/lovetingyuan/litecode/tools/verify-languages.mjs:26:14)
+    at ChildProcess.emit (node:events:508:28)
+    at ChildProcess._handle.onexit (node:internal/child_process:294:12)
+
+Node.js v24.12.0
