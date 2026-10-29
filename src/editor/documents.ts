@@ -46,6 +46,9 @@ let autoTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let checkpointQueue = Promise.resolve();
 let saveSequence = 0;
 let moveSequence = 0;
+let documentEpoch = 0;
+let backupRetryDelay = 0;
+let backupRetryAt = 0;
 let lastMoveFailure: { sequence: number; error: unknown } | undefined;
 let documentMove: { paths: readonly string[]; done: Promise<{ error?: unknown }>; drainThrough: number } | null = null;
 let windowClose: Promise<void> | undefined;
@@ -283,14 +286,18 @@ async function syncDocumentSnapshot() {
 const backupDocuments = () => Object.values(useApp.getState().docs).filter(doc => !doc.gitDiff);
 
 function queueDocumentSnapshot(automatic: boolean) {
+  const epoch = documentEpoch;
   checkpointQueue = checkpointQueue
     .catch(() => {})
     .then(async () => {
+      // A reloaded WebView must restore the native mirror before replacing it.
+      if (!useApp.getState().ready || epoch !== documentEpoch) { return; }
       if (automatic && documentMove) { return; }
       const capturedDue = sessionBackupDue;
       const snapshot = backups.capture(backupDocuments(), models, automatic);
       await call<void>("sync_documents", { documents: snapshot.documents, session: session() });
       snapshot.acknowledge();
+      backupRetryDelay = backupRetryAt = 0;
       if (sessionBackupDue === capturedDue) { sessionBackupDue = undefined; }
       backups.noteChanges(backupDocuments(), models);
       armBackupTimer();
@@ -309,12 +316,19 @@ export function scheduleBackup() {
 
 function armBackupTimer() {
   clearTimeout(backupTimer);
-  if (documentMove) { return; }
+  if (documentMove || !useApp.getState().ready) { return; }
   const deadline = Math.min(sessionBackupDue ?? Infinity, backups.nextDeadline());
   if (!Number.isFinite(deadline)) { return; }
+  const epoch = documentEpoch;
   backupTimer = setTimeout(
-    () => void queueDocumentSnapshot(true).catch((e) => notify(`Backup failed: ${errorMessage(e)}`)),
-    Math.max(0, deadline - Date.now()),
+    () => void queueDocumentSnapshot(true).catch((e) => {
+      if (epoch !== documentEpoch) { return; }
+      notify(`Backup failed: ${errorMessage(e)}`);
+      backupRetryDelay = Math.min(30_000, backupRetryDelay ? backupRetryDelay * 2 : 1000);
+      backupRetryAt = Date.now() + backupRetryDelay;
+      armBackupTimer();
+    }),
+    Math.max(0, deadline - Date.now(), backupRetryAt - Date.now()),
   );
 }
 
@@ -426,23 +440,28 @@ type OpenPathOptions = {
 };
 
 export async function openPath(path: string, options: OpenPathOptions = {}): Promise<string> {
+  const epoch = documentEpoch;
+  const root = useApp.getState().root;
+  const current = () => epoch === documentEpoch && root === useApp.getState().root;
   while (documentMove && isMoving(path)) { await documentMove.done; }
+  if (!current()) { throw new Error("The workspace changed before the file opened."); }
   const sequence = moveSequence;
   try {
-    return await openDocumentPath(path, options, sequence);
+    return await openDocumentPath(path, options, sequence, current);
   } catch (error) {
-    if (sequence !== moveSequence) { return openPath(path, options); }
+    if (current() && sequence !== moveSequence) { return openPath(path, options); }
     throw error;
   }
 }
 
-async function openDocumentPath(path: string, options: OpenPathOptions, sequence: number): Promise<string> {
+async function openDocumentPath(path: string, options: OpenPathOptions, sequence: number, current: () => boolean): Promise<string> {
   const existing = Object.values(useApp.getState().docs).find(
     (d) => d.path && normalize(d.path) === normalize(path),
   );
   let id = existing?.id;
   if (!id) {
     const fileInfo = await call<FileInfo>("inspect_file", { path });
+    if (!current()) { throw new Error("The workspace changed before the file opened."); }
     let kind = fileInfo.kind;
     let disk: DiskDocument | undefined;
     try {
@@ -450,11 +469,13 @@ async function openDocumentPath(path: string, options: OpenPathOptions, sequence
         disk = await call<DiskDocument>("read_document", { path, force: options.force ?? false });
       }
     } catch (e) {
+      if (!current()) { throw new Error("The workspace changed before the file opened."); }
       if (
         (e as { code?: string }).code === "largeFile" &&
         (await ask("Open large file?", errorMessage(e), ["Open Anyway", "Cancel"])) ===
           "Open Anyway"
       ) {
+        if (!current()) { throw new Error("The workspace changed before the file opened."); }
         return openPath(path, { ...options, force: true });
       }
       if (["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
@@ -465,6 +486,7 @@ async function openDocumentPath(path: string, options: OpenPathOptions, sequence
     }
     // The read may have started before a disk move. Never attach its stale bytes
     // to a URI now owned by a moved document, even if the move already finished.
+    if (!current()) { throw new Error("The workspace changed before the file opened."); }
     if (sequence !== moveSequence) { return openPath(path, options); }
     const duplicate = Object.values(useApp.getState().docs).find(
       (d) => d.path && normalize(d.path) === normalize(path),
@@ -903,6 +925,7 @@ export async function confirmDocumentClose(id: string): Promise<boolean> {
 }
 
 export async function resetEditors() {
+  documentEpoch++;
   for (const timer of autoTimers.values()) {
     clearTimeout(timer);
   }
@@ -911,6 +934,7 @@ export async function resetEditors() {
   await Promise.allSettled(saveQueues.values());
   clearTimeout(backupTimer);
   sessionBackupDue = undefined;
+  backupRetryDelay = backupRetryAt = 0;
   backups.reset();
   for (const id of Object.keys(useApp.getState().docs)) {
     detachModel(id);

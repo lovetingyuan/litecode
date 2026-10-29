@@ -76,6 +76,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it("does not register or upgrade a Vue document when native document trust is denied", async () => {
+  mocks.call.mockRejectedValue({ code: "languageTrust", message: "Open and trust this folder" });
+  const { ensureLanguage } = await import("./languages");
+  await ensureLanguage("doc", "vue");
+  expect(mocks.reference).not.toHaveBeenCalled();
+  expect(mocks.clients).toHaveLength(0);
+  expect(mocks.call.mock.calls.map(([name]) => name)).toEqual(["check_language_document"]);
+});
+
 it.each([true, false])("formats JSONC with the model's insertSpaces=%s and line endings", async (insertSpaces) => {
   const { formatModelText } = await import("./languages");
   const text = await formatModelText({
@@ -211,7 +220,8 @@ it("does not retry LSP startup when trust is denied", async () => {
   mocks.call.mockRejectedValue({ code: "workspaceTrust" });
   const { ensureLanguage, languageReport } = await import("./languages");
   await ensureLanguage("doc", "typescript");
-  expect(mocks.call.mock.calls.filter(([command]) => command === "lsp_start")).toHaveLength(1);
+  expect(mocks.call.mock.calls.filter(([command]) => command === "lsp_start")).toHaveLength(0);
+  expect(mocks.reference).not.toHaveBeenCalled();
   expect(mocks.clients).toHaveLength(0);
   expect(languageReport().services).toHaveLength(0);
   expect(mocks.call.mock.calls.some(([command]) => command === "set_workspace_trust")).toBe(false);
@@ -230,5 +240,6 @@ it("does not retry or register an old client when the workspace changes during t
   await Promise.all([pending, stopped]);
   expect(mocks.clients).toHaveLength(0);
   expect(languageReport().services).toHaveLength(0);
-  expect(mocks.call.mock.calls.filter(([command]) => command === "lsp_start")).toHaveLength(1);
+  expect(mocks.call.mock.calls.filter(([command]) => command === "lsp_start")).toHaveLength(0);
+  expect(mocks.reference).not.toHaveBeenCalled();
 });

@@ -198,7 +198,9 @@ export async function createSearchEditor(
   ];
   const files = new Map<string, SearchMatch[]>();
   for (const match of matches) {
-    files.set(match.path, [...(files.get(match.path) ?? []), match]);
+    let hits = files.get(match.path);
+    if (!hits) { files.set(match.path, hits = []); }
+    hits.push(match);
   }
   for (const [path, hits] of files) {
     lines.push(`${path}:`);

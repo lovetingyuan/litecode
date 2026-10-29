@@ -119,6 +119,7 @@ function start() {
       history: session.history ?? [],
       historyIndex: session.historyIndex ?? -1,
     });
+    scheduleBackup();
     if (boot.warnings.length) {
       notify(boot.warnings.join("\n"));
     }

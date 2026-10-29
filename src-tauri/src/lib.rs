@@ -8,17 +8,17 @@ mod file_creation;
 mod file_delete;
 mod file_moves;
 mod files;
-mod formatter_trust;
 #[cfg(windows)]
 mod folder_picker;
+mod formatter_trust;
 mod git;
 #[cfg(windows)]
 mod instance;
 mod lsp;
 mod media;
 mod quick_files;
-mod replacement;
 mod recovery;
+mod replacement;
 mod search;
 mod state;
 mod sync;
@@ -202,6 +202,7 @@ pub fn run() {
             formatter_trust::trust_formatter,
             tools::install_tools,
             commands::language_document,
+            commands::check_language_document,
             replacement::replacement_plan,
             replacement::replacement_plan_begin,
             replacement::replacement_plan_cancel,

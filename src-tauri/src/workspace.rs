@@ -440,6 +440,13 @@ impl ChangeQueue {
 }
 
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+fn ignored_watch_path(path: &Path) -> bool {
+    let value = path.to_string_lossy().replace('\\', "/");
+    value.contains("/.git/objects/")
+        || value.contains("/.git/logs/")
+        || (value.contains("/.git/") && value.ends_with(".lock"))
+}
+
 pub fn watch(app: &tauri::AppHandle, label: &str, root: PathBuf) -> Result<()> {
     let pending = Arc::new(Mutex::new(ChangeQueue::default()));
     let dirty = pending.clone();
@@ -454,14 +461,7 @@ pub fn watch(app: &tauri::AppHandle, label: &str, root: PathBuf) -> Result<()> {
             if matches!(event.kind, notify::EventKind::Access(_)) {
                 return;
             }
-            if !event.paths.is_empty()
-                && event.paths.iter().all(|path| {
-                    let value = path.to_string_lossy().replace('\\', "/");
-                    value.contains("/.git/objects/")
-                        || value.contains("/.git/logs/")
-                        || value.ends_with(".lock")
-                })
-            {
+            if !event.paths.is_empty() && event.paths.iter().all(|path| ignored_watch_path(path)) {
                 return;
             }
             for path in &event.paths {
@@ -702,6 +702,24 @@ mod tests {
             .join(".verification/lazy-explorer");
         std::fs::create_dir_all(&output).unwrap();
         std::fs::write(output.join("existing-backend.json"), serde_json::to_vec_pretty(&serde_json::json!({"root":root,"entries":count,"firstDirectoryMs":first_directory_ms,"discoveryMs":discovery_ms,"child":child_path,"samples":samples,"cacheNote":"First root read precedes this process's traversal. OS disk caches were not cleared; repeated samples are warm."})).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn dependency_lock_files_are_watched_while_git_internal_locks_are_ignored() {
+        for path in [
+            "/workspace/Cargo.lock",
+            "/workspace/yarn.lock",
+            "/workspace/folder/custom.lock",
+        ] {
+            assert!(!ignored_watch_path(Path::new(path)));
+        }
+        for path in [
+            "/workspace/.git/index.lock",
+            "/workspace/.git/objects/ab/cd",
+            "/workspace/.git/logs/HEAD",
+        ] {
+            assert!(ignored_watch_path(Path::new(path)));
+        }
     }
 
     #[test]

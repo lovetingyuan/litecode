@@ -3,8 +3,8 @@ const x = vi.hoisted(() => ({ call: vi.fn() }));
 vi.mock("../core/bridge", () => ({ call: x.call, channel: (fn: unknown) => fn, errorMessage: (e: any) => e.message }));
 vi.mock("../editor/documents", () => ({ checkpoint: vi.fn(), newDocument: vi.fn(), openPath: vi.fn(), models: new Map(), showDocument: vi.fn(), normalize: (s: string) => s, relative: (s: string) => s, patchDoc: vi.fn(), basename: (s: string) => s, editors: new Map(), patchMediaView: vi.fn() }));
 vi.mock("../editor/monaco", () => ({ monaco: { Range: class { constructor(public startLineNumber: number, public startColumn: number, public endLineNumber: number, public endColumn: number) { } getStartPosition() { return { column: this.startColumn } } getEndPosition() { return { column: this.endColumn } } }, editor: { createModel: (text: string) => ({ getValue: () => text.replace(/\r\n/g, "\n"), getVersionId: () => 1, isDisposed: () => false, getValueInRange: () => "a", getOffsetAt: (p: any) => p.column - 1, dispose: () => { } }) } } }));
-import { activateSearchTab, cancelSearch, closeSearchTab, createSearchTab, replaceMatches, runSearch } from "../search/search";
-import { checkpoint } from "../editor/documents";
+import { activateSearchTab, cancelSearch, closeSearchTab, createSearchTab, createSearchEditor, replaceMatches, runSearch } from "../search/search";
+import { checkpoint, newDocument } from "../editor/documents";
 import { initialSearch, patchSearch, primarySearchId, searchSession, setApp, useApp } from "../store/store";
 import { defaultQuery, type SearchBatch, type SearchMatch } from "../types/types";
 
@@ -24,6 +24,17 @@ afterEach(() => {
 
 const hit: SearchMatch = { path: "a.txt", documentId: null, version: null, line: 1, column: 1, endLine: 1, endColumn: 2, matched: "a", preview: "a" };
 const query = (text: string) => ({ ...defaultQuery, text });
+
+it("groups dense Search Editor results once per file and preserves hit order", async () => {
+  const matches = Array.from({ length: 20_000 }, (_, i) => ({ ...hit, line: i + 1, preview: `hit ${i + 1}` }));
+  matches.splice(1, 0, { ...hit, path: "b.txt", preview: "second file" });
+  await createSearchEditor({ ...query("a"), context: 0 }, matches);
+  const text = vi.mocked(newDocument).mock.calls[0][0]!;
+  expect(text.split("\n")).toHaveLength(20_006);
+  expect(text).toContain("a.txt:\n  1:1: hit 1\n  2:1: hit 2");
+  expect(text).toContain("  20000:1: hit 20000\nb.txt:\n  1:1: second file");
+  expect(matches[1].path).toBe("b.txt");
+});
 function request(index = 0) {
   return x.call.mock.calls.filter(([command]) => command === "search_start")[index][1] as {
     requestId: string; onBatch: (batch: SearchBatch) => void;

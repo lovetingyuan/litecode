@@ -87,6 +87,10 @@ fn packaged(window: &WebviewWindow, path: &str) -> PathBuf {
 
 pub fn server_spec(window: &WebviewWindow, state: &AppState, language: &str) -> Result<ServerSpec> {
     let root = state.require_workspace_trust(window.label())?;
+    state.require_language_path(
+        window.label(),
+        root.as_deref().unwrap_or(std::path::Path::new(".")),
+    )?;
     let settings = crate::configuration::load_settings(
         &state.data_dir.join("settings.json"),
         root.as_deref(),

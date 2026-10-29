@@ -213,6 +213,13 @@ export async function ensureLanguage(id: string, language: string) {
   }
   const epoch = languageEpoch;
   const root = useApp.getState().root;
+  try {
+    await trustedCall("check_language_document", { path: m.uri.fsPath });
+  } catch (e) {
+    setApp({ languageStatus: errorMessage(e) });
+    return;
+  }
+  if (epoch !== languageEpoch || m.isDisposed()) { return; }
   if (!references.has(id)) {
     setApp({ languageStatus: `Registering ${language} document` });
     try {

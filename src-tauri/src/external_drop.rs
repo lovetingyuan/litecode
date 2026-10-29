@@ -298,7 +298,7 @@ fn commit_copy(source: &Path, dest: &Path, expected: Option<&str>, replace: bool
     }
     let backup = staging.path().join("original");
     if expected.is_some() {
-        fs::rename(dest, &backup)?;
+        rename_exclusive(dest, &backup)?;
     }
     // Persist the backup on failure if restoring it is impossible.
     if let Err(error) = rename_exclusive(&prepared, dest) {
@@ -320,14 +320,7 @@ fn commit_copy(source: &Path, dest: &Path, expected: Option<&str>, replace: bool
 }
 
 fn rename_exclusive(source: &Path, dest: &Path) -> std::io::Result<()> {
-    // Windows rename fails if the destination exists; never delete a racing writer's file.
-    if fs::symlink_metadata(dest).is_ok() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            "Destination already exists",
-        ));
-    }
-    fs::rename(source, dest)
+    crate::file_moves::rename_no_replace(source, dest)
 }
 
 #[tauri::command]

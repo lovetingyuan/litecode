@@ -59,6 +59,43 @@ fn exists(path: &Path) -> Result<bool> {
     }
 }
 
+// The caller holds disk_lock; validate the displayed identity before canonicalizing it.
+pub(crate) fn rename_checked(
+    state: &AppState,
+    label: &str,
+    source: &str,
+    destination: &str,
+) -> Result<()> {
+    crate::file_clipboard::check_source(Path::new(source))?;
+    let source = state.authorize(label, source)?;
+    if state
+        .windows
+        .lock_recover()
+        .get(label)
+        .and_then(|w| w.root.as_ref())
+        == Some(&source)
+    {
+        return Err(AppError::new(
+            "workspace",
+            "Cannot modify the open workspace root",
+        ));
+    }
+    let destination = Path::new(destination);
+    let parent = destination
+        .parent()
+        .ok_or_else(|| AppError::new("path", "Invalid destination"))?;
+    crate::file_clipboard::check_source(parent)?;
+    if exists(destination)? {
+        return Err(AppError::new("exists", "Destination already exists"));
+    }
+    let destination = state.authorize(label, &destination.to_string_lossy())?;
+    if within(&destination, &source) {
+        return Err(AppError::new("path", "Cannot move a directory into itself"));
+    }
+    rename_no_replace(&source, &destination)?;
+    Ok(())
+}
+
 fn plan(root: &Path, sources: &[String], target: &Path) -> Result<Vec<FileMove>> {
     let target = fs::canonicalize(target)?;
     if !within(&target, root) || !target.is_dir() {
@@ -242,6 +279,62 @@ pub async fn move_files(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn legacy_rename_rejects_junctions_and_their_children_and_preserves_conflicts() {
+        let (_dir, root, target, _) = fixture();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("secret"), "secret").unwrap();
+        let link = root.join("linked");
+        assert!(
+            std::process::Command::new("cmd")
+                .args(["/c", "mklink", "/J"])
+                .arg(&link)
+                .arg(outside.path())
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+        let state = AppState::default();
+        state.windows.lock_recover().insert(
+            "main".into(),
+            crate::state::WindowState {
+                root: Some(root.clone()),
+                ..Default::default()
+            },
+        );
+        for source in [&link, &link.join("secret")] {
+            assert!(
+                rename_checked(
+                    &state,
+                    "main",
+                    &visible(source),
+                    &visible(&target.join("moved"))
+                )
+                .is_err()
+            );
+        }
+        assert!(link.exists());
+        assert_eq!(
+            fs::read_to_string(outside.path().join("secret")).unwrap(),
+            "secret"
+        );
+        let destination = target.join("b.txt");
+        fs::write(&destination, "existing").unwrap();
+        assert!(rename_no_replace(&root.join("b.txt"), &destination).is_err());
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "existing");
+        fs::remove_file(&destination).unwrap();
+        rename_checked(
+            &state,
+            "main",
+            &visible(&root.join("b.txt")),
+            &visible(&destination),
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "b");
+    }
     fn fixture() -> (tempfile::TempDir, PathBuf, PathBuf, Vec<String>) {
         let dir = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(dir.path()).unwrap();

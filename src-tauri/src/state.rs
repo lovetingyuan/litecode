@@ -228,6 +228,35 @@ impl AppState {
         Ok(root)
     }
 
+    pub fn require_language_path(&self, label: &str, path: &Path) -> Result<PathBuf> {
+        let root = self.require_workspace_trust(label)?.ok_or_else(|| {
+            AppError::new(
+                "languageTrust",
+                "Open and trust a workspace folder before using language services.",
+            )
+        })?;
+        let path = canonical(path)?;
+        if !path.starts_with(&root) {
+            return Err(AppError::new(
+                "languageTrust",
+                "Open this file's folder as a trusted workspace before using language services.",
+            ));
+        }
+        // Vue/TypeScript discover project configuration above the document folder.
+        for parent in root.ancestors().skip(1) {
+            if ["tsconfig.json", "jsconfig.json"]
+                .iter()
+                .any(|name| parent.join(name).exists())
+            {
+                return Err(AppError::new(
+                    "languageTrust",
+                    "A parent folder contains project configuration. Open and trust that folder before using language services.",
+                ));
+            }
+        }
+        Ok(path)
+    }
+
     fn trusted_roots(&self) -> Result<Vec<PathBuf>> {
         match fs::read(self.data_dir.join("trusted-workspaces.json")) {
             Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
@@ -445,6 +474,53 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn language_services_require_a_trusted_folder_and_reject_parent_configs_and_loose_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        fs::create_dir(&root).unwrap();
+        let file = root.join("App.vue");
+        fs::write(&file, "<template />").unwrap();
+        let outside = dir.path().join("outside.vue");
+        fs::write(&outside, "<template />").unwrap();
+        let state = AppState {
+            data_dir: dir.path().join("data"),
+            ..Default::default()
+        };
+        state.grant("main", &file).unwrap();
+        assert_eq!(
+            state.require_language_path("main", &file).unwrap_err().code,
+            "languageTrust"
+        );
+        let root = fs::canonicalize(root).unwrap();
+        state.windows.lock_recover().get_mut("main").unwrap().root = Some(root.clone());
+        assert_eq!(
+            state.require_language_path("main", &file).unwrap_err().code,
+            "workspaceTrust"
+        );
+        state
+            .set_workspace_trust("main", root.to_str().unwrap(), true)
+            .unwrap();
+        assert!(state.require_language_path("main", &file).is_ok());
+        state.grant("main", &outside).unwrap();
+        assert_eq!(
+            state
+                .require_language_path("main", &outside)
+                .unwrap_err()
+                .code,
+            "languageTrust"
+        );
+        fs::write(
+            dir.path().join("tsconfig.json"),
+            r#"{"vueCompilerOptions":{"plugins":["./malicious.js"]}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            state.require_language_path("main", &file).unwrap_err().code,
+            "languageTrust"
+        );
+    }
 
     #[test]
     fn poisoned_window_and_disk_locks_do_not_disable_backups() {

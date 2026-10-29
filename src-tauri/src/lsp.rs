@@ -47,7 +47,10 @@ async fn read_message<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R) -> Res
     let mut header_size = 0;
     loop {
         let mut line = String::new();
-        let size = reader.read_line(&mut line).await?;
+        let size = (&mut *reader)
+            .take((8193 - header_size) as u64)
+            .read_line(&mut line)
+            .await?;
         if size == 0 {
             return Ok(None);
         }
@@ -167,15 +170,21 @@ pub async fn lsp_start(
         });
         let event_channel = on_event.clone();
         let log = tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
+            let mut stderr = stderr;
+            let mut buffer = [0; 8192];
             let mut count = 0;
-            while let Ok(Some(line)) = lines.next_line().await {
+            while let Ok(size) = stderr.read(&mut buffer).await {
+                if size == 0 {
+                    break;
+                }
                 count += 1;
                 if count <= 1000 {
                     let _ = event_channel.send(ServerEvent {
                         sequence: 0,
                         kind: "log".into(),
-                        message: Value::String(line.chars().take(8192).collect()),
+                        message: Value::String(
+                            String::from_utf8_lossy(&buffer[..size]).into_owned(),
+                        ),
                     });
                 }
             }
@@ -240,6 +249,21 @@ pub async fn lsp_send(
     server_id: String,
     message: Value,
 ) -> Result<()> {
+    if let Some(uri) = message
+        .pointer("/params/textDocument/uri")
+        .and_then(Value::as_str)
+    {
+        let path = url::Url::parse(uri)
+            .ok()
+            .and_then(|uri| uri.to_file_path().ok())
+            .ok_or_else(|| {
+                AppError::new(
+                    "languageTrust",
+                    "Language services require a local workspace file",
+                )
+            })?;
+        state.require_language_path(window.label(), &path)?;
+    }
     let key = format!("{}/{}", window.label(), server_id);
     let sender = state
         .servers
@@ -296,5 +320,23 @@ mod tests {
         );
         let mut reader = BufReader::new(&b"Content-Length: 999999999\r\n\r\n"[..]);
         assert!(read_message(&mut reader).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn oversized_headers_stop_reading_before_the_end_of_an_unterminated_line() {
+        let data = vec![b'x'; 1_000_000];
+        let mut reader = &data[..];
+        assert_eq!(
+            read_message(&mut reader).await.unwrap_err().code,
+            "lspProtocol"
+        );
+        assert_eq!(reader.len(), data.len() - 8193);
+        let data = format!("{}\n{}", "x".repeat(5000), "y".repeat(5000));
+        let mut reader = data.as_bytes();
+        assert_eq!(
+            read_message(&mut reader).await.unwrap_err().code,
+            "lspProtocol"
+        );
+        assert_eq!(reader.len(), data.len() - 8193);
     }
 }

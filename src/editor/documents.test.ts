@@ -179,6 +179,7 @@ beforeEach(() => {
     return 0;
   });
   setApp({
+    ready: true,
     docs: {},
     openingWorkspace: null,
     groups: [],
@@ -189,6 +190,62 @@ beforeEach(() => {
 });
 
 describe("Editor view snapshots", () => {
+  it("preserves native recovery while startup is incomplete, including a failed partial restore", async () => {
+    setApp({ ready: false });
+    await checkpoint();
+    expect(vi.mocked(call).mock.calls.filter(([name]) => name === "sync_documents")).toHaveLength(0);
+    addDocument();
+    await vi.advanceTimersByTimeAsync(5000);
+    const destroy = vi.fn().mockResolvedValue(undefined);
+    await closeWindowWithRecovery(destroy);
+    expect(destroy).toHaveBeenCalledOnce();
+    expect(vi.mocked(call).mock.calls.filter(([name]) => name === "sync_documents")).toHaveLength(0);
+    setApp({ ready: true });
+    await checkpoint();
+    expect(vi.mocked(call).mock.calls.filter(([name]) => name === "sync_documents")).toHaveLength(1);
+  });
+
+  it("retries an idle automatic backup after a transient failure without acknowledging its body", async () => {
+    const { buffer } = addDocument();
+    await checkpoint();
+    buffer.edit("latest unsaved body");
+    let failures = 2;
+    vi.mocked(call).mockImplementation(async command => {
+      if (command === "sync_documents" && failures-- > 0) { throw new Error("temporarily unavailable"); }
+      return undefined as never;
+    });
+    const count = () => vi.mocked(call).mock.calls.filter(([name]) => name === "sync_documents").length;
+    await vi.advanceTimersByTimeAsync(400);
+    expect(count()).toBe(2);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(count()).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(count()).toBe(3);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(count()).toBe(4);
+    const calls = vi.mocked(call).mock.calls.filter(([name]) => name === "sync_documents");
+    expect(calls.slice(1).every(([, args]) => (args!.documents as { text: string }[])[0].text === "latest unsaved body")).toBe(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(count()).toBe(4);
+  });
+
+  it.each(["inspect_file", "read_document"])("discards stale %s completion after resetting the workspace", async command => {
+    const pending = deferred<never>();
+    vi.mocked(call).mockImplementation(async name => {
+      if (name === command) { return pending.promise; }
+      if (name === "inspect_file") { return { kind: "text", size: 3 } as never; }
+      return undefined as never;
+    });
+    const opening = openPath("C:/old/late.txt");
+    const rejected = expect(opening).rejects.toThrow("workspace changed");
+    await vi.waitFor(() => expect(vi.mocked(call).mock.calls.some(([name]) => name === command)).toBe(true));
+    await resetEditors();
+    pending.resolve((command === "inspect_file" ? { kind: "text", size: 3 } : { text: "old", encoding: "utf8", eol: "LF" }) as never);
+    await rejected;
+    expect(useApp.getState().docs).toEqual({});
+    expect(models.size).toBe(0);
+  });
+
   it("reuses unchanged clean and dirty bodies when another document is edited", async () => {
     const clean = addDocument({ dirty: false });
     const dirty = addDocument();

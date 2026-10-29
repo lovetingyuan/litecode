@@ -695,8 +695,16 @@ pub async fn file_operation(
             )
             .map(|_| None);
         }
-        let source = state.authorize(window.label(), &operation.path)?;
         let _disk = state.disk_lock.write_recover();
+        if operation.kind == "rename" {
+            let destination = operation
+                .destination
+                .as_deref()
+                .ok_or_else(|| AppError::new("path", "Missing destination"))?;
+            crate::file_moves::rename_checked(state, window.label(), &operation.path, destination)?;
+            return Ok(None);
+        }
+        let source = state.authorize(window.label(), &operation.path)?;
         if state
             .windows
             .lock_recover()
@@ -717,36 +725,23 @@ pub async fn file_operation(
                     .open(source)?;
             }
             "newFolder" => fs::create_dir(source)?,
-            "rename" | "copy" => {
+            "copy" => {
                 let destination = operation
                     .destination
                     .ok_or_else(|| AppError::new("path", "Missing destination"))?;
-                if operation.kind == "copy" {
-                    let requested = Path::new(&destination);
-                    let parent = requested
-                        .parent()
-                        .ok_or_else(|| AppError::new("path", "Invalid destination"))?;
-                    let name = requested
-                        .file_name()
-                        .ok_or_else(|| AppError::new("path", "Invalid destination name"))?;
-                    let parent = state.authorize(window.label(), &parent.to_string_lossy())?;
-                    let destination = crate::file_clipboard::copy_available(
-                        Path::new(&operation.path),
-                        &parent.join(name),
-                    )?;
-                    return Ok(Some(crate::file_moves::visible(&destination)));
-                }
-                let destination = state.authorize(window.label(), &destination)?;
-                if destination.exists() {
-                    return Err(AppError::new("exists", "Destination already exists"));
-                }
-                if destination.starts_with(&source) {
-                    return Err(AppError::new(
-                        "path",
-                        "Cannot move or copy a directory into itself",
-                    ));
-                }
-                fs::rename(&source, &destination)?;
+                let requested = Path::new(&destination);
+                let parent = requested
+                    .parent()
+                    .ok_or_else(|| AppError::new("path", "Invalid destination"))?;
+                let name = requested
+                    .file_name()
+                    .ok_or_else(|| AppError::new("path", "Invalid destination name"))?;
+                let parent = state.authorize(window.label(), &parent.to_string_lossy())?;
+                let destination = crate::file_clipboard::copy_available(
+                    Path::new(&operation.path),
+                    &parent.join(name),
+                )?;
+                return Ok(Some(crate::file_moves::visible(&destination)));
             }
             _ => return Err(AppError::new("operation", "Unsupported file operation")),
         }
@@ -822,6 +817,16 @@ pub async fn explicit_open(
     state
         .grant(window.label(), &PathBuf::from(path))
         .map(|p| visible_path(&p))
+}
+
+#[tauri::command]
+pub fn check_language_document(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<()> {
+    state.require_language_path(window.label(), Path::new(&path))?;
+    Ok(())
 }
 
 #[tauri::command]
