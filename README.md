@@ -1,5 +1,7 @@
 # ![LiteCode logo](src-tauri/icons/32x32.png) LiteCode
 
+![LiteCode feature demo](docs/images/demo.gif)
+
 [Watch the feature demo (MP4)](docs/images/demo.mp4)
 
 ## Why LiteCode
