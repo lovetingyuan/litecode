@@ -22,6 +22,7 @@ import {
   models,
   normalize,
   scheduleBackup,
+  openPath,
 } from "../editor/documents";
 import { commands, execute, installKeys, openFolder } from "../core/commands";
 import { Explorer, refreshTree } from "./Explorer";
@@ -149,6 +150,17 @@ function start() {
       await startupStep("explorer-refreshed", refreshTree);
     }
     await startupStep("documents-refreshed", refreshDocuments);
+    if (boot.initialOpen) {
+      try {
+        if (boot.initialOpen.directory) {
+          await openFolder(false, boot.initialOpen.path, false);
+        } else {
+          await openPath(boot.initialOpen.path, { pinned: true });
+        }
+      } catch (error) {
+        notify(`Could not open ${boot.initialOpen.path}: ${errorMessage(error)}`);
+      }
+    }
     if (desktop) {
       void recoverInterruptedReplacements().catch((error) => notify(errorMessage(error)));
     }
@@ -735,22 +747,26 @@ export default function App() {
             <Icon name="info" />
             <p>
               {s.notice}
-              {s.noticeLink && (
-                <>
-                  {"\nGitHub: "}
-                  <a
-                    href={s.noticeLink}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      void openUrl(event.currentTarget.href).catch((error) =>
-                        notify(errorMessage(error)),
-                      );
-                    }}
-                  >
-                    {s.noticeLink}
-                  </a>
-                </>
-              )}
+              {s.noticeLink &&
+                [
+                  { label: "Homepage", url: "https://litecode.tingyuan.in" },
+                  { label: "GitHub", url: s.noticeLink },
+                ].map(({ label, url }) => (
+                  <span key={label}>
+                    {`\n${label}: `}
+                    <a
+                      href={url}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        void openUrl(event.currentTarget.href).catch((error) =>
+                          notify(errorMessage(error)),
+                        );
+                      }}
+                    >
+                      {url}
+                    </a>
+                  </span>
+                ))}
             </p>
             <IconButton
               icon="close"

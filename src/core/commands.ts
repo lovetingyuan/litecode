@@ -118,7 +118,7 @@ function quick(value: string) {
   setApp({ quick: value });
 }
 let openingFolder = false;
-export async function openFolder(newWindow = false, recentPath?: string) {
+export async function openFolder(newWindow = false, recentPath?: string, reuseExisting = true) {
   if (openingFolder) {
     return;
   }
@@ -135,7 +135,7 @@ export async function openFolder(newWindow = false, recentPath?: string) {
       return;
     }
     setApp({ openingWorkspace: selected, quick: null });
-    const info = await prepareWorkspaceOpen(selected);
+    const info = await prepareWorkspaceOpen(selected, reuseExisting);
     if (!info) {
       return;
     }
@@ -159,6 +159,7 @@ export async function openFolder(newWindow = false, recentPath?: string) {
     const same = await call<boolean>("open_workspace", {
       path,
       newWindow,
+      ...(!reuseExisting ? { reuseExisting: false } : {}),
       ...(info.trust ? { trust: info.trust } : {}),
     });
     if (same) {

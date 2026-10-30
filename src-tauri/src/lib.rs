@@ -16,6 +16,7 @@ mod formatter_trust;
 mod git;
 #[cfg(windows)]
 mod instance;
+mod launch;
 mod lsp;
 mod media;
 mod quick_files;

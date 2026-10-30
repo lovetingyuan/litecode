@@ -1,8 +1,10 @@
-import workbenchStyles from "../styles/workbench.module.css";
-import { useEffect, useMemo, useState } from "react";
-import { Popover } from "@base-ui/react/popover";
-import { call, desktop, errorMessage } from "../core/bridge";
-import { models } from "../editor/documents";
+import workbenchStyles from '../styles/workbench.module.css'
+import { useEffect, useMemo, useState } from 'react'
+import { Popover } from '@base-ui/react/popover'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import { commitWebUrl } from '../git/remotes'
+import { call, desktop, errorMessage } from '../core/bridge'
+import { models } from '../editor/documents'
 import {
   blameAge,
   blameRange,
@@ -10,24 +12,24 @@ import {
   createBlameLoader,
   type BlameResult,
   type BlameTask,
-} from "../git/lineBlame";
-import { useApp } from "../store/store";
-import type { Doc, GitBlameCommit, GitCommitDetails, GitFileBlame } from "../types/types";
-import { actionButtonClass, Icon, IconButton } from "./ui";
+} from '../git/lineBlame'
+import { useApp } from '../store/store'
+import type { Doc, GitBlameCommit, GitCommitDetails, GitFileBlame, GitInfo } from '../types/types'
+import { actionButtonClass, Icon, IconButton } from './ui'
 
 export function GitLineStatus({ doc }: { doc?: Doc }) {
-  const root = useApp((s) => s.root);
-  const snapshot = useApp((s) => s.gitState);
-  const activeGroup = useApp((s) => s.activeGroup);
-  const line = useApp((s) => s.cursor.line);
-  const [result, setResult] = useState<BlameResult>(null);
-  const [now, setNow] = useState(Date.now);
-  const loader = useMemo(() => createBlameLoader(setResult), []);
+  const root = useApp(s => s.root)
+  const snapshot = useApp(s => s.gitState)
+  const activeGroup = useApp(s => s.activeGroup)
+  const line = useApp(s => s.cursor.line)
+  const [result, setResult] = useState<BlameResult>(null)
+  const [now, setNow] = useState(Date.now)
+  const loader = useMemo(() => createBlameLoader(setResult), [])
   const task = useMemo<BlameTask | null>(() => {
     if (!doc) {
-      return null;
+      return null
     }
-    const file = doc.path && blameRepository(doc.path, snapshot.repositories ?? []);
+    const file = doc.path && blameRepository(doc.path, snapshot.repositories ?? [])
     if (
       !root ||
       snapshot.root !== root ||
@@ -36,7 +38,7 @@ export function GitLineStatus({ doc }: { doc?: Doc }) {
       doc.deleted ||
       doc.large
     ) {
-      return null;
+      return null
     }
     return {
       key: JSON.stringify([
@@ -54,8 +56,8 @@ export function GitLineStatus({ doc }: { doc?: Doc }) {
         doc.encoding,
       ]),
       read: () => {
-        const state = useApp.getState();
-        const model = models.get(doc.id);
+        const state = useApp.getState()
+        const model = models.get(doc.id)
         // Read the version explicitly: React Compiler can otherwise stabilize
         // this task across edits to a document with the same path and encoding.
         if (
@@ -66,9 +68,9 @@ export function GitLineStatus({ doc }: { doc?: Doc }) {
           state.docs[doc.id]?.revision !== doc.revision ||
           model.getValueLength() > 20 * 1024 * 1024
         ) {
-          return Promise.resolve(null);
+          return Promise.resolve(null)
         }
-        return call<GitFileBlame | null>("git_blame_file", {
+        return call<GitFileBlame | null>('git_blame_file', {
           expectedRoot: root,
           session: snapshot.session,
           repository: file.repository.path,
@@ -76,33 +78,33 @@ export function GitLineStatus({ doc }: { doc?: Doc }) {
           oldPath: file.oldPath,
           contents: model.getValue(),
           encoding: doc.encoding,
-        });
+        })
       },
-    };
-  }, [root, snapshot, doc, activeGroup]);
+    }
+  }, [root, snapshot, doc, activeGroup])
   useEffect(() => {
-    loader.update(task);
-  }, [loader, task]);
-  useEffect(() => () => loader.update(null), [loader]);
+    loader.update(task)
+  }, [loader, task])
+  useEffect(() => () => loader.update(null), [loader])
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(timer);
-  }, []);
-  const data = task && result?.task.key === task.key ? result.data : null;
-  const range = data && blameRange(data.ranges, line);
+    const timer = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
+  const data = task && result?.task.key === task.key ? result.data : null
+  const range = data && blameRange(data.ranges, line)
   const repository = doc?.path
     ? blameRepository(doc.path, snapshot.repositories ?? [])?.repository.path
-    : null;
+    : null
   if (!range || !root || snapshot.session === null || !repository || !doc) {
-    return null;
+    return null
   }
-  const commit = range.commit ? data?.commits[range.commit] : undefined;
+  const commit = range.commit ? data?.commits[range.commit] : undefined
   if (range.commit && !commit) {
-    return null;
+    return null
   }
-  const author = commit ? commit.author || "Unknown author" : "";
-  const age = commit ? blameAge(commit.authorTime, now) : "";
-  const label = commit ? `${author} (${age})` : "尚未提交";
+  const author = commit ? commit.author || 'Unknown author' : ''
+  const age = commit ? blameAge(commit.authorTime, now) : ''
+  const label = commit ? `${author} (${age})` : '尚未提交'
   return (
     <CommitStatus
       key={JSON.stringify([
@@ -121,10 +123,10 @@ export function GitLineStatus({ doc }: { doc?: Doc }) {
       commit={commit}
       label={label}
     />
-  );
+  )
 }
 
-type CommitContext = { root: string; session: number; repository: string; sha: string };
+type CommitContext = { root: string; session: number; repository: string; sha: string }
 
 function CommitStatus({
   root,
@@ -133,16 +135,16 @@ function CommitStatus({
   sha,
   commit,
   label,
-}: Omit<CommitContext, "sha"> & {
-  sha: string | null;
-  commit?: GitBlameCommit;
-  label: string;
+}: Omit<CommitContext, 'sha'> & {
+  sha: string | null
+  commit?: GitBlameCommit
+  label: string
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
-        className={`status-item ${workbenchStyles["status-item"]} git-line-status ${workbenchStyles["git-line-status"]}`}
+        className={`status-item ${workbenchStyles['status-item']} git-line-status ${workbenchStyles['git-line-status']}`}
         aria-label={`Current line Git: ${label}，查看提交详情`}
       >
         <Icon name="git-commit" />
@@ -159,11 +161,11 @@ function CommitStatus({
           collisionPadding={8}
         >
           <Popover.Popup
-            className={`workspace-popup flex items-start gap-3 w-[max-content] max-w-[min(560px,_calc(100vw_-_16px),_var(--available-width))] max-h-[var(--available-height)] overflow-y-auto p-2 bg-widget text-foreground border border-strong rounded-[4px] ${workbenchStyles["workspace-popup"]} block! w-[400px]! max-h-[min(420px,var(--available-height))]! p-[12px]! text-[12px] leading-[18px] select-text outline-none`}
+            className={`workspace-popup flex items-start gap-3 w-[max-content] max-w-[min(560px,_calc(100vw_-_16px),_var(--available-width))] max-h-[var(--available-height)] overflow-y-auto p-2 bg-widget text-foreground border border-strong rounded-[4px] ${workbenchStyles['workspace-popup']} block! w-[400px]! max-h-[min(420px,var(--available-height))]! p-[12px]! text-[12px] leading-[18px] select-text outline-none`}
             data-testid="git-commit-popup"
             initialFocus={false}
           >
-            <Popover.Title className="sr-only">{sha ? "提交详情" : "尚未提交"}</Popover.Title>
+            <Popover.Title className="sr-only">{sha ? '提交详情' : '尚未提交'}</Popover.Title>
             <Popover.Close
               render={<IconButton icon="close" label="关闭提交详情" className="float-right ml-2" />}
             />
@@ -183,7 +185,7 @@ function CommitStatus({
         </Popover.Positioner>
       </Popover.Portal>
     </Popover.Root>
-  );
+  )
 }
 
 function CommitDetails({
@@ -193,75 +195,122 @@ function CommitDetails({
   sha,
   commit,
 }: CommitContext & { commit: GitBlameCommit }) {
-  const [details, setDetails] = useState<GitCommitDetails | null>(null);
-  const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
-  const [copyStatus, setCopyStatus] = useState("");
+  const [details, setDetails] = useState<GitCommitDetails | null>(null)
+  const [error, setError] = useState('')
+  const [attempt, setAttempt] = useState(0)
+  const [copyStatus, setCopyStatus] = useState('')
+  const [commitUrl, setCommitUrl] = useState<string | null>(null)
+  const [linkError, setLinkError] = useState('')
   useEffect(() => {
-    let current = true;
-    void call<GitCommitDetails>("git_commit_details", {
+    let current = true
+    void call<GitInfo>('git_repository_info', {
+      expectedRoot: root,
+      session,
+      repository,
+    }).then(
+      info => {
+        if (current) {
+          setCommitUrl(commitWebUrl(info, sha))
+        }
+      },
+      reason => {
+        if (current) {
+          setLinkError(`Unable to load commit link: ${errorMessage(reason)}`)
+        }
+      },
+    )
+    return () => {
+      current = false
+    }
+  }, [root, session, repository, sha])
+  useEffect(() => {
+    let current = true
+    void call<GitCommitDetails>('git_commit_details', {
       expectedRoot: root,
       session,
       repository,
       sha,
     }).then(
-      (value) => {
+      value => {
         if (current) {
-          setDetails(value);
+          setDetails(value)
         }
       },
-      (reason) => {
+      reason => {
         if (current) {
-          setError(errorMessage(reason));
+          setError(errorMessage(reason))
         }
       },
-    );
+    )
     return () => {
-      current = false;
-    };
-  }, [root, session, repository, sha, attempt]);
+      current = false
+    }
+  }, [root, session, repository, sha, attempt])
   async function copySha() {
     try {
       if (desktop) {
-        await (await import("@tauri-apps/plugin-clipboard-manager")).writeText(sha);
+        await (await import('@tauri-apps/plugin-clipboard-manager')).writeText(sha)
       } else {
-        await navigator.clipboard.writeText(sha);
+        await navigator.clipboard.writeText(sha)
       }
-      setCopyStatus("已复制 SHA");
+      setCopyStatus('已复制 SHA')
     } catch (reason) {
-      setCopyStatus(`复制失败：${errorMessage(reason)}`);
+      setCopyStatus(`复制失败：${errorMessage(reason)}`)
     }
   }
-  const time = new Date((details?.authorTime ?? commit.authorTime) * 1000);
-  const validTime = Number.isFinite(time.getTime());
+  const time = new Date((details?.authorTime ?? commit.authorTime) * 1000)
+  const validTime = Number.isFinite(time.getTime())
   return (
     <>
       <p className="mb-2 whitespace-pre-wrap [overflow-wrap:anywhere]">
         {details?.message ?? commit.summary}
       </p>
       <p className="[overflow-wrap:anywhere]">
-        {details?.author || commit.author || "Unknown author"}
-        {details?.authorEmail && <span>({details.authorEmail})</span>}
+        {details?.author || commit.author || 'Unknown author'}
+        {details?.authorEmail && <span> ({details.authorEmail})</span>}
       </p>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <time dateTime={validTime ? time.toISOString() : undefined}>
-          {validTime ? time.toLocaleString() : "未知时间"}
+          {validTime ? time.toLocaleString() : '未知时间'}
         </time>
         <span className="inline-flex shrink-0 items-center gap-1">
-          <code className="font-mono" title={details?.sha ?? sha}>
-            {(details?.sha ?? sha).slice(0, 8)}
-          </code>
+          {commitUrl ? (
+            <a
+              href={commitUrl}
+              title={commitUrl}
+              aria-label={`Open commit ${sha} in browser`}
+              className="font-mono hover:underline focus-visible:underline"
+              onClick={event => {
+                event.preventDefault()
+                setLinkError('')
+                void openUrl(commitUrl).catch(reason =>
+                  setLinkError(`Unable to open commit: ${errorMessage(reason)}`),
+                )
+              }}
+            >
+              {sha.slice(0, 8)}
+            </a>
+          ) : (
+            <code className="font-mono" title={sha}>
+              {sha.slice(0, 8)}
+            </code>
+          )}
           <IconButton
-            icon={copyStatus === "已复制 SHA" ? "check" : "copy"}
+            icon={copyStatus === '已复制 SHA' ? 'check' : 'copy'}
             label="复制 SHA"
-            title={copyStatus || "复制 SHA"}
+            title={copyStatus || '复制 SHA'}
             className="h-[20px]! w-[20px]! p-0!"
             onClick={() => void copySha()}
           />
         </span>
       </div>
+      {linkError && (
+        <p role="alert" className="mt-1 [overflow-wrap:anywhere]">
+          {linkError}
+        </p>
+      )}
       <p
-        className={copyStatus.startsWith("复制失败") ? "mt-1 [overflow-wrap:anywhere]" : "sr-only"}
+        className={copyStatus.startsWith('复制失败') ? 'mt-1 [overflow-wrap:anywhere]' : 'sr-only'}
         role="status"
       >
         {copyStatus}
@@ -280,8 +329,8 @@ function CommitDetails({
             type="button"
             className={`${actionButtonClass} subtle compact mt-2`}
             onClick={() => {
-              setError("");
-              setAttempt((value) => value + 1);
+              setError('')
+              setAttempt(value => value + 1)
             }}
           >
             重试
@@ -289,5 +338,5 @@ function CommitDetails({
         </div>
       )}
     </>
-  );
+  )
 }

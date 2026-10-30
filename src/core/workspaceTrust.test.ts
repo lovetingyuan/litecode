@@ -63,6 +63,20 @@ it("cancels opening when the trust dialog is dismissed", async () => {
   expect(mocks.call).toHaveBeenCalledOnce();
 });
 
+it("reviews trust for an independent window instead of reusing an existing workspace", async () => {
+  const { prepareWorkspaceOpen } = await import("./workspaceTrust");
+  mocks.call.mockResolvedValue({ path: "C:/project", trusted: false, alreadyOpen: false });
+  mocks.ask.mockResolvedValue("Restricted Mode");
+  expect(await prepareWorkspaceOpen("C:/project", false)).toMatchObject({
+    trust: { root: "C:/project", trusted: false },
+  });
+  expect(mocks.call).toHaveBeenCalledExactlyOnceWith("workspace_open_info", {
+    path: "C:/project",
+    reuseExisting: false,
+  });
+  expect(mocks.ask).toHaveBeenCalledOnce();
+});
+
 it("restores restricted-mode consent without prompting or allowing protected commands", async () => {
   const { rememberWorkspaceTrust, trustedCall } = await import("./workspaceTrust");
   rememberWorkspaceTrust("C:/project", true);

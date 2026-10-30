@@ -17,6 +17,8 @@ In the age of AI coding, a lightweight editor still has a place. LiteCode keeps 
 - Git source control, diff views, staging, and commits.
 - Live Markdown preview, plus image, audio, and video previews.
 
+The Windows installer adds **Open with LiteCode** to the File Explorer menus for files, folders, and folder backgrounds. Each action opens a separate window. On Windows 11, select **Show more options** to find it. Uninstalling removes the menu; portable builds do not register it.
+
 ## Tech stack
 
 Built with Tauri 2 and Rust, React and TypeScript, Monaco Editor, and xterm.js.

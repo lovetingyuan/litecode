@@ -1,12 +1,10 @@
 import { call } from "./bridge";
 import { ask } from "../components/dialog";
 import { useApp } from "../store/store";
+import type { WorkspaceOpenInfo, WorkspaceTrustDecision } from "../types/types";
 
 const restricted = new Set<string>();
 const prompts = new Map<string, { controller: AbortController; pending: Promise<boolean> }>();
-
-export type WorkspaceOpenInfo = { path: string; trusted: boolean; alreadyOpen: boolean };
-export type WorkspaceTrustDecision = { root: string; trusted: boolean };
 
 export function rememberWorkspaceTrust(root: string, isRestricted: boolean) {
   if (isRestricted) {
@@ -18,9 +16,13 @@ export function rememberWorkspaceTrust(root: string, isRestricted: boolean) {
 
 export async function prepareWorkspaceOpen(
   path: string,
+  reuseExisting = true,
 ): Promise<(WorkspaceOpenInfo & { trust?: WorkspaceTrustDecision }) | null> {
   cancelWorkspaceTrustPrompt();
-  const info = await call<WorkspaceOpenInfo>("workspace_open_info", { path });
+  const info = await call<WorkspaceOpenInfo>("workspace_open_info", {
+    path,
+    ...(!reuseExisting ? { reuseExisting: false } : {}),
+  });
   if (info.trusted || info.alreadyOpen) {
     return info;
   }

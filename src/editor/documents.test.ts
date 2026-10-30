@@ -1061,6 +1061,18 @@ describe("Workspace switches", () => {
   const commandCalls = (command: string) =>
     vi.mocked(call).mock.calls.filter(([name]) => name === command);
 
+  it("opens an external directory in its receiving window without reusing another window", async () => {
+    setApp({ root: null, docs: {} });
+    await openFolder(false, "C:/next", false);
+    expect(prepareWorkspaceOpen).toHaveBeenCalledWith("C:/next", false);
+    expect(commandCalls("open_workspace")[0][1]).toEqual({
+      path: "C:/next",
+      newWindow: false,
+      reuseExisting: false,
+    });
+    expect(useApp.getState().root).toBe("C:/next");
+  });
+
   it("shows loading while the native picker is returning and clears it on cancellation", async () => {
     setup();
     const picked = deferred<string | null>();

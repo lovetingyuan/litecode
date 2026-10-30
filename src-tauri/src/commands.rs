@@ -114,6 +114,7 @@ mod path_tests {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Bootstrap {
+    pub initial_open: Option<crate::launch::OpenTarget>,
     pub root: Option<String>,
     pub workspace_restricted: bool,
     pub documents: Vec<Mirror>,
@@ -225,11 +226,12 @@ pub async fn bootstrap(window: WebviewWindow) -> Result<Bootstrap> {
             root.as_deref(),
             &mut warnings,
         );
-        let windows = state.windows.lock_recover();
+        let mut windows = state.windows.lock_recover();
         let w = windows
-            .get(window.label())
+            .get_mut(window.label())
             .ok_or_else(|| AppError::new("window", "Window is not initialized"))?;
         let boot = Bootstrap {
+            initial_open: w.initial_open.take(),
             root: root.as_deref().map(visible_path),
             workspace_restricted: w.workspace_restricted,
             documents: w.documents.values().cloned().collect(),
@@ -280,25 +282,43 @@ pub async fn pick_path(
 
 #[tauri::command]
 pub async fn new_window(window: WebviewWindow, state: State<'_, AppState>) -> Result<String> {
-    static NEXT_WINDOW: AtomicU64 = AtomicU64::new(0);
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| AppError::new("window", e.to_string()))?
-        .as_nanos();
-    let label = format!(
-        "editor-empty-{timestamp}-{}",
-        NEXT_WINDOW.fetch_add(1, Ordering::Relaxed)
-    );
+    create_empty_window(window.app_handle(), &state, None)
+}
+
+pub(crate) fn create_empty_window(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    initial_open: Option<crate::launch::OpenTarget>,
+) -> Result<String> {
+    let label = empty_window_label()?;
+    let mut grants = std::collections::HashSet::new();
+    if let Some(target) = &initial_open {
+        grants.insert(fs::canonicalize(&target.path)?);
+    }
     state.windows.lock_recover().insert(
         label.clone(),
         WindowState {
+            initial_open,
+            grants,
             // New windows must not restore a previous window's recovery session.
             session: serde_json::json!({}),
             ..Default::default()
         },
     );
-    create_editor_window(window.app_handle(), &state, &label)?;
+    create_editor_window(app, state, &label)?;
     Ok(label)
+}
+
+fn empty_window_label() -> Result<String> {
+    static NEXT_WINDOW: AtomicU64 = AtomicU64::new(0);
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| AppError::new("window", e.to_string()))?
+        .as_nanos();
+    Ok(format!(
+        "editor-empty-{timestamp}-{}",
+        NEXT_WINDOW.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 pub(crate) fn create_editor_window(
@@ -363,14 +383,19 @@ pub struct WorkspaceOpenInfo {
 }
 
 #[tauri::command]
-pub async fn workspace_open_info(window: WebviewWindow, path: String) -> Result<WorkspaceOpenInfo> {
+pub async fn workspace_open_info(
+    window: WebviewWindow,
+    path: String,
+    reuse_existing: Option<bool>,
+) -> Result<WorkspaceOpenInfo> {
     crate::state::blocking(window, move |window, state| {
         let root = workspace_open_root(state, window.label(), &path)?;
-        let already_open = state
-            .windows
-            .lock_recover()
-            .values()
-            .any(|w| w.root.as_ref() == Some(&root));
+        let already_open = reuse_existing.unwrap_or(true)
+            && state
+                .windows
+                .lock_recover()
+                .values()
+                .any(|w| w.root.as_ref() == Some(&root));
         Ok(WorkspaceOpenInfo {
             path: visible_path(&root),
             trusted: state.workspace_is_trusted(&root)?,
@@ -404,6 +429,7 @@ pub async fn open_workspace(
     path: String,
     new_window: bool,
     trust: Option<WorkspaceTrustDecision>,
+    reuse_existing: Option<bool>,
 ) -> Result<bool> {
     crate::state::blocking(window, move |window, state| {
         let root = workspace_open_root(state, window.label(), &path)?;
@@ -412,7 +438,10 @@ pub async fn open_workspace(
         }
         {
             let windows = state.windows.lock_recover();
-            if let Some((label, _)) = windows.iter().find(|(_, w)| w.root.as_ref() == Some(&root)) {
+            if reuse_existing.unwrap_or(true)
+                && let Some((label, _)) =
+                    windows.iter().find(|(_, w)| w.root.as_ref() == Some(&root))
+            {
                 if let Some(existing) = window.app_handle().get_webview_window(label) {
                     let _ = existing.set_focus();
                 }
@@ -429,10 +458,14 @@ pub async fn open_workspace(
         }
         let restricted = trust.as_ref().is_some_and(|choice| !choice.trusted);
         if new_window {
-            let label = format!(
-                "editor-{}",
-                &files::hash(root.to_string_lossy().as_bytes())[..12]
-            );
+            let label = if reuse_existing.unwrap_or(true) {
+                format!(
+                    "editor-{}",
+                    &files::hash(root.to_string_lossy().as_bytes())[..12]
+                )
+            } else {
+                empty_window_label()?
+            };
             state.windows.lock_recover().insert(
                 label.clone(),
                 WindowState {

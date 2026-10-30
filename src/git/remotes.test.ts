@@ -1,5 +1,48 @@
 import { describe, expect, it } from "vitest";
-import { preferredRemoteUrl, remoteWebUrl } from "./remotes";
+import { commitWebUrl, preferredRemoteUrl, remoteWebUrl } from "./remotes";
+
+describe("commitWebUrl", () => {
+  const sha = "a7085d66".padEnd(40, "1");
+  it.each([
+    ["git@github.com:owner/repo.git", "https://github.com/owner/repo/commit/"],
+    [
+      "https://gitlab.com/group/subgroup/repo.git",
+      "https://gitlab.com/group/subgroup/repo/-/commit/",
+    ],
+    ["ssh://git@bitbucket.org/team/repo.git", "https://bitbucket.org/team/repo/commits/"],
+    ["https://gitee.com/team/repo.git", "https://gitee.com/team/repo/commit/"],
+    ["https://github.com/team/repo.git?x=1#fragment", "https://github.com/team/repo/commit/"],
+  ])("builds a full SHA link for %s", (fetch, expected) => {
+    expect(commitWebUrl({ remotes: [remote("origin", fetch)], upstream: null }, sha)).toBe(
+      expected + sha,
+    );
+  });
+  it("uses the upstream remote before origin", () => {
+    expect(commitWebUrl({ remotes: [origin, upstream], upstream: "upstream/main" }, sha)).toBe(
+      `https://github.com/team/repo/commit/${sha}`,
+    );
+  });
+  it("falls back to origin, then another remote", () => {
+    expect(commitWebUrl({ remotes: [upstream, origin], upstream: null }, sha)).toBe(
+      `https://github.com/me/repo/commit/${sha}`,
+    );
+    expect(commitWebUrl({ remotes: [upstream], upstream: null }, sha)).toBe(
+      `https://github.com/team/repo/commit/${sha}`,
+    );
+  });
+  it.each([
+    "https://gitlab.example.com/team/repo",
+    "https://github.com.example.com/team/repo",
+    "C:/repo",
+  ])("rejects unsupported remote %s", (fetch) => {
+    expect(commitWebUrl({ remotes: [remote("origin", fetch)], upstream: null }, sha)).toBeNull();
+  });
+  it("requires a remote and a full SHA", () => {
+    expect(commitWebUrl(null, sha)).toBeNull();
+    expect(commitWebUrl({ remotes: [], upstream: null }, sha)).toBeNull();
+    expect(commitWebUrl({ remotes: [origin], upstream: null }, "a7085d66")).toBeNull();
+  });
+});
 
 describe("remoteWebUrl", () => {
   it.each([

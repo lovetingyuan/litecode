@@ -95,7 +95,11 @@ export type QuickPick = {
   active?: string;
   items: { id: string; label: string; description?: string; run: () => unknown }[];
 };
+export type OpenTarget = { path: string; directory: boolean };
+export type WorkspaceOpenInfo = { path: string; trusted: boolean; alreadyOpen: boolean };
+export type WorkspaceTrustDecision = { root: string; trusted: boolean };
 export type Bootstrap = {
+  initialOpen?: OpenTarget | null;
   workspaceRestricted?: boolean;
   root: string | null;
   documents: Mirror[];

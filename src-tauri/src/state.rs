@@ -81,6 +81,7 @@ impl Mirror {
 
 #[derive(Default)]
 pub struct WindowState {
+    pub initial_open: Option<crate::launch::OpenTarget>,
     pub root: Option<PathBuf>,
     pub workspace_restricted: bool,
     pub formatter_trust: HashSet<(Option<PathBuf>, PathBuf)>,

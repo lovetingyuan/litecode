@@ -1,5 +1,35 @@
 import type { GitInfo } from "../types/types";
 
+export function commitWebUrl(
+  info: Pick<GitInfo, "remotes" | "upstream"> | null,
+  sha: string,
+): string | null {
+  const address = preferredRemoteUrl(info);
+  if (!address || !/^[a-f\d]{40}$/i.test(sha)) {
+    return null;
+  }
+  const url = new URL(address);
+  let path: string;
+  switch (url.hostname) {
+    case "github.com":
+    case "gitee.com":
+      path = "commit";
+      break;
+    case "gitlab.com":
+      path = "-/commit";
+      break;
+    case "bitbucket.org":
+      path = "commits";
+      break;
+    default:
+      return null;
+  }
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/${path}/${sha}`;
+  url.search = "";
+  url.hash = "";
+  return url.href;
+}
+
 export function remoteWebUrl(address: string | null): string | null {
   if (!address) {
     return null;

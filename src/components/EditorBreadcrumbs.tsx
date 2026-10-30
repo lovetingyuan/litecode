@@ -274,7 +274,7 @@ function BreadcrumbPicker({
     "--trees-icon-width-override": "18px",
     "--trees-item-row-gap-override": "5px",
     "--trees-padding-inline-override": "0px",
-    "--trees-git-ignored-color-override": "var(--git-ignored-foreground)",
+    "--trees-git-ignored-color-override": "var(--lc-git-ignored)",
   } as CSSProperties;
   return (
     <div className="breadcrumb-picker flex flex-col w-full min-h-0 py-[3px] px-0" aria-busy={busy}>
