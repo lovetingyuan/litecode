@@ -238,6 +238,15 @@ try {
   await page.locator(".editor-group").waitFor({ state: "attached" });
   await workspace(1000, 0);
   await open();
+  for (const query of ["*.ts", "Al*ph*a", "src\\*Alpha*.TS", "**"]) {
+    await fill(query.replaceAll("*", ""));
+    const expected = await page.locator(".quick-item").allTextContents();
+    const highlights = await page.locator(".quick-label mark").allTextContents();
+    await fill(query);
+    assert.ok(await page.locator(".quick-label").count(), `${query} returns files`);
+    assert.deepEqual(await page.locator(".quick-item").allTextContents(), expected);
+    assert.deepEqual(await page.locator(".quick-label mark").allTextContents(), highlights);
+  }
   await fill("Alpha");
   assert.equal(await page.locator(".quick-label").first().textContent(), "Alpha.ts");
   assert.deepEqual(await page.locator(".quick-label mark").allTextContents(), [
@@ -252,11 +261,12 @@ try {
     "",
     "Typing stays local",
   );
+  await fill("Al*ph*a");
   const scansBeforeTyping = await page.evaluate(() => window.__quickScans);
   await page.evaluate(() => {
     window.__workerMessages = [];
   });
-  await fill("Alpha:2:1");
+  await fill("Al*ph*a:2:1");
   assert.equal(
     await page.evaluate(() => window.__workerMessages.filter((m) => m.kind === "search").length),
     0,

@@ -143,9 +143,14 @@ pub fn remember(state: &AppState, path: &str) -> Result<()> {
 
 #[tauri::command]
 pub async fn bootstrap(window: WebviewWindow) -> Result<Bootstrap> {
+    let started = std::time::Instant::now();
     crate::state::blocking(window, move |window, state| {
+        crate::startup::mark("bootstrap-dispatched", started);
+        let started = std::time::Instant::now();
         state.cancel_git(window.label());
         let _disk = state.disk_lock.write_recover();
+        crate::startup::mark("bootstrap-disk-lock", started);
+        let started = std::time::Instant::now();
         state.terminals.close_window(window.label());
         state.replacement_plans.close_window(window.label());
         // A reloaded WebView cannot acknowledge its old Channels.
@@ -195,6 +200,8 @@ pub async fn bootstrap(window: WebviewWindow) -> Result<Bootstrap> {
                 }
             }
         }
+        crate::startup::mark("bootstrap-recovery", started);
+        let started = std::time::Instant::now();
         let root = state
             .windows
             .lock_recover()
@@ -211,6 +218,8 @@ pub async fn bootstrap(window: WebviewWindow) -> Result<Bootstrap> {
         {
             warnings.push(e.message);
         }
+        crate::startup::mark("bootstrap-watcher", started);
+        let started = std::time::Instant::now();
         let settings = crate::configuration::load_settings(
             &state.data_dir.join("settings.json"),
             root.as_deref(),
@@ -220,7 +229,7 @@ pub async fn bootstrap(window: WebviewWindow) -> Result<Bootstrap> {
         let w = windows
             .get(window.label())
             .ok_or_else(|| AppError::new("window", "Window is not initialized"))?;
-        Ok(Bootstrap {
+        let boot = Bootstrap {
             root: root.as_deref().map(visible_path),
             workspace_restricted: w.workspace_restricted,
             documents: w.documents.values().cloned().collect(),
@@ -230,7 +239,9 @@ pub async fn bootstrap(window: WebviewWindow) -> Result<Bootstrap> {
             keybindings: read_json(&state.data_dir.join("keybindings.json"), &mut warnings),
             warnings,
             data_dir: visible_path(&state.data_dir),
-        })
+        };
+        crate::startup::mark("bootstrap-settings", started);
+        Ok(boot)
     })
     .await
 }
@@ -586,6 +597,7 @@ pub async fn save_document(
     text: String,
     encoding: String,
     revision: Option<String>,
+    elevate: Option<bool>,
 ) -> Result<String> {
     crate::state::blocking(window, move |window, state| {
         let _disk = state.disk_lock.read_recover();
@@ -612,7 +624,24 @@ pub async fn save_document(
                 ));
             }
         }
-        let revision = files::save(&path, &text, &encoding, revision.as_deref())?;
+        let saved = files::save(&path, &text, &encoding, revision.as_deref());
+        #[cfg(windows)]
+        let saved = match saved {
+            Err(error) if error.code == "permissionDenied" => {
+                if elevate.unwrap_or(false) {
+                    crate::elevated_save::save(&path, &text, &encoding, revision.as_deref())
+                } else {
+                    Err(AppError::new(
+                        "elevationRequired",
+                        "Administrator permission is required. Save the file manually to continue.",
+                    ))
+                }
+            }
+            result => result,
+        };
+        #[cfg(not(windows))]
+        let _ = elevate;
+        let revision = saved?;
         if matches!(
             path.file_name().and_then(|s| s.to_str()),
             Some("settings.json" | "keybindings.json")

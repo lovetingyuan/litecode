@@ -1,3 +1,7 @@
+import searchStyles from "./SearchView.module.css";
+import { treeTheme } from "../styles/theme";
+import gitStyles from "../styles/git.module.css";
+import workbenchStyles from "../styles/workbench.module.css";
 import {
   useCallback,
   useEffect,
@@ -15,7 +19,7 @@ import { useApp, setApp, notify } from "../store/store";
 import { basename, scheduleBackup } from "../editor/documents";
 import { errorMessage } from "../core/bridge";
 import { openFolder } from "../core/commands";
-import { Icon, IconButton, FileIcon } from "./ui";
+import { actionButtonClass, Icon, IconButton, FileIcon } from "./ui";
 import { GitCommitDialog } from "./GitCommitDialog";
 import { PaneLayout } from "./EditorGrid";
 import {
@@ -69,14 +73,16 @@ function GitRemoteAddress({
   }
   const url = remoteWebUrl(address);
   return (
-    <div className="git-remote-address">
+    <div
+      className={`git-remote-address flex items-center gap-2 min-w-0 ${gitStyles["git-remote-address"]}`}
+    >
       <strong title={remote}>{remote}</strong>
       <code title={address} aria-label={`${kind} URL`}>
         {address}
       </code>
       <button
         type="button"
-        className="btn btn-xs"
+        className={`${actionButtonClass} compact`}
         aria-label={`Open ${remote} ${kind.toLowerCase()} URL`}
         disabled={!url}
         title={url ?? "No supported web address for this remote URL."}
@@ -262,10 +268,15 @@ export function GitView() {
       branches.map((b) => ({ id: b.name, label: b.name, description: b.upstream ?? undefined })),
     );
   return (
-    <section className="view search-view git-view" aria-label="Source Control">
-      <div className="view-title">
+    <section
+      className={`view flex flex-col h-full min-h-0 overflow-hidden search-view text-[15px] bg-widget text-foreground ${searchStyles["search-view"]} git-view min-h-0 overflow-hidden ${gitStyles["git-view"]}`}
+      aria-label="Source Control"
+    >
+      <div
+        className={`view-title h-[35px] min-h-[35px] flex items-center justify-between text-[11px] ${workbenchStyles["view-title"]}`}
+      >
         <span>Source Control</span>
-        <div className="actions">
+        <div className="actions flex items-center gap-[2px] shrink-0">
           <IconButton
             icon="refresh"
             label="Refresh Source Control"
@@ -283,7 +294,11 @@ export function GitView() {
         </div>
       </div>
       {repository && busy && ["fetch", "push", "pull", "pullRebase"].includes(busy) && (
-        <div className="git-operation-status" role="status" aria-live="polite">
+        <div
+          className="git-operation-status flex flex-wrap items-center justify-between gap-[0.5rem] py-[0.5rem] px-[1rem]"
+          role="status"
+          aria-live="polite"
+        >
           <span>
             {cancelling
               ? "Cancelling Git operation…"
@@ -291,7 +306,7 @@ export function GitView() {
           </span>
           <button
             type="button"
-            className="btn btn-xs"
+            className={`${actionButtonClass} compact`}
             disabled={cancelling}
             onClick={() => {
               setCancelling(true);
@@ -312,24 +327,28 @@ export function GitView() {
         </div>
       )}
       {!root ? (
-        <div className="git-empty">
+        <div
+          className={`git-empty py-[25px] px-[14px] text-center text-muted text-[12px] ${gitStyles["git-empty"]}`}
+        >
           <Icon name="source-control" />
           <p>Open a folder to use Source Control.</p>
-          <button className="btn btn-sm" onClick={() => void openFolder().catch(report)}>
+          <button className={actionButtonClass} onClick={() => void openFolder().catch(report)}>
             Open Folder
           </button>
         </div>
       ) : !repository ? (
-        <div className="git-empty">
+        <div
+          className={`git-empty py-[25px] px-[14px] text-center text-muted text-[12px] ${gitStyles["git-empty"]}`}
+        >
           <p>{git.root ? "No Git repository found." : "Discovering repositories…"}</p>
-          <button className="btn btn-sm" onClick={() => void refresh()}>
+          <button className={actionButtonClass} onClick={() => void refresh()}>
             Refresh
           </button>
         </div>
       ) : (
         <>
           <div
-            className="tabs tabs-border git-tabs"
+            className={`git-tabs flex shrink-0 min-h-8 py-0 px-[10px] border-b border-b-panel ${gitStyles["git-tabs"]}`}
             role="tablist"
             aria-label="Source Control tabs"
             onKeyDown={(e) => {
@@ -357,7 +376,6 @@ export function GitView() {
               <button
                 key={id}
                 id={`git-tab-${id}`}
-                className={`tab${tab === id ? " tab-active" : ""}`}
                 role="tab"
                 tabIndex={tab === id ? 0 : -1}
                 aria-selected={tab === id}
@@ -371,7 +389,10 @@ export function GitView() {
               </button>
             ))}
           </div>
-          <div className="git-branch-heading" title={repository.branch ?? repository.path}>
+          <div
+            className={`git-branch-heading flex items-center gap-[7px] min-w-0 text-[12px] ${gitStyles["git-branch-heading"]}`}
+            title={repository.branch ?? repository.path}
+          >
             <Icon name="git-branch" />
             <strong>
               {repository.branch ?? "No commits yet"}
@@ -379,46 +400,69 @@ export function GitView() {
             </strong>
             <span>{branchDifference(currentInfo, repository)}</span>
           </div>
-          <div className="git-sync-actions" aria-label="Git remote actions">
+          <div
+            className={`git-sync-actions flex flex-wrap gap-[5px] ${gitStyles["git-sync-actions"]}`}
+            aria-label="Git remote actions"
+          >
             <button
-              className="btn btn-xs"
+              className={`${actionButtonClass} compact`}
               aria-label="Fetch"
               aria-busy={busy === "fetch"}
               disabled={!!busy || !currentInfo}
               onClick={() => void sync("fetch").catch(report)}
             >
               <span className="git-sync-label">Fetch</span>
-              {busy === "fetch" && <span className="spinner" aria-hidden="true" />}
+              {busy === "fetch" && (
+                <span
+                  className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
+                  aria-hidden="true"
+                />
+              )}
             </button>
             <button
-              className="btn btn-xs"
+              className={`${actionButtonClass} compact`}
               aria-label="Pull"
               aria-busy={busy === "pull"}
               disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
               onClick={() => void sync("pull").catch(report)}
             >
               <span className="git-sync-label">Pull</span>
-              {busy === "pull" && <span className="spinner" aria-hidden="true" />}
+              {busy === "pull" && (
+                <span
+                  className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
+                  aria-hidden="true"
+                />
+              )}
             </button>
             <button
-              className="btn btn-xs"
+              className={`${actionButtonClass} compact`}
               aria-label="Pull (Rebase)"
               aria-busy={busy === "pullRebase"}
               disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
               onClick={() => void sync("pullRebase").catch(report)}
             >
               <span className="git-sync-label">Pull (Rebase)</span>
-              {busy === "pullRebase" && <span className="spinner" aria-hidden="true" />}
+              {busy === "pullRebase" && (
+                <span
+                  className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
+                  aria-hidden="true"
+                />
+              )}
             </button>
             <button
-              className="btn btn-xs"
+              className={`${actionButtonClass} compact`}
               aria-label="Push"
               aria-busy={busy === "push"}
               disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
               onClick={() => void sync("push").catch(report)}
             >
               <span className="git-sync-label">Push</span>
-              {busy === "push" && <span className="spinner" aria-hidden="true" />}
+              {busy === "push" && (
+                <span
+                  className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
+                  aria-hidden="true"
+                />
+              )}
             </button>
             <GitCommitDialog
               key={`${root}:${repository.path}`}
@@ -427,12 +471,14 @@ export function GitView() {
             />
           </div>
           {repository.operation && (
-            <div className="git-operation-banner">
+            <div
+              className={`git-operation-banner flex gap-2 items-center py-[7px] px-3 flex-wrap text-[12px] bg-warning-background ${gitStyles["git-operation-banner"]}`}
+            >
               <span>{repository.operation} in progress</span>
               {repository.operation !== "other" && (
-                <div className="actions">
+                <div className="actions flex items-center gap-[2px] shrink-0">
                   <button
-                    className="btn btn-xs"
+                    className={`${actionButtonClass} compact`}
                     disabled={!!busy}
                     onClick={() =>
                       void runGitOperation(repository.path, {
@@ -443,7 +489,7 @@ export function GitView() {
                     Continue
                   </button>
                   <button
-                    className="btn btn-xs"
+                    className={`${actionButtonClass} compact`}
                     disabled={!!busy}
                     onClick={() =>
                       void runGitOperation(repository.path, {
@@ -462,7 +508,7 @@ export function GitView() {
               id="git-panel-changes"
               role="tabpanel"
               aria-labelledby="git-tab-changes"
-              className="git-panel-content"
+              className="git-panel-content overflow-auto flex-1 min-h-0 pb-[18px]"
             >
               <GitChangePanes
                 key={repository.path}
@@ -476,19 +522,26 @@ export function GitView() {
               id="git-panel-info"
               role="tabpanel"
               aria-labelledby="git-tab-info"
-              className="git-panel-content git-info"
+              className={`git-panel-content overflow-auto flex-1 min-h-0 pb-[18px] git-info text-[12px] ${gitStyles["git-info"]}`}
             >
               <h3>Remotes</h3>
-              {info?.remotes.length === 0 && <p className="muted">No remotes configured.</p>}
+              {info?.remotes.length === 0 && (
+                <p className="muted text-muted">No remotes configured.</p>
+              )}
               {info?.remotes.map((r) => (
-                <div key={r.name} className="git-info-field">
+                <div
+                  key={r.name}
+                  className={`git-info-field flex flex-col gap-[3px] ${gitStyles["git-info-field"]}`}
+                >
                   <GitRemoteAddress remote={r.name} kind="Fetch" address={r.fetch} />
                   {r.push !== r.fetch && (
                     <GitRemoteAddress remote={r.name} kind="Push" address={r.push} />
                   )}
                 </div>
               ))}
-              <div className="git-section-heading">
+              <div
+                className={`git-section-heading flex shrink-0 items-center min-h-7 bg-widget ${gitStyles["git-section-heading"]}`}
+              >
                 <h3>Branches</h3>
                 <IconButton
                   icon="add"
@@ -498,7 +551,7 @@ export function GitView() {
                 />
               </div>
               {!info && (
-                <p className="muted" role="status">
+                <p className="muted text-muted" role="status">
                   Loading branches…
                 </p>
               )}
@@ -508,7 +561,10 @@ export function GitView() {
                 const switchToBranch = () =>
                   branchAction(() => switchBranch(repository.path, b, chooseBranch));
                 return (
-                  <div key={`${b.remote}:${b.name}`} className="git-branch-row">
+                  <div
+                    key={`${b.remote}:${b.name}`}
+                    className={`git-branch-row flex items-center gap-[5px] min-h-[29px] ${gitStyles["git-branch-row"]}`}
+                  >
                     <button
                       title={b.name}
                       aria-label={b.name}
@@ -520,7 +576,9 @@ export function GitView() {
                       <span>{b.name}</span>
                       {b.worktree && <small>worktree</small>}
                     </button>
-                    <div className="git-branch-actions">
+                    <div
+                      className={`git-branch-actions flex items-center shrink-0 gap-[1px] opacity-[0] pointer-events-none ${gitStyles["git-branch-actions"]}`}
+                    >
                       <IconButton
                         icon="add"
                         label={`Create Branch from ${b.name}`}
@@ -556,7 +614,10 @@ export function GitView() {
         </>
       )}
       {git.warnings.length > 0 && (
-        <button className="inline-warning" onClick={() => notify(git.warnings.join("\n"))}>
+        <button
+          className={`inline-warning py-[5px] px-[18px] leading-[18px] m-0 text-[12px] text-warning ${workbenchStyles["inline-warning"]}`}
+          onClick={() => notify(git.warnings.join("\n"))}
+        >
           {git.warnings.length} Git warning(s)
         </button>
       )}
@@ -616,7 +677,7 @@ function GitChangePanes({
   return (
     <div
       ref={host}
-      className="git-change-panes"
+      className={`git-change-panes flex-1 min-h-0 ${gitStyles["git-change-panes"]}`}
       style={{ "--git-panes-min-height": `${minimum}px` } as CSSProperties}
     >
       {panes.length ? (
@@ -655,7 +716,9 @@ function GitChangePanes({
           ))}
         </PaneLayout>
       ) : (
-        <div className="git-empty">
+        <div
+          className={`git-empty py-[25px] px-[14px] text-center text-muted text-[12px] ${gitStyles["git-empty"]}`}
+        >
           <Icon name="check" />
           <p>No changes.</p>
         </div>
@@ -697,14 +760,25 @@ function GitChangeSection({
         : { kind: action, paths: changePaths(files) },
     ).catch(report);
   return (
-    <section className="git-change-section" aria-label={title}>
-      <div className="git-section-heading">
-        <button className="git-section-toggle" aria-expanded={expanded} onClick={onToggle}>
+    <section
+      className={`git-change-section flex flex-col min-h-7 h-full overflow-hidden ${gitStyles["git-change-section"]}`}
+      aria-label={title}
+    >
+      <div
+        className={`git-section-heading flex shrink-0 items-center min-h-7 bg-widget ${gitStyles["git-section-heading"]}`}
+      >
+        <button
+          className={`git-section-toggle flex items-center gap-[5px] flex-1 min-w-0 text-left h-7 text-[12px] font-semibold ${gitStyles["git-section-toggle"]}`}
+          aria-expanded={expanded}
+          onClick={onToggle}
+        >
           <Icon name={expanded ? "chevron-down" : "chevron-right"} />
           <span>{title}</span>
-          <span className="git-count">{changes.length}</span>
+          <span className="git-count text-[11px] rounded-[10px] bg-badge py-0 px-[6px] min-w-[19px] text-center font-normal">
+            {changes.length}
+          </span>
         </button>
-        <div className="actions">
+        <div className="actions flex items-center gap-[2px] shrink-0">
           {kind !== "conflicts" && !staged && (
             <IconButton
               icon="discard"
@@ -759,7 +833,10 @@ function FileActions({
   run,
 }: Omit<ChangesProps, "changes"> & { change: GitChange }) {
   return (
-    <div className="actions git-file-actions" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="actions flex items-center gap-[2px] shrink-0 git-file-actions"
+      onClick={(e) => e.stopPropagation()}
+    >
       <IconButton
         icon="go-to-file"
         label={`Open Source ${change.path}`}
@@ -805,7 +882,7 @@ function GitChangesList(props: ChangesProps) {
   return (
     <div
       ref={host}
-      className="git-changes-list"
+      className={`git-changes-list flex-1 relative overflow-auto min-h-[26px] outline-none ${gitStyles["git-changes-list"]}`}
       role="listbox"
       aria-label={`${kind} files`}
       tabIndex={0}
@@ -835,7 +912,7 @@ function GitChangesList(props: ChangesProps) {
         }
       }}
     >
-      <div style={{ position: "relative", height: changes.length * 26 }}>
+      <div className="relative" style={{ height: changes.length * 26 }}>
         {changes.slice(range.first, range.end).map((change, offset) => {
           const index = range.first + offset;
           const status =
@@ -848,7 +925,7 @@ function GitChangesList(props: ChangesProps) {
             <div
               key={change.path}
               id={`git-${kind}-row-${index}`}
-              className={`git-file-row${selected === index ? " selected" : ""}`}
+              className={`git-file-row absolute left-0 right-0 flex items-center gap-[6px] h-[26px] cursor-pointer text-[13px] ${gitStyles["git-file-row"]}${selected === index ? " selected" : ""}`}
               role="option"
               aria-selected={selected === index}
               aria-label={change.path}
@@ -865,16 +942,22 @@ function GitChangesList(props: ChangesProps) {
               }
             >
               <FileIcon language={languageFor(change.path)} />
-              <span className={`git-file-name${status === "D" ? " deleted" : ""}`}>
+              <span
+                className={`git-file-name shrink-0 max-w-[70%] overflow-hidden text-ellipsis whitespace-nowrap ${gitStyles["git-file-name"]}${status === "D" ? " deleted" : ""}`}
+              >
                 {basename(change.path)}
               </span>
-              <span className="git-file-directory">
+              <span className="git-file-directory flex-1 text-muted text-[11px] overflow-hidden text-ellipsis whitespace-nowrap">
                 {change.path.includes("/")
                   ? change.path.slice(0, change.path.lastIndexOf("/"))
                   : ""}
               </span>
               <FileActions {...props} change={change} />
-              <span className={`git-status git-status-${status}`}>{status}</span>
+              <span
+                className={`git-status ml-auto shrink-0 w-3 text-[12px] text-center git-status-${status} ${status === "M" || status === "R" ? "text-git-modified" : status === "A" || status === "U" ? "text-git-added" : status === "D" || status === "!" ? "text-git-deleted" : ""}`}
+              >
+                {status}
+              </span>
             </div>
           );
         })}
@@ -934,27 +1017,14 @@ function GitChangesTree(
     }
   }
   return (
-    <div className="git-tree-group">
+    <div className="git-tree-group flex-1 flex flex-col min-h-[26px]">
       <FileTree
         model={model}
-        className="git-file-tree"
+        className="git-file-tree flex-1 block min-h-[26px]"
         aria-label={`${kind} tree`}
         style={
           {
-            ...themeToTreeStyles({
-              colors: {
-                "sideBar.background": "#181818",
-                "sideBar.foreground": "#cccccc",
-                "list.activeSelectionBackground": "#04395e",
-                "list.hoverBackground": "#2a2d2e",
-                focusBorder: "#0078d4",
-                "gitDecoration.modifiedResourceForeground": "#e2c08d",
-                "gitDecoration.untrackedResourceForeground": "#73c991",
-                "gitDecoration.addedResourceForeground": "#73c991",
-                "gitDecoration.deletedResourceForeground": "#f48771",
-                "gitDecoration.renamedResourceForeground": "#73c991",
-              },
-            }),
+            ...themeToTreeStyles(treeTheme),
             "--trees-font-family-override": '"Segoe UI", sans-serif',
             "--trees-font-size-override": "13px",
           } as CSSProperties
@@ -969,11 +1039,13 @@ function GitChangesTree(
         }}
       />
       {selectedFiles.length > 0 && (
-        <div className="git-tree-selection-actions">
+        <div
+          className={`git-tree-selection-actions flex shrink-0 items-center gap-[5px] py-[2px] px-2 text-[11px] text-muted ${gitStyles["git-tree-selection-actions"]}`}
+        >
           <span className="truncate" title={selected}>
             {selected}
           </span>
-          <div className="actions">
+          <div className="actions flex items-center gap-[2px] shrink-0">
             {selectedFiles.length === 1 && !selected.endsWith("/") && (
               <IconButton
                 icon="go-to-file"

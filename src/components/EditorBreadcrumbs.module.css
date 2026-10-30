@@ -1,0 +1,18 @@
+.breadcrumbs button[data-popup-open] {
+  color: var(--lc-foreground-strong);
+  background: var(--lc-overlay-subtle);
+}
+.breadcrumbs button:focus-visible {
+  outline: 1px solid var(--lc-focus);
+  outline-offset: -1px;
+}
+.breadcrumb-popup {
+  box-shadow: 0 4px 14px var(--lc-shadow-popup);
+}
+.breadcrumb-message {
+  overflow-wrap: anywhere;
+}
+.breadcrumb-message button {
+  margin-left: 8px;
+  color: var(--lc-link);
+}

@@ -1,3 +1,5 @@
+import searchStyles from "./SearchView.module.css";
+import workbenchStyles from "../styles/workbench.module.css";
 import {
   Fragment,
   useEffect,
@@ -44,7 +46,7 @@ export function SearchView() {
   }, []);
   return (
     <section
-      className="view search-view"
+      className={`view flex flex-col h-full min-h-0 overflow-hidden search-view text-[15px] bg-widget text-foreground ${searchStyles["search-view"]}`}
       aria-label="Search"
       style={{ "--search-result-height": `${resultHeight}px` } as CSSProperties}
     >
@@ -84,12 +86,14 @@ function SearchTabs() {
     return null;
   }
   return (
-    <div className="search-tabs-toolbar">
+    <div
+      className={`search-tabs-toolbar relative shrink-0 min-w-0 border-b border-b-selection-inactive ${searchStyles["search-tabs-toolbar"]}`}
+    >
       <div
         ref={tabs}
         role="tablist"
         aria-label="Search tabs"
-        className="tabs search-tabs"
+        className={`search-tabs ${searchStyles["search-tabs"]}`}
         onKeyDown={(event) => {
           const index = sessions.findIndex((session) => session.id === activeId);
           const next =
@@ -122,7 +126,6 @@ function SearchTabs() {
                 id={`search-tab-${session.id}`}
                 role="tab"
                 type="button"
-                className={`tab${session.id === activeId ? " tab-active" : ""}`}
                 aria-selected={session.id === activeId}
                 aria-controls={`search-panel-${session.id}`}
                 tabIndex={session.id === activeId ? 0 : -1}
@@ -331,10 +334,15 @@ function SearchPanel({ id }: { id: string }) {
   const first = Math.max(0, Math.floor(scroll / resultHeight) - 5);
   const visible = rows.slice(first, first + Math.ceil(height / resultHeight) + 12);
   return (
-    <div className="view search-panel" hidden={!active}>
-      <div className="view-title">
+    <div
+      className={`view flex flex-col h-full min-h-0 overflow-hidden search-panel flex flex-col flex-1 min-h-0 min-w-0 ${searchStyles["search-panel"]}`}
+      hidden={!active}
+    >
+      <div
+        className={`view-title h-[35px] min-h-[35px] flex items-center justify-between text-[11px] ${workbenchStyles["view-title"]}`}
+      >
         <span>Search</span>
-        <div className="actions">
+        <div className="actions flex items-center gap-[2px] shrink-0">
           {id === primarySearchId && replacementPhase === "planning" && (
             <IconButton
               icon="search-stop"
@@ -373,7 +381,7 @@ function SearchPanel({ id }: { id: string }) {
       </div>
       {active && <SearchTabs />}
       <div
-        className="search-panel-content"
+        className="search-panel-content flex flex-col flex-1 min-h-0 min-w-0"
         id={`search-panel-${id}`}
         role="tabpanel"
         aria-labelledby={multiple ? `search-tab-${id}` : undefined}
@@ -383,7 +391,7 @@ function SearchPanel({ id }: { id: string }) {
           <div className="search-inputs">
             {id === primarySearchId && (
               <IconButton
-                className="icon-button search-replace-toggle"
+                className="icon-button w-6 h-6 p-1 inline-flex items-center justify-center search-replace-toggle"
                 icon={replace ? "chevron-down" : "chevron-right"}
                 label="Toggle Replace"
                 aria-expanded={replace}
@@ -396,7 +404,7 @@ function SearchPanel({ id }: { id: string }) {
                 <textarea
                   ref={input}
                   value={query.text}
-                  rows={Math.min(6, query.text.split("\n").length)}
+                  rows={1}
                   placeholder="Search"
                   aria-label="Search text"
                   onChange={(e) => update({ text: e.target.value })}
@@ -421,23 +429,23 @@ function SearchPanel({ id }: { id: string }) {
                     }
                   }}
                 />
-                <div className="actions">
+                <div className="actions flex items-center gap-[2px] shrink-0">
                   <IconButton
-                    className={`icon-button option${query.caseSensitive ? " active" : ""}`}
+                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.caseSensitive ? " active" : ""}`}
                     icon="case-sensitive"
                     label="Match Case (Alt+C)"
                     aria-pressed={query.caseSensitive}
                     onClick={() => update({ caseSensitive: !query.caseSensitive })}
                   />
                   <IconButton
-                    className={`icon-button option${query.wholeWord ? " active" : ""}`}
+                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.wholeWord ? " active" : ""}`}
                     icon="whole-word"
                     label="Match Whole Word (Alt+W)"
                     aria-pressed={query.wholeWord}
                     onClick={() => update({ wholeWord: !query.wholeWord })}
                   />
                   <IconButton
-                    className={`icon-button option${query.regex ? " active" : ""}`}
+                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.regex ? " active" : ""}`}
                     icon="regex"
                     label="Use Regular Expression (Alt+R)"
                     aria-pressed={query.regex}
@@ -456,7 +464,7 @@ function SearchPanel({ id }: { id: string }) {
                     onChange={(e) => setReplacement(e.target.value)}
                   />
                   <IconButton
-                    className={`icon-button option${preserve ? " active" : ""}`}
+                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${preserve ? " active" : ""}`}
                     icon="preserve-case"
                     label="Preserve Case"
                     aria-pressed={preserve}
@@ -464,7 +472,7 @@ function SearchPanel({ id }: { id: string }) {
                   />
                 </div>
                 <IconButton
-                  className="icon-button search-replace-all"
+                  className="icon-button w-6 h-6 p-1 inline-flex items-center justify-center search-replace-all"
                   icon="replace-all"
                   label="Replace All"
                   disabled={!results.length || !!replacementPhase}
@@ -492,16 +500,16 @@ function SearchPanel({ id }: { id: string }) {
                   onChange={(e) => update({ include: e.target.value })}
                   placeholder="e.g. *.ts, src/**/include"
                 />
-                <div className="actions">
+                <div className="actions flex items-center gap-[2px] shrink-0">
                   <IconButton
-                    className={`icon-button option${query.changedOnly ? " active" : ""}`}
+                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.changedOnly ? " active" : ""}`}
                     icon="edit-code"
                     label="Search only Changed Files"
                     aria-pressed={query.changedOnly}
                     onClick={() => update({ changedOnly: !query.changedOnly })}
                   />
                   <IconButton
-                    className={`icon-button option${query.openOnly ? " active" : ""}`}
+                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.openOnly ? " active" : ""}`}
                     icon="book"
                     label="Search only in Open Editors"
                     aria-pressed={query.openOnly}
@@ -516,9 +524,9 @@ function SearchPanel({ id }: { id: string }) {
                   value={query.exclude}
                   onChange={(e) => update({ exclude: e.target.value })}
                 />
-                <div className="actions">
+                <div className="actions flex items-center gap-[2px] shrink-0">
                   <IconButton
-                    className={`icon-button option${query.useIgnore ? " active" : ""}`}
+                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.useIgnore ? " active" : ""}`}
                     icon="exclude"
                     label="Use Exclude Settings and Ignore Files"
                     aria-pressed={query.useIgnore}
@@ -543,12 +551,18 @@ function SearchPanel({ id }: { id: string }) {
                 : "Search across files in your workspace."}
         </div>
         {limited && (
-          <p className="inline-warning">
+          <p
+            className={`inline-warning py-[5px] px-[18px] leading-[18px] m-0 text-[12px] text-warning ${workbenchStyles["inline-warning"]}`}
+          >
             Results capped at 20,000. Refine your search. Files over 20 MiB are excluded.
           </p>
         )}
         {errors.map((e, i) => (
-          <p key={i} className="inline-error" role="alert">
+          <p
+            key={i}
+            className={`inline-error py-[5px] px-[18px] leading-[18px] m-0 text-[12px] text-git-deleted ${workbenchStyles["inline-error"]}`}
+            role="alert"
+          >
             {e}
           </p>
         ))}
@@ -611,7 +625,7 @@ function SearchPanel({ id }: { id: string }) {
             }
           }}
         >
-          <div style={{ height: contentHeight, position: "relative" }}>
+          <div className="relative" style={{ height: contentHeight }}>
             {visible.map((row, offset) => (
               <div
                 role="treeitem"
@@ -664,7 +678,7 @@ function SearchPanel({ id }: { id: string }) {
                       {row.name}
                     </span>
                     {listMode && (
-                      <span className="muted result-path" title={relative(row.path)}>
+                      <span className="muted text-muted result-path" title={relative(row.path)}>
                         {relative(row.path).split(/[\\/]/).slice(0, -1).join("\\")}
                       </span>
                     )}
@@ -711,7 +725,7 @@ function SearchPanel({ id }: { id: string }) {
         </div>
         {menu && (
           <div
-            className="context-menu floating-menu"
+            className={`context-menu bg-editor text-foreground p-1 border border-strong rounded-[5px] min-w-[210px] z-[90] ${workbenchStyles["context-menu"]} floating-menu fixed`}
             role="menu"
             style={{
               left: Math.min(menu.x, window.innerWidth - 230),

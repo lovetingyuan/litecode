@@ -1,3 +1,6 @@
+import editorStyles from "./EditorGroup.module.css";
+import workbenchStyles from "../styles/workbench.module.css";
+import terminalStyles from "../styles/terminal.module.css";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { Popover } from "@base-ui/react/popover";
@@ -42,15 +45,20 @@ import { GitLineStatus } from "./GitLineStatus";
 import { useExternalDrop } from "../hooks/useExternalDrop";
 import { recoverInterruptedReplacements } from "../search/replacements";
 import { changeIndent, changeEncoding, changeEol } from "../editor/editorStatus";
+import { startupMark, startupStep } from "../core/startup";
 const TerminalView = lazy(() => import("./TerminalView"));
 const GitView = lazy(() => import("./GitView").then((module) => ({ default: module.GitView })));
 
 let startup: Promise<void> | undefined;
 function start() {
   return (startup ??= (async () => {
-    await initializeEditor();
-    initializeLanguages();
-    const boot = await bootstrap();
+    // Recovery/settings I/O and editor service initialization are independent.
+    const [, boot] = await Promise.all([
+      startupStep("editor-initialized", initializeEditor),
+      startupStep("bootstrap", bootstrap),
+    ]);
+    await startupStep("languages-initialized", initializeLanguages);
+    const restoreStarted = performance.now();
     if (boot.root) {
       rememberWorkspaceTrust(boot.root, boot.workspaceRestricted === true);
     }
@@ -133,13 +141,14 @@ function start() {
       historyIndex: session.historyIndex ?? -1,
     });
     scheduleBackup();
+    startupMark("session-restored", performance.now() - restoreStarted);
     if (boot.warnings.length) {
       notify(boot.warnings.join("\n"));
     }
     if (boot.root) {
-      await refreshTree();
+      await startupStep("explorer-refreshed", refreshTree);
     }
-    await refreshDocuments();
+    await startupStep("documents-refreshed", refreshDocuments);
     if (desktop) {
       void recoverInterruptedReplacements().catch((error) => notify(errorMessage(error)));
     }
@@ -155,9 +164,18 @@ export default function App() {
   useExternalDrop(s.ready);
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
   useEffect(() => {
+    startupMark("react-mounted");
     void start().catch((e) => setFatal(errorMessage(e)));
     return installKeys();
   }, []);
+  useEffect(() => {
+    if (s.ready) {
+      const frame = requestAnimationFrame(() => {
+        requestAnimationFrame(() => startupMark("workbench-painted"));
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [s.ready]);
   useEffect(() => {
     if (!s.ready) {
       return;
@@ -313,18 +331,29 @@ export default function App() {
   }
   return (
     <>
-      <div className="workbench" inert={locked}>
-        <header className="titlebar" data-tauri-drag-region>
-          <div className="app-mark">
+      <div className="workbench relative h-full flex flex-col overflow-hidden" inert={locked}>
+        <header
+          className={`titlebar h-[35px] min-h-[35px] bg-sidebar border-b border-b-panel flex items-center relative select-none ${workbenchStyles["titlebar"]}`}
+          data-tauri-drag-region
+        >
+          <div
+            className={`app-mark w-10 flex justify-center text-link ${workbenchStyles["app-mark"]}`}
+          >
             <img src="/litecode.svg" alt="LiteCode" width={32} height={32} draggable={false} />
           </div>
-          <nav className="menubar" aria-label="Application menu" inert={openingWorkspace}>
+          <nav
+            className={`menubar flex h-full items-center z-[2] ${workbenchStyles["menubar"]}`}
+            aria-label="Application menu"
+            inert={openingWorkspace}
+          >
             {["File", "Edit", "Selection", "View", "Go", "Help"].map((menu) => (
               <Menu.Root key={menu}>
                 <Menu.Trigger>{menu}</Menu.Trigger>
                 <Menu.Portal>
                   <Menu.Positioner className="z-90" side="bottom" align="start" sideOffset={0}>
-                    <Menu.Popup className="context-menu application-menu">
+                    <Menu.Popup
+                      className={`context-menu bg-editor text-foreground p-1 border border-strong rounded-[5px] min-w-[210px] z-[90] ${workbenchStyles["context-menu"]} application-menu min-w-75`}
+                    >
                       {commands
                         .filter((c) => c.menu === menu)
                         .map((c) => (
@@ -339,11 +368,17 @@ export default function App() {
               </Menu.Root>
             ))}
           </nav>
-          <div className="title-center" data-tauri-drag-region />
-          <div className="title-updates" inert={openingWorkspace}>
+          <div
+            className={`title-center absolute left-[50%] w-[40%] max-w-150 flex items-center gap-1 h-full justify-center ${workbenchStyles["title-center"]}`}
+            data-tauri-drag-region
+          />
+          <div className="title-updates ml-auto mr-2" inert={openingWorkspace}>
             <UpdateButton />
           </div>
-          <div className="title-layout" inert={openingWorkspace}>
+          <div
+            className={`title-layout ml-0 flex mr-2 ${workbenchStyles["title-layout"]}`}
+            inert={openingWorkspace}
+          >
             <IconButton
               icon="arrow-left"
               label="Go Back (Alt+Left)"
@@ -378,7 +413,7 @@ export default function App() {
               }
             />
           </div>
-          <div className="window-controls">
+          <div className={`window-controls flex h-full ${workbenchStyles["window-controls"]}`}>
             <button aria-label="Minimize" onClick={() => windowAction("minimize")}>
               <Icon name="chrome-minimize" />
             </button>
@@ -397,8 +432,15 @@ export default function App() {
             </button>
           </div>
         </header>
-        <div className="workbench-body" inert={openingWorkspace} aria-busy={openingWorkspace}>
-          <nav className="activitybar" aria-label="Views">
+        <div
+          className="workbench-body flex flex-1 min-h-0 relative"
+          inert={openingWorkspace}
+          aria-busy={openingWorkspace}
+        >
+          <nav
+            className={`activitybar w-12 bg-sidebar border-r border-r-panel flex flex-col justify-between shrink-0 ${workbenchStyles["activitybar"]}`}
+            aria-label="Views"
+          >
             <div>
               <button
                 className={s.view === "editor" && s.sidebar === "explorer" ? "active" : ""}
@@ -456,18 +498,35 @@ export default function App() {
           {s.ready && (
             <WorkbenchLayout
               sidebar={
-                <aside className="sidebar">
-                  <div className="sidebar-view" hidden={s.sidebar !== "explorer"}>
+                <aside className="sidebar bg-sidebar shrink-0 flex-col overflow-hidden border-r border-r-panel">
+                  <div
+                    className={`sidebar-view ${workbenchStyles["sidebar-view"]}`}
+                    hidden={s.sidebar !== "explorer"}
+                  >
                     <Explorer
                       openFolder={() => void openFolder().catch((e) => notify(errorMessage(e)))}
                     />
                   </div>
-                  <div className="sidebar-view" hidden={s.sidebar !== "search"}>
+                  <div
+                    className={`sidebar-view ${workbenchStyles["sidebar-view"]}`}
+                    hidden={s.sidebar !== "search"}
+                  >
                     <SearchView />
                   </div>
-                  <div className="sidebar-view" hidden={s.sidebar !== "git"}>
+                  <div
+                    className={`sidebar-view ${workbenchStyles["sidebar-view"]}`}
+                    hidden={s.sidebar !== "git"}
+                  >
                     {s.sidebar === "git" && (
-                      <Suspense fallback={<div className="startup">Loading Source Control…</div>}>
+                      <Suspense
+                        fallback={
+                          <div
+                            className={`startup flex-1 flex items-center justify-center flex-col p-10 ${workbenchStyles["startup"]}`}
+                          >
+                            Loading Source Control…
+                          </div>
+                        }
+                      >
                         <GitView />
                       </Suspense>
                     )}
@@ -475,9 +534,12 @@ export default function App() {
                 </aside>
               }
             >
-              <main className="editors" aria-label="Editors">
+              <main
+                className={`editors relative flex-1 flex min-w-0 overflow-hidden ${workbenchStyles["editors"]}`}
+                aria-label="Editors"
+              >
                 <div
-                  className={`editor-groups${showWelcome ? " welcome-hidden" : ""}${s.view === "terminal" ? " workbench-editor-hidden" : ""}`}
+                  className={`editor-groups flex flex-1 min-w-0 overflow-hidden ${editorStyles["editor-groups"]}${showWelcome ? " welcome-hidden" : ""}${s.view === "terminal" ? ` workbench-editor-hidden ${terminalStyles["workbench-editor-hidden"]}` : ""}`}
                   inert={showWelcome || s.view === "terminal"}
                   aria-hidden={showWelcome || s.view === "terminal" || undefined}
                 >
@@ -485,7 +547,15 @@ export default function App() {
                 </div>
                 {showWelcome && s.view === "editor" && <WelcomePage />}
                 {s.view === "terminal" && (
-                  <Suspense fallback={<div className="startup">Starting terminal…</div>}>
+                  <Suspense
+                    fallback={
+                      <div
+                        className={`startup flex-1 flex items-center justify-center flex-col p-10 ${workbenchStyles["startup"]}`}
+                      >
+                        Starting terminal…
+                      </div>
+                    }
+                  >
                     <TerminalView />
                   </Suspense>
                 )}
@@ -493,7 +563,10 @@ export default function App() {
             </WorkbenchLayout>
           )}
           {!s.ready && (
-            <div className="startup" role="status">
+            <div
+              className={`startup flex-1 flex items-center justify-center flex-col p-10 ${workbenchStyles["startup"]}`}
+              role="status"
+            >
               {fatal ? (
                 <>
                   <Icon name="error" />
@@ -502,7 +575,9 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <span className="spinner" />
+                  <span
+                    className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
+                  />
                   <p>Starting editor services…</p>
                 </>
               )}
@@ -510,23 +585,40 @@ export default function App() {
           )}
         </div>
         {openingWorkspace && (
-          <div className="workspace-opening startup" role="status" aria-live="polite">
-            <span className="spinner" aria-hidden="true" />
+          <div
+            className={`workspace-opening absolute inset-[35px_0_22px] z-[100] bg-editor gap-3 ${workbenchStyles["workspace-opening"]} startup flex-1 flex items-center justify-center flex-col p-10 ${workbenchStyles["startup"]}`}
+            role="status"
+            aria-live="polite"
+          >
+            <span
+              className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
+              aria-hidden="true"
+            />
             <p>Opening folder…</p>
             {s.openingWorkspace && (
-              <p className="workspace-opening-path">{pathTitle(s.openingWorkspace)}</p>
+              <p
+                className={`workspace-opening-path max-w-full text-center text-subtle ${workbenchStyles["workspace-opening-path"]}`}
+              >
+                {pathTitle(s.openingWorkspace)}
+              </p>
             )}
           </div>
         )}
-        <footer className="statusbar" inert={openingWorkspace}>
-          <div className="status-left">
-            <span className="remote-indicator" title="Local window">
+        <footer
+          className={`statusbar h-[22px] min-h-[22px] flex justify-between bg-sidebar border-t border-t-panel text-[12px] select-none ${workbenchStyles["statusbar"]}`}
+          inert={openingWorkspace}
+        >
+          <div className="status-left flex items-stretch min-w-0">
+            <span
+              className={`remote-indicator flex items-center text-foreground-strong px-[10px] mr-[5px] ${import.meta.env.DEV ? "bg-remote-development" : "bg-button"}`}
+              title={import.meta.env.DEV ? "Local window (Development)" : "Local window"}
+            >
               <Icon name="remote" />
             </span>
             {s.root && (
               <Popover.Root key={s.root}>
                 <Popover.Trigger
-                  className="workspace-status"
+                  className={`workspace-status ${workbenchStyles["workspace-status"]}`}
                   title={rootName}
                   aria-label={`Project Folder: ${rootName}`}
                 >
@@ -542,11 +634,15 @@ export default function App() {
                     collisionPadding={8}
                   >
                     <Popover.Popup
-                      className="workspace-popup"
+                      className={`workspace-popup flex items-start gap-3 w-[max-content] max-w-[min(560px,_calc(100vw_-_16px),_var(--available-width))] max-h-[var(--available-height)] overflow-y-auto p-2 bg-widget text-foreground border border-strong rounded-[4px] ${workbenchStyles["workspace-popup"]}`}
                       aria-label="Project folder"
                       initialFocus={false}
                     >
-                      <span className="workspace-path">{pathTitle(s.root)}</span>
+                      <span
+                        className={`workspace-path flex-1 min-w-0 py-[3px] px-0 leading-[18px] select-text ${workbenchStyles["workspace-path"]}`}
+                      >
+                        {pathTitle(s.root)}
+                      </span>
                       <Popover.Close
                         render={
                           <IconButton
@@ -568,7 +664,7 @@ export default function App() {
             {s.gitState.branch && (
               <button
                 type="button"
-                className="status-item"
+                className={`status-item ${workbenchStyles["status-item"]}`}
                 title="Current Git branch"
                 aria-label={`Show Git Repository: ${s.gitState.branch}`}
                 onClick={() => {
@@ -590,7 +686,9 @@ export default function App() {
               {diagnostics.warnings}
             </button>
           </div>
-          <div className="status-right">
+          <div
+            className={`status-right flex items-stretch min-w-0 ${workbenchStyles["status-right"]}`}
+          >
             <GitLineStatus
               doc={s.view === "editor" && doc && isTextView(doc, group) ? doc : undefined}
             />
@@ -614,7 +712,10 @@ export default function App() {
               <MediaStatus doc={doc} group={group} />
             )}
             {s.searchSessions.some((search) => search.searching) && <span>Searching…</span>}
-            <span className="status-item" title={s.languageStatus}>
+            <span
+              className={`status-item ${workbenchStyles["status-item"]}`}
+              title={s.languageStatus}
+            >
               <Icon name="check" />
             </span>
             <button
@@ -627,7 +728,10 @@ export default function App() {
           </div>
         </footer>
         {s.notice && (
-          <div className="notification" role="status">
+          <div
+            className={`notification fixed right-[18px] bottom-[38px] w-105 max-w-[calc(100vw_-_36px)] bg-widget border border-strong rounded-[5px] z-[100] flex items-start p-3 gap-[9px] ${workbenchStyles["notification"]}`}
+            role="status"
+          >
             <Icon name="info" />
             <p>
               {s.notice}

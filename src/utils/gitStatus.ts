@@ -110,6 +110,10 @@ export function gitConflictDecoration(
   entries: readonly GitEntry[],
 ) {
   return isGitConflicted(path, root, treeRoot, entries)
-    ? { text: "!", title: "Git: Unmerged changes", parts: [{ text: "!", color: "#e4676b" }] }
+    ? {
+        text: "!",
+        title: "Git: Unmerged changes",
+        parts: [{ text: "!", color: "var(--lc-git-conflict)" }],
+      }
     : null;
 }

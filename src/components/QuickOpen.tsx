@@ -1,3 +1,4 @@
+import quickStyles from "./QuickOpen.module.css";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { useApp, setApp, notify, searchSession } from "../store/store";
@@ -425,8 +426,11 @@ export function QuickOpen() {
       }}
     >
       <Dialog.Portal>
-        <Dialog.Backdrop className="quick-backdrop" />
-        <Dialog.Popup className="quick-open" initialFocus={input}>
+        <Dialog.Backdrop className="quick-backdrop fixed inset-[35px_0_22px] bg-transparent z-[110]" />
+        <Dialog.Popup
+          className={`quick-open fixed top-[38px] left-[50%] w-170 max-w-[90vw] max-h-[70vh] bg-quick border border-strong rounded-[6px] z-[111] flex flex-col text-[15px] outline-none ${quickStyles["quick-open"]}`}
+          initialFocus={input}
+        >
           <Dialog.Title className="sr-only">{picker?.title ?? "Quick Access"}</Dialog.Title>
           <Dialog.Description className="sr-only">
             {picker
@@ -492,7 +496,7 @@ export function QuickOpen() {
           />
           {!picker && value?.startsWith("%") && (
             <button
-              className="quick-handoff"
+              className="quick-handoff flex justify-between text-[13px] py-[6px] px-2 text-link-hover"
               onClick={() => {
                 const text = value.slice(1).trim();
                 committed.current = true;
@@ -506,7 +510,7 @@ export function QuickOpen() {
           )}
           <div
             ref={list}
-            className="quick-results"
+            className="quick-results overflow-auto min-h-0 pt-[5px]"
             role="listbox"
             id="quick-results"
             aria-busy={busy}
@@ -519,7 +523,9 @@ export function QuickOpen() {
               onChoose={choose}
             />
             {!items.length && (
-              <div className="quick-empty">{busy ? "Searching…" : "No matching results"}</div>
+              <div className="quick-empty py-[6px] px-2">
+                {busy ? "Searching…" : "No matching results"}
+              </div>
             )}
           </div>
         </Dialog.Popup>
@@ -547,7 +553,7 @@ const QuickResults = memo(function QuickResults({
       data-index={i}
       role="option"
       aria-selected={selected === i}
-      className={`quick-item ${selected === i ? "selected" : ""}`}
+      className={`quick-item h-7 flex items-center py-0 px-2 gap-2 rounded-[3px] cursor-pointer whitespace-nowrap overflow-hidden ${quickStyles["quick-item"]} ${selected === i ? "selected" : ""}`}
       key={item.id}
       onMouseMove={() => onSelect(i)}
       onClick={() => void onChoose(i)}
@@ -557,14 +563,16 @@ const QuickResults = memo(function QuickResults({
       ) : (
         <Icon name={command ? "terminal" : "arrow-right"} />
       )}
-      <span className="quick-label">
+      <span className="quick-label shrink-0 max-w-[70%] overflow-hidden text-ellipsis">
         {item.positions
           ? [...item.label].map((char, index) =>
               item.positions!.includes(index) ? <mark key={index}>{char}</mark> : char,
             )
           : item.label}
       </span>
-      <span className="muted quick-description">{item.description}</span>
+      <span className="muted text-muted quick-description text-[13px] overflow-hidden text-ellipsis">
+        {item.description}
+      </span>
       {item.key && <kbd>{item.key}</kbd>}
     </div>
   ));

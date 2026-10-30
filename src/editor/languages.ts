@@ -82,7 +82,8 @@ const supported = new Set([
   "rust",
 ]);
 const serviceLanguages = new Set([...supported, "vue"]);
-export const canFormat = (language: string) => supported.has(language);
+const formattingLanguages = new Set([...supported, "markdown"]);
+export const canFormat = (language: string) => formattingLanguages.has(language);
 function key(language: string) {
   return ["typescriptreact", "javascript", "javascriptreact"].includes(language)
     ? "typescript"
@@ -155,7 +156,7 @@ export function initializeLanguages() {
       }
     },
   });
-  for (const language of supported) {
+  for (const language of formattingLanguages) {
     monaco.languages.registerDocumentFormattingEditProvider(language, {
       async provideDocumentFormattingEdits(m, _options, token) {
         const version = m.getVersionId();

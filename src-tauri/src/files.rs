@@ -152,6 +152,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 
 #[cfg(windows)]
 mod windows_atomic {
+    use crate::error::windows_io;
     use std::{
         fs::File,
         io,
@@ -207,10 +208,10 @@ mod windows_atomic {
                 &mut needed,
             )
             .ok()
-            .map_err(io::Error::other)?;
+            .map_err(windows_io)?;
             // Do not inherit extra access from the temporary file's parent directory.
             SetSecurityDescriptorControl(descriptor, SE_DACL_PROTECTED, SE_DACL_PROTECTED)
-                .map_err(io::Error::other)?;
+                .map_err(windows_io)?;
         }
         let attributes = SECURITY_ATTRIBUTES {
             nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
@@ -230,7 +231,7 @@ mod windows_atomic {
                     None,
                 )
             }
-            .map_err(|e| io::Error::from_raw_os_error(e.code().0 & 0xffff))?;
+            .map_err(windows_io)?;
             Ok(unsafe { File::from_raw_handle(handle.0) })
         })?;
         Ok((temp, true))
@@ -255,7 +256,7 @@ mod windows_atomic {
                 None,
             )
         }
-        .map_err(io::Error::other);
+        .map_err(windows_io);
         if let Err(error) = result {
             // Some ReplaceFile failures leave the original under the backup name.
             if backup_path.try_exists().unwrap_or(true) {

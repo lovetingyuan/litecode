@@ -15,6 +15,7 @@ export function editorOptions(
     fontWeight: String(get("editor.fontWeight")),
     letterSpacing: get("editor.letterSpacing"),
     lineNumbers: get("editor.lineNumbers"),
+    lineNumbersMinChars: 2,
     renderWhitespace: get("editor.renderWhitespace"),
     rulers: get("editor.rulers"),
     renderLineHighlight: get("editor.renderLineHighlight"),

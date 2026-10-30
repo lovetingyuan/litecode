@@ -1,0 +1,46 @@
+/* Loaded before the workbench so its loading and failure states can paint immediately. */
+.startup-loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--lc-sidebar);
+  color: var(--lc-foreground);
+  font:
+    13px system-ui,
+    sans-serif;
+}
+.startup-loading::after {
+  content: "";
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--lc-button-secondary);
+  border-top-color: var(--lc-button);
+  border-radius: 50%;
+  animation: startup-spin 0.8s linear infinite;
+}
+@keyframes startup-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.startup-failed {
+  align-content: center;
+  gap: 12px;
+}
+.startup-failed::after {
+  display: none;
+}
+.startup-failed button {
+  padding: 6px 16px;
+  color: var(--lc-foreground-strong);
+  background: var(--lc-button);
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .startup-loading::after {
+    animation: none;
+  }
+}

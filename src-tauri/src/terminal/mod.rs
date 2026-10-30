@@ -78,6 +78,7 @@ impl Flow {
 
 struct Session {
     owner: String,
+    pid: Option<u32>,
     profile: profiles::Profile,
     cwd: Mutex<PathBuf>,
     initial_cwd: PathBuf,
@@ -152,6 +153,56 @@ impl Job {
                 windows::Win32::Foundation::HANDLE(self.0 as *mut _),
                 1,
             );
+        }
+    }
+    fn has_child_processes(&self, shell_pid: u32, shell_children: usize) -> Result<bool> {
+        use windows::Win32::{
+            Foundation::{ERROR_MORE_DATA, HANDLE},
+            System::JobObjects::*,
+        };
+        // usize storage keeps the variable-length structure and its PID array aligned.
+        let mut capacity = 1;
+        loop {
+            let bytes = std::mem::size_of::<JOBOBJECT_BASIC_PROCESS_ID_LIST>()
+                + (capacity - 1) * std::mem::size_of::<usize>();
+            let mut buffer = vec![0usize; bytes.div_ceil(std::mem::size_of::<usize>())];
+            let info = buffer
+                .as_mut_ptr()
+                .cast::<JOBOBJECT_BASIC_PROCESS_ID_LIST>();
+            let result = unsafe {
+                QueryInformationJobObject(
+                    Some(HANDLE(self.0 as *mut _)),
+                    JobObjectBasicProcessIdList,
+                    info.cast(),
+                    u32::try_from(bytes).map_err(pty_error)?,
+                    None,
+                )
+            };
+            let info = unsafe { &*info };
+            match result {
+                Ok(()) if info.NumberOfProcessIdsInList == info.NumberOfAssignedProcesses => {
+                    let count = info.NumberOfProcessIdsInList as usize;
+                    if count > capacity {
+                        return Err(pty_error("Invalid terminal process list"));
+                    }
+                    let pids =
+                        unsafe { std::slice::from_raw_parts(info.ProcessIdList.as_ptr(), count) };
+                    return Ok(pids
+                        .iter()
+                        .filter(|&&pid| pid != shell_pid as usize)
+                        .count()
+                        > shell_children);
+                }
+                Err(error) if error.code() != ERROR_MORE_DATA.to_hresult() => {
+                    return Err(pty_error(error));
+                }
+                _ => {
+                    capacity = (capacity * 2).max(info.NumberOfAssignedProcesses as usize);
+                    if capacity > 1_048_576 {
+                        return Err(pty_error("Terminal process list is too large"));
+                    }
+                }
+            }
         }
     }
 }
@@ -477,6 +528,7 @@ pub async fn terminal_create(
         let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(64);
         let session = Arc::new(Session {
             owner,
+            pid: child.process_id(),
             profile: selected.clone(),
             cwd: Mutex::new(cwd.clone()),
             initial_cwd: cwd.clone(),
@@ -653,6 +705,41 @@ pub fn terminal_ack(
     state.terminals.get(window.label(), &id)?.flow.ack(bytes)
 }
 #[tauri::command]
+pub fn terminal_has_child_processes(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<bool> {
+    let session = state.terminals.get(window.label(), &id)?;
+    if session.closed.load(Ordering::Acquire) {
+        return Ok(false);
+    }
+    let pid = session
+        .pid
+        .ok_or_else(|| pty_error("Shell has no process ID"))?;
+    #[cfg(windows)]
+    {
+        // Git's bin/bash.exe prepares HOME, PATH and MSYSTEM, then waits for
+        // usr/bin/bash.exe. Keep that environment setup and discount the shell
+        // behind this known launcher; additional descendants are running tasks.
+        let shell_children = usize::from(
+            session.profile.kind == "bash"
+                && PathBuf::from(&session.profile.path)
+                    .parent()
+                    .and_then(|bin| bin.parent())
+                    .is_some_and(|root| root.join("usr/bin/bash.exe").is_file()),
+        );
+        session.job.has_child_processes(pid, shell_children)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+        Err(pty_error(
+            "Terminal process inspection is unavailable on this platform",
+        ))
+    }
+}
+#[tauri::command]
 pub fn terminal_close(window: WebviewWindow, state: State<'_, AppState>, id: String) -> Result<()> {
     let mut sessions = state.terminals.sessions.lock_recover();
     if let Some(session) = sessions.get(&id)
@@ -705,6 +792,55 @@ mod tests {
         assert!(size(0, 10).is_err());
         assert!(size(1001, 10).is_err());
         assert!(size(80, 24).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn job_detects_descendants_and_resizes_its_process_list() {
+        use std::os::windows::process::CommandExt;
+        use std::process::{Command, Stdio};
+        let mut shell = Command::new("cmd.exe")
+            .args(["/D", "/Q"])
+            .creation_flags(0x08000000)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let job = Job::new(shell.id()).unwrap();
+        assert!(!job.has_child_processes(shell.id(), 0).unwrap());
+        // The nested cmd and ping also exercise growth beyond the initial one-PID buffer.
+        shell
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"cmd /D /C ping -n 30 127.0.0.1 >nul\r\n")
+            .unwrap();
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !job.has_child_processes(shell.id(), 0).unwrap() {
+            assert!(
+                std::time::Instant::now() < end,
+                "Child process did not start"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        job.terminate();
+        shell.wait().unwrap();
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while job.has_child_processes(shell.id(), 0).unwrap() {
+            assert!(
+                std::time::Instant::now() < end,
+                "Child processes did not exit"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn invalid_job_returns_an_inspection_error() {
+        let job = std::mem::ManuallyDrop::new(Job(isize::MAX));
+        assert!(job.has_child_processes(123, 0).is_err());
     }
 
     #[cfg(windows)]

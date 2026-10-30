@@ -1,0 +1,155 @@
+/* Scope complex states to their owning component; literal descendant classes are stable hooks.
+ * Codicon selectors include the vendor attribute to preserve contextual sizes across lazy CSS loading. */
+
+/* Keep the focused tab above Allotment's separator without covering its drag sash. */
+.editor-group:global(.focused) :global(.editor-tab):global(.active) {
+  position: relative;
+  z-index: 6;
+  border-top-color: var(--lc-focus);
+}
+
+.editor-group[data-external-drop="true"] {
+  outline: 2px solid var(--vscode-focusBorder, var(--lc-focus));
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 9999px var(--lc-drop-background);
+}
+.editor-tab-menu [role="menuitem"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  height: 26px;
+  margin: 0 4px;
+  padding: 0 22px 0 26px;
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+}
+.editor-tab-menu [role="menuitem"][data-highlighted] {
+  background: var(--lc-selection);
+  color: var(--lc-foreground-strong);
+}
+.editor-tab-menu [role="menuitem"][data-disabled] {
+  color: var(--lc-disabled);
+  cursor: default;
+  background: transparent;
+}
+.editor-tab-menu kbd {
+  font: inherit;
+  color: var(--lc-muted);
+  white-space: nowrap;
+}
+.editor-tab-menu [data-highlighted]:not([data-disabled]) kbd {
+  color: inherit;
+}
+.editor-tab-menu [data-disabled] kbd {
+  color: var(--lc-indent-guide-active);
+}
+.editor-tab-label:global(.ignored) {
+  color: var(--lc-git-ignored);
+}
+.editor-tab:global(.pinned) :global(.tab-close) {
+  visibility: visible;
+}
+.editor-tab:global(.pinned)
+  :global(.tab-close):global(.dirty):hover
+  :global(.codicon[class*="codicon-"]):before {
+  content: "\ueba0";
+}
+.editor-tab:global(.pinned)
+  :global(.tab-close):global(.dirty):not(:hover)
+  :global(.codicon[class*="codicon-"]):before {
+  content: "\uebb2";
+}
+.editor-groups:global(.welcome-hidden) {
+  visibility: hidden;
+}
+.editor-group:last-child {
+  border-right: 0;
+}
+.tabs-toolbar {
+  --tab-inactive-background: var(--lc-sidebar);
+  --tab-inactive-foreground: var(--lc-muted);
+  --tab-active-background: var(--lc-editor);
+  --tab-active-foreground: var(--lc-foreground-strong);
+  --tab-hover-background: var(--lc-editor);
+  --tab-hover-foreground: var(--lc-foreground);
+  background: var(--tab-inactive-background);
+}
+.tabs-toolbar > :global(.actions) {
+  padding: 0 7px;
+}
+.editor-tabs {
+  scrollbar-width: none;
+}
+.editor-tabs::-webkit-scrollbar {
+  display: none;
+}
+.editor-tabs-scrollbar {
+  touch-action: none;
+}
+.tabs-toolbar:hover :global(.editor-tabs-scrollbar-thumb),
+.editor-tabs-scrollbar[data-dragging] :global(.editor-tabs-scrollbar-thumb) {
+  opacity: 1;
+}
+.editor-tab {
+  padding: 0 8px 0 10px;
+  background: var(--tab-inactive-background);
+  color: var(--tab-inactive-foreground);
+}
+.editor-tab:not(:global(.active)):hover {
+  background: var(--tab-hover-background);
+  color: var(--tab-hover-foreground);
+}
+.editor-tab:global(.active) {
+  background: var(--tab-active-background);
+  color: var(--tab-active-foreground);
+}
+.editor-tab:global(.preview) > span:nth-child(2) {
+  font-style: italic;
+}
+.editor-tab:hover :global(.tab-close),
+.editor-tab:global(.active) :global(.tab-close),
+.tab-close:global(.dirty) {
+  visibility: visible;
+}
+.tab-close:global(.dirty):hover :global(.codicon[class*="codicon-"]):before {
+  content: "\ea76";
+}
+.editor-watermark :global(.codicon[class*="codicon-"]) {
+  font-size: 200px;
+}
+.empty-editor dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px 24px;
+  color: var(--lc-muted);
+  margin: 0;
+}
+.empty-editor dt {
+  text-align: right;
+}
+.empty-editor dd {
+  margin: 0;
+  color: var(--lc-subtle);
+}
+.conflict-banner > span:nth-child(2) {
+  flex: 1;
+}
+.conflict-banner button {
+  border: 1px solid var(--lc-conflict-border);
+  white-space: nowrap;
+}
+.search-editor-bar input {
+  min-width: 160px;
+  flex: 1;
+}
+.search-editor-bar button {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.search-editor-bar :global(.muted) {
+  font-size: 11px;
+}

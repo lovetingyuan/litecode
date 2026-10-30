@@ -1,10 +1,11 @@
+import workbenchStyles from "../styles/workbench.module.css";
 import { useEffect, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { monaco } from "../editor/monaco";
 import { editorFontOptions } from "../editor/font";
 import { diffOptions } from "../editor/settings";
 import { useApp } from "../store/store";
-import { IconButton } from "./ui";
+import { actionButtonClass, IconButton } from "./ui";
 import { readConflictDiff, resolveConflict } from "../editor/documents";
 import { errorMessage } from "../core/bridge";
 import type { DiffRequest } from "../types/types";
@@ -106,9 +107,13 @@ export function DiffViewer() {
       }}
     >
       <Dialog.Portal>
-        <Dialog.Backdrop className="modal-backdrop" />
-        <Dialog.Popup className="diff-panel">
-          <div className="diff-heading">
+        <Dialog.Backdrop className="modal-backdrop fixed inset-0 bg-backdrop z-[150]" />
+        <Dialog.Popup
+          className={`diff-panel fixed inset-[7%] z-[151] flex flex-col bg-editor border border-strong rounded-[5px] overflow-hidden ${workbenchStyles["diff-panel"]}`}
+        >
+          <div
+            className={`diff-heading flex items-center justify-between py-[10px] px-4 bg-sidebar ${workbenchStyles["diff-heading"]}`}
+          >
             <Dialog.Title>{diff?.title}</Dialog.Title>
             <div className="flex items-center gap-2">
               <IconButton
@@ -131,7 +136,7 @@ export function DiffViewer() {
               ? "左侧是磁盘版本，右侧是当前编辑版本。选择一版作为整个文件的最终结果。"
               : "Read-only comparison. Left is original; right is modified."}
           </Dialog.Description>
-          <div className="grid grid-cols-2 gap-4 border-b border-base-300 px-4 py-2 text-sm">
+          <div className="grid grid-cols-2 gap-4 border-b border-strong px-4 py-2 text-sm">
             <span>{diff?.conflict ? "磁盘版本" : "Original"}</span>
             <span>{diff?.conflict ? "当前编辑版本（未保存）" : "Modified"}</span>
           </div>
@@ -145,31 +150,31 @@ export function DiffViewer() {
               {diff.error} 当前编辑内容已保留，请重试读取磁盘版本。
             </div>
           ) : (
-            <div ref={setHost} className="diff-editor" />
+            <div ref={setHost} className="diff-editor flex-1 min-h-0" />
           )}
           {diff?.conflict && (
             <div
-              className="flex flex-wrap items-center justify-end gap-2 border-t border-base-300 p-3"
+              className="flex flex-wrap items-center justify-end gap-2 border-t border-strong p-3"
               aria-busy={busy}
             >
-              <button className="btn btn-sm" disabled={busy} onClick={() => void choose()}>
+              <button className={actionButtonClass} disabled={busy} onClick={() => void choose()}>
                 刷新对比
               </button>
               <button
-                className="btn btn-sm"
+                className={actionButtonClass}
                 disabled={busy || !!diff.error}
                 onClick={() => void choose("reload")}
               >
                 使用磁盘版本
               </button>
               <button
-                className="btn btn-sm"
+                className={actionButtonClass}
                 disabled={busy || !!diff.error}
                 onClick={() => void choose("overwrite")}
               >
                 保留当前版本
               </button>
-              <button className="btn btn-sm" disabled={busy} onClick={close}>
+              <button className={actionButtonClass} disabled={busy} onClick={close}>
                 取消
               </button>
             </div>

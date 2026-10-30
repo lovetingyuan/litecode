@@ -35,7 +35,7 @@
   [data-file-tree-virtualized-scroll],
   [data-file-tree-scrollbar-measure]
 )::-webkit-scrollbar-thumb {
-  background: #79797999;
+  background: var(--lc-scrollbar-thumb);
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 7px;
@@ -48,7 +48,7 @@
     [data-file-tree-virtualized-scroll],
     [data-file-tree-scrollbar-measure]
   )::-webkit-scrollbar-thumb:hover {
-  background-color: #797979cc;
+  background-color: var(--lc-scrollbar-hover);
 }
 :is(
   .search-results,

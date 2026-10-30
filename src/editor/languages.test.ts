@@ -117,6 +117,31 @@ it("does not register or upgrade a Vue document when native document trust is de
   expect(mocks.call.mock.calls.map(([name]) => name)).toEqual(["check_language_document"]);
 });
 
+it("supports Markdown formatting without starting a language server", async () => {
+  const { canFormat, ensureLanguage } = await import("./languages");
+  expect(canFormat("markdown")).toBe(true);
+  await ensureLanguage("doc", "markdown");
+  expect(mocks.call).not.toHaveBeenCalled();
+  expect(mocks.clients).toHaveLength(0);
+});
+
+it("formats an untitled Markdown document through the native formatter", async () => {
+  const { formatModelText } = await import("./languages");
+  const input = "# Title\n\n\n\nParagraph.\n";
+  const output = "# Title\n\nParagraph.\n";
+  mocks.call.mockResolvedValueOnce(output);
+  const text = await formatModelText({
+    getLanguageId: () => "markdown",
+    getValue: () => input,
+  } as unknown as editor.ITextModel);
+  expect(text).toBe(output);
+  expect(mocks.call).toHaveBeenCalledWith("format_document", {
+    path: null,
+    text: input,
+    language: "markdown",
+  });
+});
+
 it.each([true, false])(
   "formats JSONC with the model's insertSpaces=%s and line endings",
   async (insertSpaces) => {

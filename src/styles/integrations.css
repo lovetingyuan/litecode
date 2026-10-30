@@ -1,0 +1,23 @@
+/* Monaco gutter, Allotment sash and xterm nodes are owned by dependencies.
+ * These documented global overrides preserve sizing, focus and native scrollbars. */
+
+.monaco-editor .sticky-line-number-inner {
+  box-sizing: content-box;
+}
+.pane-layout .sash:focus-visible {
+  outline: 1px solid var(--lc-focus);
+  outline-offset: -1px;
+}
+.terminal-surface .xterm {
+  height: 100%;
+  padding: 0;
+}
+.terminal-surface .xterm-viewport {
+  background: transparent;
+  overflow: hidden;
+}
+.terminal-surface .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  border: 2px solid transparent;
+  border-radius: 7px;
+  background-clip: padding-box;
+}

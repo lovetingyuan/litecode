@@ -1,3 +1,7 @@
+import { treeTheme } from "../styles/theme";
+import workbenchStyles from "../styles/workbench.module.css";
+import editorBreadcrumbsStyles from "./EditorBreadcrumbs.module.css";
+import mediaPreviewStyles from "./MediaPreview.module.css";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Popover } from "@base-ui/react/popover";
 import { FileTree, useFileTree } from "@pierre/trees/react";
@@ -13,7 +17,6 @@ import type { Doc, Group } from "../types/types";
 import { EditorViewMenu } from "./MediaStatus";
 import { FileIcon, Icon } from "./ui";
 import scrollbarCSS from "../styles/sidebar-scrollbar.css?raw";
-import "./EditorBreadcrumbs.css";
 import { gitConflictDecoration } from "../utils/gitStatus";
 
 export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
@@ -31,15 +34,26 @@ export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
     return null;
   }
   return (
-    <div className="breadcrumbs">
+    <div
+      className={`breadcrumbs h-[22px] min-h-[22px] py-0 px-[10px] flex items-center overflow-hidden whitespace-nowrap z-[1] ${workbenchStyles["breadcrumbs"]} ${editorBreadcrumbsStyles["breadcrumbs"]} ${mediaPreviewStyles["breadcrumbs"]}`}
+    >
       {enabled && (
-        <nav className="breadcrumbs-path" aria-label="File breadcrumbs">
+        <nav
+          className={`breadcrumbs-path flex items-center min-w-0 overflow-hidden flex-1 ${mediaPreviewStyles["breadcrumbs-path"]}`}
+          aria-label="File breadcrumbs"
+        >
           {segments.map((segment, index) => {
             const deleted = !!doc.deleted && index === segments.length - 1;
             const content = (
               <>
                 {index === segments.length - 1 && <FileIcon language={doc.language} />}
-                <span className={deleted ? "deleted-file-name" : undefined}>{segment.label}</span>
+                <span
+                  className={
+                    deleted ? "deleted-file-name text-git-ignored line-through" : undefined
+                  }
+                >
+                  {segment.label}
+                </span>
               </>
             );
             const title = `${pathTitle(segment.path)}${deleted ? "\n文件已从磁盘删除" : ""}`;
@@ -47,7 +61,10 @@ export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
             return (
               <span key={segment.path}>
                 {path === undefined ? (
-                  <span className="breadcrumb-label" title={title}>
+                  <span
+                    className="breadcrumb-label inline-flex items-center gap-[5px] py-0 px-[2px] text-subtle"
+                    title={title}
+                  >
                     {content}
                   </span>
                 ) : (
@@ -77,14 +94,14 @@ export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
                     </Popover.Trigger>
                     <Popover.Portal>
                       <Popover.Positioner
-                        className="breadcrumb-positioner"
+                        className="breadcrumb-positioner z-[90] max-w-[calc(100vw_-_16px)]"
                         side="bottom"
                         align="start"
                         sideOffset={2}
                         collisionPadding={8}
                       >
                         <Popover.Popup
-                          className="breadcrumb-popup"
+                          className={`breadcrumb-popup w-90 max-w-[var(--available-width)] max-h-[min(400px,_var(--available-height))] overflow-hidden bg-widget text-foreground border border-strong rounded-[3px] outline-none flex ${editorBreadcrumbsStyles["breadcrumb-popup"]}`}
                           aria-label={`Files alongside ${segment.label}`}
                           initialFocus={false}
                           finalFocus={() => restoreFocus.current}
@@ -250,19 +267,8 @@ function BreadcrumbPicker({
   const busy = !state || state.status === "unloaded" || state.status === "loading";
   const style: CSSProperties = {
     height: Math.max(26, Math.min(390, model.getVisibleCount() * 26)),
-    ...themeToTreeStyles({
-      colors: {
-        "sideBar.background": "#202020",
-        "sideBar.foreground": "#cccccc",
-        "list.activeSelectionBackground": "#04395e",
-        "list.activeSelectionForeground": "#ffffff",
-        "list.inactiveSelectionBackground": "#37373d",
-        "list.hoverBackground": "#2a2d2e",
-        focusBorder: "#0078d4",
-        "gitDecoration.modifiedResourceForeground": "#e2c08d",
-        "gitDecoration.untrackedResourceForeground": "#73c991",
-      },
-    }),
+    ...themeToTreeStyles(treeTheme),
+    "--trees-bg-override": "var(--lc-widget)",
     "--trees-font-family-override": '"Segoe UI", sans-serif',
     "--trees-font-size-override": "13px",
     "--trees-icon-width-override": "18px",
@@ -271,10 +277,10 @@ function BreadcrumbPicker({
     "--trees-git-ignored-color-override": "var(--git-ignored-foreground)",
   } as CSSProperties;
   return (
-    <div className="breadcrumb-picker" aria-busy={busy}>
+    <div className="breadcrumb-picker flex flex-col w-full min-h-0 py-[3px] px-0" aria-busy={busy}>
       <FileTree
         model={model}
-        className="breadcrumb-tree"
+        className="breadcrumb-tree shrink min-h-0 w-full"
         style={style}
         aria-label="Sibling files and folders"
         onClickCapture={(event) => {
@@ -318,18 +324,27 @@ function BreadcrumbPicker({
         }}
       />
       {busy && (
-        <div className="breadcrumb-message" role="status">
+        <div
+          className={`breadcrumb-message py-[6px] px-[10px] text-[13px] ${editorBreadcrumbsStyles["breadcrumb-message"]}`}
+          role="status"
+        >
           Loading directory…
         </div>
       )}
       {state?.status === "failed" && (
-        <div className="breadcrumb-message" role="alert">
+        <div
+          className={`breadcrumb-message py-[6px] px-[10px] text-[13px] ${editorBreadcrumbsStyles["breadcrumb-message"]}`}
+          role="alert"
+        >
           {state.error}
           <button onClick={() => adapter.current?.retry()}>Retry</button>
         </div>
       )}
       {state?.status === "loaded" && !state.paths.length && (
-        <div className="breadcrumb-message" role="status">
+        <div
+          className={`breadcrumb-message py-[6px] px-[10px] text-[13px] ${editorBreadcrumbsStyles["breadcrumb-message"]}`}
+          role="status"
+        >
           Empty directory
         </div>
       )}

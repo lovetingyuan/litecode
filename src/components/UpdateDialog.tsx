@@ -1,11 +1,12 @@
+import workbenchStyles from "../styles/workbench.module.css";
+import updateDialogStyles from "./UpdateDialog.module.css";
 import { Dialog } from "@base-ui/react/dialog";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { checkForUpdates, installUpdate, updateLocked, useUpdates } from "../core/updates";
 import { errorMessage } from "../core/bridge";
-import { Icon } from "./ui";
-import "./UpdateDialog.css";
+import { actionButtonClass, Icon } from "./ui";
 
 export function UpdateButton() {
   const version = useUpdates((s) => s.version);
@@ -14,7 +15,7 @@ export function UpdateButton() {
   }
   return (
     <button
-      className="btn btn-sm btn-primary update-button"
+      className={`${actionButtonClass} primary bg-focus text-foreground-strong rounded-[2px] py-[5px] px-[14px] ${workbenchStyles["primary"]} update-button ${updateDialogStyles["update-button"]}`}
       title={`LiteCode ${version} is available`}
       onClick={() => useUpdates.setState({ open: true })}
     >
@@ -46,8 +47,10 @@ export function UpdateDialog() {
     <>
       <Dialog.Root open={s.open} onOpenChange={(open) => useUpdates.setState({ open })}>
         <Dialog.Portal>
-          <Dialog.Backdrop className="modal-backdrop" />
-          <Dialog.Popup className="modal-panel update-panel">
+          <Dialog.Backdrop className="modal-backdrop fixed inset-0 bg-backdrop z-[150]" />
+          <Dialog.Popup
+            className={`modal-panel fixed top-[50%] left-[50%] bg-widget border border-strong rounded-[6px] w-120 max-w-[90vw] p-6 z-[151] ${workbenchStyles["modal-panel"]} update-panel w-140 max-h-[85vh] overflow-y-auto ${updateDialogStyles["update-panel"]}`}
+          >
             <Dialog.Title>LiteCode Updates</Dialog.Title>
             <Dialog.Description>
               {s.currentVersion ? `Current version: ${s.currentVersion}` : "Application updates"}
@@ -56,7 +59,7 @@ export function UpdateDialog() {
               {status}
             </p>
             {s.error && (
-              <p role="alert" className="text-error">
+              <p role="alert" className="update-error text-git-deleted">
                 {s.error}
               </p>
             )}
@@ -94,7 +97,7 @@ export function UpdateDialog() {
             {s.phase === "downloading" &&
               (s.total ? (
                 <progress
-                  className="progress w-full"
+                  className={`update-progress block w-full h-2 overflow-hidden border-0 rounded-[4px] bg-strong text-focus ${updateDialogStyles["update-progress"]}`}
                   max={s.total}
                   value={s.downloaded}
                   aria-label="Update download progress"
@@ -110,12 +113,16 @@ export function UpdateDialog() {
               </p>
             )}
             <div className="flex justify-end flex-wrap gap-2 mt-5">
-              <button className="btn btn-sm" disabled={busy} onClick={() => void checkForUpdates()}>
+              <button
+                className={actionButtonClass}
+                disabled={busy}
+                onClick={() => void checkForUpdates()}
+              >
                 Check Again
               </button>
               {s.version && (
                 <button
-                  className="btn btn-sm btn-primary"
+                  className={`${actionButtonClass} primary bg-focus text-foreground-strong rounded-[2px] py-[5px] px-[14px] ${workbenchStyles["primary"]}`}
                   disabled={busy}
                   onClick={() =>
                     s.portable
@@ -128,14 +135,20 @@ export function UpdateDialog() {
                   {s.portable ? "Open Release Downloads" : "Download and Install"}
                 </button>
               )}
-              <Dialog.Close className="btn btn-sm">Close</Dialog.Close>
+              <Dialog.Close className={actionButtonClass}>Close</Dialog.Close>
             </div>
           </Dialog.Popup>
         </Dialog.Portal>
       </Dialog.Root>
       {updateLocked(s.phase) && (
-        <div className="update-lock" role="alert" aria-live="assertive">
-          <div className="update-panel p-6 rounded border border-base-300 bg-base-100 text-base-content">
+        <div
+          className="update-lock fixed inset-0 z-[200] bg-shadow grid place-items-center p-6"
+          role="alert"
+          aria-live="assertive"
+        >
+          <div
+            className={`update-panel w-140 max-h-[85vh] overflow-y-auto ${updateDialogStyles["update-panel"]} update-install-status p-6 border border-strong rounded-[4px] bg-widget text-foreground`}
+          >
             {status}
           </div>
         </div>

@@ -1,0 +1,31 @@
+/* Scope complex states to their owning component; literal descendant classes are stable hooks.
+ * Codicon selectors include the vendor attribute to preserve contextual sizes across lazy CSS loading. */
+
+.quick-open {
+  transform: translateX(-50%);
+  box-shadow: 0 4px 20px var(--lc-shadow);
+  padding: 6px 6px 5px;
+}
+.quick-open > input {
+  height: 34px;
+  width: 100%;
+  border-color: var(--lc-focus);
+  background: var(--lc-input);
+  padding: 3px 8px;
+  flex-shrink: 0;
+}
+.quick-item > :global(.codicon[class*="codicon-"]) {
+  font-size: 18px;
+}
+.quick-item:global(.selected) {
+  background: var(--lc-selection);
+  color: var(--lc-foreground-strong);
+}
+.quick-item kbd {
+  margin-left: auto;
+  font-size: 12px;
+}
+.quick-item mark {
+  color: var(--lc-match-foreground);
+  background: none;
+}

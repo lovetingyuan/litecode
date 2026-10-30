@@ -30,7 +30,8 @@ export function searchQuickFiles(
   open: Candidate[],
   query: string,
 ): QuickFile[] {
-  const needle = query.toLowerCase().replace(/\\/g, "/");
+  // VS Code Quick Open removes stars before fuzzy matching (fuzzyScorer.normalizeQuery).
+  const needle = query.toLowerCase().replace(/\\/g, "/").replace(/\*/g, "");
   const opened = new Set(open.map((file) => file.path));
   const best: { file: Candidate; score: number; positions: number[] }[] = [];
   function consider(file: Candidate, recent: boolean) {

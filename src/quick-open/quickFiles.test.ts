@@ -9,6 +9,51 @@ import {
 import { QuickFileSearch } from "./quickFileSearch";
 
 describe("Quick file index", () => {
+  it.each([
+    ["*.ts", ".ts"],
+    ["Al*ph*a", "Alpha"],
+    ["src/**/*.ts", "src//.ts"],
+    ["src\\*Alpha*.TS", "src\\Alpha.TS"],
+    ["**", ""],
+    ["*不存在*", "不存在"],
+  ])("normalizes wildcard query %s like VS Code Quick Open", (query, normalized) => {
+    const workspace = prepareQuickFiles(
+      ["src/Alpha.ts", "src/nested/Alpha.test.ts", "src/Beta.tsx", "README.md"],
+      null,
+    );
+    const open = prepareQuickFiles(["outside/Alpha.ts", "src/Alpha.ts"], null);
+    expect(searchQuickFiles(workspace, open, query)).toEqual(
+      searchQuickFiles(workspace, open, normalized),
+    );
+  });
+
+  it("keeps fuzzy matching, highlights and the result limit for wildcard queries", () => {
+    const workspace = prepareQuickFiles(
+      [
+        "src/Alpha.ts",
+        "src/Alpha.test.ts",
+        ...Array.from({ length: 150 }, (_, i) => `src/File${i}.ts`),
+      ],
+      null,
+    );
+    expect(searchQuickFiles(workspace, [], "Al*ph*a*.ts")).toEqual([
+      {
+        path: "src/Alpha.ts",
+        label: "Alpha.ts",
+        description: "src",
+        positions: [0, 1, 2, 3, 4, 5, 6, 7],
+      },
+      {
+        path: "src/Alpha.test.ts",
+        label: "Alpha.test.ts",
+        description: "src",
+        positions: [0, 1, 2, 3, 4, 5, 6, 8],
+      },
+    ]);
+    expect(searchQuickFiles(workspace, [], "*.ts")).toHaveLength(100);
+    expect(searchQuickFiles(workspace, [], "*")).toHaveLength(100);
+  });
+
   it("matches the stable full-sort reference, including ties, opened files and highlight positions", () => {
     const paths = Array.from(
       { length: 1800 },

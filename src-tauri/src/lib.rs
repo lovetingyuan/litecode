@@ -2,6 +2,8 @@ use crate::sync::MutexExt;
 mod commands;
 mod configuration;
 mod error;
+#[cfg(windows)]
+mod elevated_save;
 mod external_drop;
 mod file_clipboard;
 mod file_creation;
@@ -20,6 +22,7 @@ mod quick_files;
 mod recovery;
 mod replacement;
 mod search;
+mod startup;
 mod state;
 mod sync;
 mod terminal;
@@ -37,12 +40,43 @@ fn data_directory(
     Ok(if portable.is_dir() {
         portable
     } else {
-        app.path().app_data_dir()?
+        profile_data_directory(app.path().app_data_dir()?, cfg!(debug_assertions))
     })
+}
+
+fn profile_data_directory(directory: std::path::PathBuf, development: bool) -> std::path::PathBuf {
+    // The instance lock follows this directory, so development and installed
+    // builds can run together without writing each other's settings/sessions.
+    if development {
+        directory.join("dev")
+    } else {
+        directory
+    }
+}
+
+#[cfg(test)]
+mod data_directory_tests {
+    #[test]
+    fn development_and_release_use_separate_data_directories() {
+        let directory = std::path::PathBuf::from("user-data");
+        assert_eq!(
+            super::profile_data_directory(directory.clone(), false),
+            directory
+        );
+        assert_eq!(
+            super::profile_data_directory(directory.clone(), true),
+            directory.join("dev")
+        );
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    if let Some(code) = elevated_save::run_helper() {
+        std::process::exit(code);
+    }
+    startup::mark("process-started", std::time::Instant::now());
     let builder = media::register(tauri::Builder::default());
     #[cfg(windows)]
     let builder = builder.plugin(instance::init());
@@ -52,6 +86,8 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            let setup_started = std::time::Instant::now();
+            startup::mark("setup-started", setup_started);
             app.manage(updates::Updates::new(app.handle()));
             #[cfg(windows)]
             let data_dir = app.state::<instance::Instance>().data_dir.clone();
@@ -107,6 +143,7 @@ pub fn run() {
                         .push(format!("Could not restore {label}: {}", error.message));
                 }
             }
+            startup::mark("setup-completed", setup_started);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -196,6 +233,7 @@ pub fn run() {
             terminal::terminal_resize,
             terminal::terminal_ack,
             terminal::terminal_close,
+            terminal::terminal_has_child_processes,
             terminal::terminal_update_cwd,
             tools::tool_status,
             tools::format_document,

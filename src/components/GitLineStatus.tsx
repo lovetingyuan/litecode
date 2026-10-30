@@ -1,3 +1,4 @@
+import workbenchStyles from "../styles/workbench.module.css";
 import { useEffect, useMemo, useState } from "react";
 import { Popover } from "@base-ui/react/popover";
 import { call, desktop, errorMessage } from "../core/bridge";
@@ -12,7 +13,7 @@ import {
 } from "../git/lineBlame";
 import { useApp } from "../store/store";
 import type { Doc, GitBlameCommit, GitCommitDetails, GitFileBlame } from "../types/types";
-import { Icon, IconButton } from "./ui";
+import { actionButtonClass, Icon, IconButton } from "./ui";
 
 export function GitLineStatus({ doc }: { doc?: Doc }) {
   const root = useApp((s) => s.root);
@@ -141,11 +142,13 @@ function CommitStatus({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
-        className="status-item git-line-status"
+        className={`status-item ${workbenchStyles["status-item"]} git-line-status ${workbenchStyles["git-line-status"]}`}
         aria-label={`Current line Git: ${label}，查看提交详情`}
       >
         <Icon name="git-commit" />
-        <span className="git-line-label">{label}</span>
+        <span className="git-line-label overflow-hidden text-ellipsis whitespace-nowrap">
+          {label}
+        </span>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner
@@ -156,7 +159,7 @@ function CommitStatus({
           collisionPadding={8}
         >
           <Popover.Popup
-            className="workspace-popup block! w-[400px]! max-h-[min(420px,var(--available-height))]! p-[12px]! text-[12px] leading-[18px] select-text outline-none"
+            className={`workspace-popup flex items-start gap-3 w-[max-content] max-w-[min(560px,_calc(100vw_-_16px),_var(--available-width))] max-h-[var(--available-height)] overflow-y-auto p-2 bg-widget text-foreground border border-strong rounded-[4px] ${workbenchStyles["workspace-popup"]} block! w-[400px]! max-h-[min(420px,var(--available-height))]! p-[12px]! text-[12px] leading-[18px] select-text outline-none`}
             data-testid="git-commit-popup"
             initialFocus={false}
           >
@@ -275,7 +278,7 @@ function CommitDetails({
           </p>
           <button
             type="button"
-            className="btn btn-ghost btn-xs mt-2"
+            className={`${actionButtonClass} subtle compact mt-2`}
             onClick={() => {
               setError("");
               setAttempt((value) => value + 1);

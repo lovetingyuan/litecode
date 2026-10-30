@@ -1,3 +1,5 @@
+import editorStyles from "./EditorGroup.module.css";
+import workbenchStyles from "../styles/workbench.module.css";
 import { useRef, useState, type ReactElement } from "react";
 import { ContextMenu } from "@base-ui/react/context-menu";
 import {
@@ -103,13 +105,15 @@ export function EditorTabMenu({
           collisionPadding={6}
         >
           <ContextMenu.Popup
-            className="context-menu editor-tab-menu"
+            className={`context-menu bg-editor text-foreground p-1 border border-strong rounded-[5px] min-w-[210px] z-[90] ${workbenchStyles["context-menu"]} editor-tab-menu ${editorStyles["editor-tab-menu"]}`}
             aria-label={`Actions for ${doc?.name ?? "editor"}`}
             finalFocus={(type) => (type === "keyboard" && restoreTrigger.current ? trigger : false)}
           >
             {groups.map((items, index) => (
               <ContextMenu.Group key={index}>
-                {index > 0 && <ContextMenu.Separator className="editor-tab-menu-separator" />}
+                {index > 0 && (
+                  <ContextMenu.Separator className="editor-tab-menu-separator h-[1px] bg-strong my-[5px] mx-0" />
+                )}
                 {items.map((item) => (
                   <ContextMenu.Item
                     key={item.id}

@@ -24,7 +24,12 @@ for (const name of ["package.json", "package-lock.json"]) {
 // Keep Vue's dependency layout and data files intact; its plugins use runtime
 // module resolution and paths relative to their own packages.
 const copied = new Set();
-async function copyPackage(name, from = path.resolve("package.json")) {
+async function copyPackage(
+  name,
+  from = path.resolve("package.json"),
+  destination = "src-tauri/tools/typescript/node_modules",
+  optional = false,
+) {
   const require = createRequire(from);
   const directory = require.resolve
     .paths(name)
@@ -36,22 +41,36 @@ async function copyPackage(name, from = path.resolve("package.json")) {
         return false;
       }
     });
-  if (!directory) throw new Error(`Cannot package ${name} from ${from}`);
-  if (copied.has(directory)) return;
-  copied.add(directory);
+  if (!directory) {
+    if (optional) return;
+    throw new Error(`Cannot package ${name} from ${from}`);
+  }
+  const key = path.join(destination, path.relative(path.resolve("node_modules"), directory));
+  if (copied.has(key)) return;
+  copied.add(key);
   const relative = path.relative(path.resolve("node_modules"), directory);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error(`Language tool is outside node_modules: ${directory}`);
   }
-  await cp(directory, path.join("src-tauri/tools/typescript/node_modules", relative), {
+  await cp(directory, path.join(destination, relative), {
     recursive: true,
   });
   const manifest = path.join(directory, "package.json");
   const info = JSON.parse(await readFile(manifest, "utf8"));
   for (const dependency of Object.keys(info.dependencies ?? {})) {
-    await copyPackage(dependency, manifest);
+    await copyPackage(dependency, manifest, destination);
   }
 }
 for (const name of ["typescript-language-server", "typescript", "@vue/language-server"]) {
   await copyPackage(name);
+}
+
+// Keep Oxfmt's bundled Prettier modules and platform binding: the standalone
+// binary cannot format HTML. Node.js is resolved by the application at runtime.
+const formatters = "src-tauri/tools/formatters/node_modules";
+const oxfmtManifest = path.resolve("node_modules/oxfmt/package.json");
+await copyPackage("oxfmt", undefined, formatters);
+const oxfmt = JSON.parse(await readFile(oxfmtManifest, "utf8"));
+for (const name of Object.keys(oxfmt.optionalDependencies ?? {})) {
+  await copyPackage(name, oxfmtManifest, formatters, true);
 }

@@ -1,3 +1,4 @@
+import { editorTheme } from "../styles/theme";
 import * as monaco from "monaco-editor";
 import EditorWorker from "@codingame/monaco-vscode-api/workers/editor.worker?worker";
 import { MonacoVscodeApiWrapper } from "monaco-languageclient/vscodeApiWrapper";
@@ -7,6 +8,7 @@ import { editorFontOptions } from "./font";
 import { markdownSyntax } from "./markdownSyntax";
 import { vueSyntax } from "./vueSyntax";
 import { configLanguageConfiguration, dotenvSyntax, gitignoreSyntax } from "./configSyntax";
+import { startupStep } from "../core/startup";
 
 let startup: Promise<void> | undefined;
 export function initializeEditor(): Promise<void> {
@@ -27,36 +29,9 @@ export function initializeEditor(): Promise<void> {
         }),
       },
     });
-    await wrapper.start();
-    await registerSyntaxes();
-    monaco.editor.defineTheme("dark-modern", {
-      base: "vs-dark",
-      inherit: true,
-      rules: [
-        { token: "comment", foreground: "6A9955" },
-        { token: "keyword", foreground: "C586C0" },
-        { token: "string", foreground: "CE9178" },
-        { token: "number", foreground: "B5CEA8" },
-        { token: "type.identifier", foreground: "4EC9B0" },
-        { token: "identifier", foreground: "9CDCFE" },
-      ],
-      colors: {
-        "editor.background": "#1f1f1f",
-        "editor.foreground": "#cccccc",
-        "editorLineNumber.foreground": "#6e7681",
-        "editorLineNumber.activeForeground": "#cccccc",
-        "editor.selectionBackground": "#264f78",
-        "editor.lineHighlightBackground": "#ffffff05",
-        "editor.lineHighlightBorder": "#ffffff0a",
-        "editorWidget.background": "#202020",
-        "editorWidget.border": "#454545",
-        focusBorder: "#0078d4",
-        "editorIndentGuide.background1": "#404040",
-        "editorIndentGuide.activeBackground1": "#707070",
-        "editorSuggestWidget.background": "#202020",
-        "editorSuggestWidget.selectedBackground": "#04395e",
-      },
-    });
+    await startupStep("vscode-services-started", () => wrapper.start());
+    await startupStep("syntaxes-registered", registerSyntaxes);
+    monaco.editor.defineTheme("dark-modern", editorTheme());
     monaco.editor.setTheme("dark-modern");
     // Menus portaled into shadow roots under body must inherit the editor theme variables.
     document.body.classList.add("monaco-component");

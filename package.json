@@ -58,7 +58,6 @@
     "@vue/language-server": "3.3.13",
     "@vue/typescript-plugin": "3.3.13",
     "babel-plugin-react-compiler": "1.0.0",
-    "daisyui": "5.7.50",
     "esbuild": "0.28.2",
     "oxfmt": "0.75.0",
     "oxlint": "1.89.0",

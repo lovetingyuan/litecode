@@ -5,34 +5,8 @@
     <link rel="icon" type="image/svg+xml" href="/litecode.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LiteCode</title>
-    <style>
-      .startup-loading {
-        position: fixed;
-        inset: 0;
-        display: grid;
-        place-items: center;
-        background: #181818;
-      }
-      .startup-loading::after {
-        content: "";
-        width: 24px;
-        height: 24px;
-        border: 2px solid #333;
-        border-top-color: #0078d4;
-        border-radius: 50%;
-        animation: startup-spin 0.8s linear infinite;
-      }
-      @keyframes startup-spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .startup-loading::after {
-          animation: none;
-        }
-      }
-    </style>
+    <link rel="stylesheet" href="/src/styles/theme.css" />
+    <link rel="stylesheet" href="/src/styles/startup.css" />
   </head>
 
   <body>

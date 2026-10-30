@@ -72,6 +72,7 @@ import {
   patchDoc,
   restoreDocument,
   save,
+  saveAll,
   saveEditorView,
   session,
   showDocument,
@@ -213,6 +214,151 @@ beforeEach(() => {
     tabRevealRequests: {},
     settings: { "files.autoSave": "onFocusChange" },
     notice: null,
+  });
+});
+
+describe("Elevated document saves", () => {
+  const permission = {
+    code: "elevationRequired",
+    message: "Administrator permission is required. Save the file manually to continue.",
+  };
+
+  function requireElevation() {
+    vi.mocked(call).mockImplementation(async (command, args) => {
+      if (command === "save_document" && !args?.elevate) {
+        throw permission;
+      }
+      return (command === "save_document" ? "elevated-revision" : undefined) as never;
+    });
+  }
+
+  it("retries the same snapshot once and formats only once", async () => {
+    const { id } = addDocument();
+    setApp({ settings: { "editor.formatOnSave": true } });
+    vi.mocked(canFormat).mockReturnValue(true);
+    vi.mocked(ask).mockResolvedValue("Save as Administrator");
+    requireElevation();
+    await save(id);
+    expect(ask).toHaveBeenCalledWith(
+      "Administrator permission required",
+      expect.stringContaining(useApp.getState().docs[id].path!),
+      ["Save as Administrator", "Cancel"],
+      { defaultChoice: "Cancel" },
+    );
+    expect(writes()).toHaveLength(2);
+    expect(writes()[1]).toEqual({ ...writes()[0], elevate: true });
+    expect(formatModel).toHaveBeenCalledTimes(1);
+    expect(useApp.getState().docs[id]).toMatchObject({
+      dirty: false,
+      revision: "elevated-revision",
+    });
+  });
+
+  it.each(["Cancel", null])("retains unsaved changes when confirmation is %s", async (answer) => {
+    const { id, buffer } = addDocument();
+    requireElevation();
+    vi.mocked(ask).mockResolvedValue(answer);
+    await expect(save(id)).rejects.toMatchObject({ code: "elevationCancelled" });
+    expect(writes()).toHaveLength(1);
+    expect(buffer.getValue()).toBe("edited");
+    expect(useApp.getState().docs[id]).toMatchObject({ dirty: true, revision: "old-revision" });
+  });
+
+  it("stops Save All when administrator saving is cancelled", async () => {
+    addDocument();
+    addDocument();
+    requireElevation();
+    vi.mocked(ask).mockResolvedValue("Cancel");
+    await expect(saveAll()).rejects.toMatchObject({ code: "elevationCancelled" });
+    expect(writes()).toHaveLength(1);
+    expect(Object.values(useApp.getState().docs).every((doc) => doc.dirty)).toBe(true);
+  });
+
+  it("reports automatic save permissions without prompting", async () => {
+    const { id } = addDocument();
+    requireElevation();
+    await autoSave("onFocusChange", id);
+    expect(ask).not.toHaveBeenCalled();
+    expect(writes()).toHaveLength(1);
+    expect(useApp.getState().notice).toBe(permission.message);
+    expect(useApp.getState().docs[id].dirty).toBe(true);
+  });
+
+  it.each(["access", "io", "permissionDenied"])(
+    "does not elevate unrelated %s errors",
+    async (code) => {
+      const { id } = addDocument();
+      vi.mocked(call).mockRejectedValue({ code, message: "save failed" });
+      await expect(save(id)).rejects.toMatchObject({ code });
+      expect(ask).not.toHaveBeenCalled();
+      expect(writes()).toHaveLength(1);
+    },
+  );
+
+  it.each(["text", "encoding", "path", "model"])(
+    "rejects a changed %s after confirmation",
+    async (change) => {
+      const { id, buffer } = addDocument();
+      const answer = deferred<string>();
+      requireElevation();
+      vi.mocked(ask).mockReturnValue(answer.promise);
+      const result = expect(save(id)).rejects.toMatchObject({ code: "stale" });
+      await vi.waitFor(() => expect(ask).toHaveBeenCalled());
+      if (change === "text") {
+        buffer.edit("newer content");
+      } else if (change === "encoding") {
+        patchDoc(id, { encoding: "utf16le" });
+      } else if (change === "path") {
+        patchDoc(id, { path: "C:/workspace/another.txt" });
+      } else {
+        models.delete(id);
+      }
+      answer.resolve("Save as Administrator");
+      await result;
+      expect(writes()).toHaveLength(1);
+      expect(useApp.getState().docs[id].dirty).toBe(true);
+    },
+  );
+
+  it.each(["elevationCancelled", "permissionDenied", "elevation"])(
+    "retains the buffer after elevated %s",
+    async (code) => {
+      const { id, buffer } = addDocument();
+      vi.mocked(ask).mockResolvedValue("Save as Administrator");
+      vi.mocked(call).mockImplementation(async (command, args) => {
+        if (command === "save_document") {
+          throw args?.elevate ? { code, message: "elevated save failed" } : permission;
+        }
+        return undefined as never;
+      });
+      await expect(save(id)).rejects.toMatchObject({ code });
+      expect(writes()).toHaveLength(2);
+      expect(ask).toHaveBeenCalledTimes(1);
+      expect(buffer.getValue()).toBe("edited");
+      expect(useApp.getState().docs[id]).toMatchObject({ dirty: true, revision: "old-revision" });
+    },
+  );
+
+  it("preserves edits made while the administrator write is pending", async () => {
+    const { id, buffer } = addDocument();
+    const pending = deferred<string>();
+    vi.mocked(ask).mockResolvedValue("Save as Administrator");
+    vi.mocked(call).mockImplementation(async (command, args) => {
+      if (command === "save_document") {
+        if (!args?.elevate) {
+          throw permission;
+        }
+        return pending.promise as never;
+      }
+      return undefined as never;
+    });
+    const saving = save(id);
+    await vi.waitFor(() => expect(writes()).toHaveLength(2));
+    buffer.edit("new edits during UAC");
+    pending.resolve("saved-revision");
+    await saving;
+    expect(buffer.getValue()).toBe("new edits during UAC");
+    expect(useApp.getState().docs[id]).toMatchObject({ dirty: true, revision: "saved-revision" });
   });
 });
 
@@ -2503,6 +2649,20 @@ describe("Automatic saves", () => {
     expect(writes()[0].text).toBe(buffer.getValue());
     expect(useApp.getState().docs[id].dirty).toBe(false);
     expect(useApp.getState().notice).toContain("saving the current buffer");
+  });
+
+  it("writes the formatted Markdown buffer when format on save is enabled", async () => {
+    const { id, buffer } = addDocument({ language: "markdown", path: "C:/workspace/README.md" });
+    buffer.edit("# Title\n\n\n\nParagraph.\n");
+    setApp({ settings: { "editor.formatOnSave": true } });
+    vi.mocked(canFormat).mockImplementation((language) => language === "markdown");
+    vi.mocked(formatModel).mockImplementationOnce(async () => {
+      buffer.edit("# Title\n\nParagraph.\n");
+    });
+    await save(id);
+    expect(writes()).toHaveLength(1);
+    expect(writes()[0].text).toBe("# Title\n\nParagraph.\n");
+    expect(useApp.getState().docs[id].dirty).toBe(false);
   });
 
   it.each(["off", "onWindowChange", "conflict", "untitled", "removed"] as const)(

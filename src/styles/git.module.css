@@ -1,0 +1,261 @@
+/* Include the vendor icon attribute so contextual sizing survives lazy stylesheet order. */
+.git-tabs [role="tab"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  height: 32px;
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+  padding: 0 8px;
+}
+.git-tabs [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--lc-focus);
+}
+.git-branch-heading {
+  padding: 10px 12px 6px;
+}
+.git-branch-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.git-branch-heading > span:last-child {
+  white-space: nowrap;
+  color: var(--lc-muted);
+}
+.git-sync-actions {
+  padding: 3px 10px 9px;
+}
+.git-view :global(.action-button) {
+  min-height: 24px;
+  height: 24px;
+  border-radius: 2px;
+  font-weight: 400;
+  background: var(--lc-input);
+  color: var(--lc-foreground);
+  border: 1px solid var(--lc-border-strong);
+  box-shadow: none;
+  font-size: 12px;
+}
+.git-view :global(.action-button):hover:not(:disabled) {
+  background: var(--lc-border-input);
+}
+.git-view :global(.action-button):disabled {
+  opacity: 0.45;
+}
+.git-view :global(.action-button):global(.primary) {
+  background: var(--lc-focus);
+  border-color: var(--lc-focus);
+  color: var(--lc-foreground-strong);
+}
+.git-view :global(.action-button):global(.primary):hover:not(:disabled) {
+  background: var(--lc-button-hover);
+}
+.git-sync-actions :global(.action-button) {
+  display: inline-grid;
+}
+.git-sync-actions :global(.action-button) > span {
+  grid-area: 1 / 1;
+}
+.git-sync-actions :global(.action-button)[aria-busy="true"] {
+  opacity: 1;
+}
+.git-sync-actions :global(.action-button)[aria-busy="true"] :global(.git-sync-label) {
+  visibility: hidden;
+}
+.git-sync-actions :global(.spinner) {
+  width: 12px;
+  height: 12px;
+  place-self: center;
+  border-color: currentColor;
+  border-right-color: transparent;
+}
+.git-view :global(#git-panel-changes) {
+  display: flex;
+  flex-direction: column;
+}
+.git-change-panes > :global(.pane-layout) {
+  min-height: var(--git-panes-min-height);
+}
+.git-commit-form textarea {
+  width: 100%;
+  min-height: 64px;
+  max-height: 180px;
+  resize: vertical;
+  padding: 6px 8px;
+  background: var(--lc-input);
+  color: var(--lc-foreground);
+  border: 1px solid var(--lc-border-input);
+  border-radius: 2px;
+  font: inherit;
+  font-size: 12px;
+}
+.git-commit-form textarea:focus {
+  outline: 1px solid var(--lc-focus);
+  outline-offset: -1px;
+}
+.git-commit-dialog :global(.git-commit-hint) {
+  color: var(--lc-foreground);
+  font-size: 12px;
+}
+.git-commit-dialog :global(.modal-actions) {
+  margin-top: 8px;
+}
+.git-commit-dialog :global(.modal-actions) button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.git-commit-dialog button:disabled {
+  opacity: 0.45;
+}
+.git-empty > :global(.codicon[class*="codicon-"]) {
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+.git-empty p {
+  margin-bottom: 12px;
+}
+.git-section-heading {
+  padding: 0 8px 0 5px;
+}
+.git-section-toggle > span:nth-child(2) {
+  flex: 1;
+}
+.git-change-section:has(> :global(.git-changes-list), > :global(.git-tree-group)) {
+  min-height: 54px;
+}
+.git-change-section:has(:global(.git-tree-selection-actions)) {
+  min-height: 82px;
+}
+.git-changes-list:focus-visible {
+  outline: 1px solid var(--lc-focus);
+  outline-offset: -1px;
+}
+.git-file-row {
+  padding: 0 9px 0 16px;
+}
+.git-file-row:hover {
+  background: var(--lc-hover);
+}
+.git-changes-list:focus :global(.git-file-row):global(.selected) {
+  background: var(--lc-selection);
+}
+.git-file-name:global(.deleted) {
+  text-decoration: line-through;
+}
+.git-file-row :global(.git-file-actions) {
+  display: none;
+}
+.git-file-row:hover :global(.git-file-actions),
+.git-file-row:focus-within :global(.git-file-actions) {
+  display: flex;
+}
+.git-status-D,
+.git-status-\! {
+  color: var(--lc-git-deleted);
+}
+.git-operation-banner {
+  border-block: 1px solid var(--lc-warning-border);
+}
+.git-info {
+  padding: 7px 12px 20px;
+}
+.git-info-field {
+  margin: 5px 0 14px;
+}
+.git-info-field > span:first-child {
+  color: var(--lc-muted);
+}
+.git-info-field code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  font-size: 11px;
+}
+.git-remote-address strong {
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-remote-address code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-remote-address :global(.action-button) {
+  flex-shrink: 0;
+}
+.git-info h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 10px 0;
+}
+.git-info :global(.git-section-heading) {
+  padding-inline: 0;
+  background: transparent;
+  justify-content: space-between;
+}
+.git-branch-row > button:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  text-align: left;
+  min-width: 0;
+  padding: 4px;
+}
+.git-branch-row:hover :global(.git-branch-actions),
+.git-branch-row:focus-within :global(.git-branch-actions) {
+  opacity: 1;
+  pointer-events: auto;
+}
+.git-branch-actions :global(.icon-button) {
+  width: 24px;
+  height: 24px;
+}
+.git-branch-row button:focus-visible {
+  outline: 1px solid var(--focus-border, var(--lc-focus));
+  outline-offset: -1px;
+}
+.git-branch-row > button:first-child > :global(.codicon[class*="codicon-"]),
+.git-branch-row small {
+  flex-shrink: 0;
+}
+.git-branch-row > button:first-child:hover:not(:disabled) {
+  background: var(--lc-hover);
+}
+.git-branch-row > button:first-child > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-branch-row small {
+  margin-left: auto;
+  color: var(--lc-muted);
+}
+.git-branch-row button:disabled {
+  opacity: 0.65;
+}
+.git-branch-row > button[aria-current="true"] {
+  opacity: 1;
+}
+.git-branch-row > button[aria-current="true"] > span:nth-child(2) {
+  color: var(--lc-focus);
+  font-weight: 700;
+}
+.git-tree-selection-actions > span {
+  flex: 1;
+}
+.git-diff-toolbar {
+  padding: 0 8px 0 14px;
+}

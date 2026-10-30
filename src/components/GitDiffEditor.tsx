@@ -1,3 +1,4 @@
+import gitStyles from "../styles/git.module.css";
 import { useEffect, useRef, useState } from "react";
 import { monaco, loadSyntax } from "../editor/monaco";
 import { diffOptions, editorOptions } from "../editor/settings";
@@ -9,7 +10,6 @@ import { attachGitSource, readGitDiff, openGitSource } from "../git/git";
 import { errorMessage } from "../core/bridge";
 import { IconButton } from "./ui";
 import type { Doc, GitDiffContent, Group } from "../types/types";
-import "../styles/git.css";
 
 export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
   const host = useRef<HTMLDivElement>(null);
@@ -195,8 +195,13 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
     });
   }, [settings, inline, content]);
   return (
-    <div className="git-diff-editor" aria-label={`Git diff: ${diff.path}`}>
-      <div className="git-diff-toolbar">
+    <div
+      className="git-diff-editor flex flex-col flex-1 min-h-0 overflow-hidden"
+      aria-label={`Git diff: ${diff.path}`}
+    >
+      <div
+        className={`git-diff-toolbar h-[30px] shrink-0 flex items-center justify-between gap-2 border-b border-b-panel bg-editor text-[12px] text-muted ${gitStyles["git-diff-toolbar"]}`}
+      >
         <span className="truncate" title={`${diff.repository}/${diff.path}`}>
           {diff.staged
             ? "HEAD ↔ Index"
@@ -204,7 +209,7 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
               ? "Local ↔ Working Tree"
               : "Index ↔ Working Tree"}
         </span>
-        <div className="actions">
+        <div className="actions flex items-center gap-[2px] shrink-0">
           <IconButton
             icon="arrow-up"
             label="Previous Change"
@@ -230,16 +235,23 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
         </div>
       </div>
       {(error || content?.summary) && (
-        <div className="git-diff-summary" role={error ? "alert" : "status"}>
+        <div
+          className="git-diff-summary p-7 text-[13px] text-subtle"
+          role={error ? "alert" : "status"}
+        >
           {error || content?.summary}
         </div>
       )}
       {loading && !content && (
-        <div className="git-diff-summary" role="status">
+        <div className="git-diff-summary p-7 text-[13px] text-subtle" role="status">
           Loading comparison…
         </div>
       )}
-      <div className="git-diff-host" ref={host} hidden={!!error || !!content?.summary} />
+      <div
+        className="git-diff-host flex-1 min-h-0"
+        ref={host}
+        hidden={!!error || !!content?.summary}
+      />
     </div>
   );
 }

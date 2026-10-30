@@ -1,0 +1,64 @@
+/* Scope complex states to their owning component; literal descendant classes are stable hooks.
+ * Codicon selectors include the vendor attribute to preserve contextual sizes across lazy CSS loading. */
+
+.welcome-page {
+  --welcome-link: var(--lc-link);
+  --welcome-muted: var(--lc-muted);
+}
+.welcome-heading h1 {
+  font-size: 42px;
+  font-weight: 500;
+  line-height: 1.2;
+  margin: 0 0 8px;
+}
+.welcome-heading p {
+  font-size: 28px;
+  line-height: 1.3;
+  color: var(--welcome-muted);
+  margin: 0;
+}
+.welcome-section + :global(.welcome-section) {
+  margin-top: 36px;
+}
+.welcome-section h2 {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.3;
+  margin: 0 0 12px;
+}
+.welcome-actions li + li {
+  margin-top: 8px;
+}
+.welcome-action {
+  color: var(--welcome-link);
+}
+.welcome-action :global(.codicon[class*="codicon-"]) {
+  font-size: 28px;
+}
+.welcome-action:hover,
+.welcome-recent:hover,
+.welcome-more:hover {
+  background: none;
+  text-decoration: underline;
+}
+.welcome-recent-name {
+  color: var(--welcome-link);
+}
+.welcome-more {
+  color: var(--welcome-link);
+}
+.welcome-no-recents {
+  color: var(--welcome-muted);
+}
+@media (max-width: 800px) {
+  .welcome-heading h1 {
+    font-size: 34px;
+  }
+  .welcome-heading p {
+    font-size: 24px;
+  }
+  .welcome-recent {
+    gap: 12px;
+    font-size: 16px;
+  }
+}

@@ -1,0 +1,427 @@
+/* Scope complex states to their owning component; literal descendant classes are stable hooks.
+ * Codicon selectors include the vendor attribute to preserve contextual sizes across lazy CSS loading. */
+.workbench-layout {
+  --separator-border: var(--lc-border-panel);
+  --focus-border: var(--lc-focus);
+}
+.workbench-layout :global(.sidebar) {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  border: 0;
+}
+.workbench-layout :global(.editors),
+.workbench-layout :global(.editor-groups) {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.workbench-layout :global(.editor-group) {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+}
+.editors[data-external-drop="true"],
+.explorer[data-external-drop="true"] {
+  outline: 2px solid var(--vscode-focusBorder, var(--lc-focus));
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 9999px var(--lc-drop-background);
+}
+
+.modal-panel:global(.move-confirmation) {
+  width: 600px;
+  padding: 28px 24px 22px 70px;
+  background: var(--lc-widget);
+  border-radius: 10px;
+}
+.move-confirmation h2 {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-right: 22px;
+}
+/* Match the vendor icon attribute so the dialog's info icon retains its size. */
+.move-confirmation :global(.move-info[class*="codicon-"]) {
+  position: absolute;
+  left: 22px;
+  top: 30px;
+  font-size: 30px;
+  color: var(--lc-link-hover);
+}
+.move-confirmation :global(.move-close) {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+}
+.move-confirmation :global(.move-items) {
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 0;
+  max-height: min(40vh, 300px);
+  overflow: auto;
+  color: var(--lc-subtle);
+  line-height: 26px;
+  overflow-wrap: anywhere;
+}
+.move-confirmation :global(.modal-actions) {
+  margin-top: 28px;
+}
+.section-heading[data-drop-target="true"] {
+  background: var(--lc-selection);
+  outline: 1px solid var(--lc-focus);
+  outline-offset: -1px;
+}
+
+.context-menu:global(.editor-tab-menu) {
+  min-width: 340px;
+  max-width: calc(100vw - 12px);
+  max-height: calc(100vh - 12px);
+  overflow-y: auto;
+  padding: 4px 0;
+  background: var(--lc-widget);
+  border-radius: 6px;
+  font-size: 13px;
+  box-shadow: 0 2px 10px var(--lc-shadow);
+}
+.action-button:hover:not(:disabled) {
+  background: var(--lc-button-secondary-hover);
+}
+.action-button:global(.compact) {
+  height: 24px;
+  padding-inline: 8px;
+  font-size: 12px;
+}
+.action-button:global(.primary) {
+  border-color: var(--lc-button);
+  background: var(--lc-button);
+  color: var(--lc-foreground-strong);
+}
+.action-button:global(.primary):hover:not(:disabled) {
+  background: var(--lc-button-hover);
+}
+.action-button:global(.subtle) {
+  border-color: transparent;
+  background: transparent;
+}
+.action-button:global(.subtle):hover:not(:disabled) {
+  background: var(--lc-overlay-hover);
+}
+.primary:hover {
+  background: var(--lc-button-hover);
+}
+.app-mark :global(.codicon[class*="codicon-"]) {
+  font-size: 22px;
+}
+.menubar > button {
+  padding: 4px 8px;
+  height: 28px;
+}
+.title-center {
+  transform: translateX(-50%);
+}
+.window-controls button {
+  width: 46px;
+  height: 100%;
+  border-radius: 0;
+}
+.window-controls :global(.window-close):hover {
+  background: var(--lc-window-close);
+  color: var(--lc-foreground-strong);
+}
+.window-controls :global(.codicon[class*="codicon-"]) {
+  font-size: 14px;
+}
+.activitybar button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 0;
+  color: var(--lc-activity-inactive);
+  border-left: 2px solid transparent;
+  padding: 0;
+}
+.activitybar button:global(.active) {
+  color: var(--lc-activity-foreground);
+  border-left-color: var(--lc-focus);
+}
+.activitybar button :global(.codicon[class*="codicon-"]) {
+  font-size: 24px;
+}
+.activitybar button:hover {
+  background: transparent;
+  color: var(--lc-activity-foreground);
+}
+.sidebar-view:not([hidden]) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.view-title {
+  padding: 0 12px 0 20px;
+  letter-spacing: 0.2px;
+}
+.view-title :global(.actions) {
+  margin-right: -4px;
+}
+.section-heading > button {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 2px;
+  border-radius: 0;
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+  height: 100%;
+}
+.section-heading :global(.icon-button) {
+  width: 26px;
+  height: 26px;
+}
+.file-tree {
+  --trees-font-family: "Segoe UI", sans-serif;
+  --trees-font-size: 15px;
+  --trees-row-height: 26px;
+  --trees-indent: 8px;
+  --trees-bg-override: var(--lc-sidebar);
+  --trees-fg-override: var(--lc-foreground);
+  --trees-row-selected-bg-override: var(--lc-selection);
+}
+.empty-sidebar button {
+  width: 100%;
+  margin: 10px 0;
+}
+.empty-sidebar p {
+  margin: 8px 0;
+}
+.breadcrumbs {
+  box-shadow: 0 2px 3px var(--lc-shadow-soft);
+}
+.breadcrumbs > span {
+  display: flex;
+  align-items: center;
+}
+.breadcrumbs button {
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 0;
+  height: 22px;
+  color: var(--lc-subtle);
+}
+.breadcrumbs button:hover {
+  color: var(--lc-foreground-strong);
+  background: none;
+}
+.startup {
+  word-break: break-word;
+}
+.spinner {
+  border-top-color: var(--lc-focus);
+  animation: spin 1s linear infinite;
+}
+.workspace-opening p {
+  margin: 0;
+}
+.workspace-opening-path {
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-opening :global(.spinner) {
+    animation: none;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.statusbar button,
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  border-radius: 0;
+  padding: 0 7px;
+  font-size: 12px;
+}
+.statusbar :global(.codicon[class*="codicon-"]) {
+  font-size: 14px;
+}
+.status-right > :global(.git-line-status) {
+  min-width: 0;
+  flex-shrink: 1;
+  max-width: min(240px, 25vw);
+  padding: 0 7px;
+}
+.git-line-status > :global(.codicon[class*="codicon-"]) {
+  flex-shrink: 0;
+}
+.git-line-status:hover,
+.git-line-status[data-popup-open] {
+  background: var(--lc-overlay-hover);
+}
+.git-line-status:focus-visible {
+  outline: 1px solid var(--lc-focus);
+  outline-offset: -1px;
+}
+.status-right > button {
+  flex-shrink: 0;
+}
+.statusbar :global(.workspace-status) {
+  min-width: 0;
+  max-width: min(200px, 25vw);
+}
+.workspace-status > span:not(:global(.codicon[class*="codicon-"])) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace-status[data-popup-open] {
+  background: var(--lc-overlay-hover);
+}
+.workspace-popup {
+  box-shadow: 0 4px 14px var(--lc-shadow-widget);
+}
+.workspace-path {
+  overflow-wrap: anywhere;
+}
+.workspace-popup :global(.icon-button) {
+  flex-shrink: 0;
+}
+.status-right > span {
+  padding: 2px 6px;
+}
+.notification {
+  box-shadow: 0 4px 20px var(--lc-shadow-terminal);
+}
+.notification > :global(.codicon[class*="codicon-"]) {
+  color: var(--lc-link-hover);
+  margin-top: 2px;
+}
+.notification p {
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex: 1;
+  margin: 0;
+  line-height: 20px;
+}
+.notification a {
+  color: var(--welcome-link, var(--lc-link));
+  text-decoration: underline;
+}
+.notification :global(.icon-button) {
+  margin-top: -3px;
+}
+.context-menu {
+  box-shadow: 0 4px 14px var(--lc-shadow-widget);
+}
+.context-menu > [role="menuitem"],
+.context-menu > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  height: 27px;
+  padding: 4px 20px 4px 24px;
+  cursor: pointer;
+  outline: none;
+  border-radius: 4px;
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
+}
+.context-menu > [data-highlighted],
+.context-menu > [role="menuitem"]:hover,
+.context-menu > button:hover {
+  background: var(--lc-selection);
+  color: var(--lc-foreground-strong);
+}
+.modal-panel {
+  transform: translate(-50%, -50%);
+  box-shadow: 0 8px 40px var(--lc-shadow);
+}
+.modal-panel h2 {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0 0 12px;
+}
+.modal-panel p {
+  line-height: 21px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.modal-panel input {
+  width: 100%;
+  margin: 8px 0;
+}
+.modal-actions button {
+  min-width: 70px;
+  background: var(--lc-button-secondary-hover);
+  padding: 6px 16px;
+}
+.modal-actions button:global(.primary) {
+  background: var(--lc-focus);
+}
+.diff-panel {
+  box-shadow: 0 8px 40px var(--lc-shadow);
+}
+.diff-heading h2 {
+  font-size: 14px;
+  font-weight: 400;
+  margin: 0;
+}
+.diff-panel :global(.action-button) {
+  border: 1px solid var(--lc-border-strong);
+  background: var(--lc-border-panel);
+}
+.diff-panel :global(.action-button):hover:not(:disabled) {
+  background: var(--lc-border-strong);
+}
+.inline-warning,
+.inline-error {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1000px) {
+  .titlebar:has(:global(.update-button)) :global(.title-center) {
+    display: none;
+  }
+  .title-center {
+    left: auto;
+    right: 200px;
+    transform: none;
+    width: 30%;
+  }
+  .menubar > button {
+    padding: 4px 6px;
+  }
+  .title-layout {
+    display: none;
+  }
+  .statusbar button {
+    padding: 0 4px;
+  }
+  .status-right > :global(.indentation-status) {
+    display: none;
+  }
+}
+@media (max-width: 800px) {
+  .menubar > button:nth-child(3) {
+    display: none;
+  }
+  .title-center {
+    right: 145px;
+    width: 28%;
+  }
+  .status-right > :global(.encoding-status) {
+    display: none;
+  }
+}

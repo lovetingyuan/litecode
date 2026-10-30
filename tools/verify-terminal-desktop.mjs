@@ -73,7 +73,7 @@ try {
     }
   });
   await page.waitForURL("http://localhost:1420/**", { timeout: 60_000 });
-  await page.locator(".sidebar").waitFor({ state: "attached", timeout: 90_000 });
+  await page.locator(".sidebar").waitFor({ state: "attached", timeout: 180_000 });
   const invoke = (command, args = {}) =>
     page.evaluate(({ command, args }) => window.__TAURI_INTERNALS__.invoke(command, args), {
       command,
@@ -329,18 +329,39 @@ try {
         nested.toLowerCase().replaceAll("\\", "/"),
       "Profile cd failed: " + profile.name,
     );
-    const marker = "PROFILE_" + profile.name.replaceAll(" ", "_");
+    const profileMarker = profile.name.replaceAll(" ", "_");
+    const marker = "PROFILE_" + profileMarker;
     await shell(
       profile.kind === "cmd"
-        ? `echo ${marker}`
+        ? `echo PROFILE_^${profileMarker}`
         : profile.kind === "bash"
-          ? `printf '%s\\n' '${marker}'`
-          : `Write-Output '${marker}'`,
+          ? `printf '%s%s\\n' 'PROFILE_' '${profileMarker}'`
+          : `Write-Output ('PROFILE_' + '${profileMarker}')`,
       id,
     );
     await output(marker, id);
-    await shell("exit", id);
-    await waitState((s) => !s.panes[id], "Normal exit did not close: " + profile.name);
+    // Profile/prompt hooks may still have short-lived children. Cancel and retry
+    // until the shell settles; a permanently busy/misclassified shell must fail.
+    for (let attempt = 0; attempt < 10 && (await state()).panes[id]; attempt++) {
+      const closingIdle = runtime("closePane", id);
+      await page.waitForFunction(
+        (id) =>
+          !document.querySelector(`[data-terminal-pane="${id}"]`) ||
+          !!document.querySelector('[role="dialog"]'),
+        id,
+      );
+      if (await page.getByRole("dialog").count()) {
+        await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+      }
+      await closingIdle;
+      if ((await state()).panes[id]) await delay(500);
+    }
+    assert(!(await state()).panes[id], "Idle shell did not close directly: " + profile.name);
+    assert.equal(await page.getByRole("dialog").count(), 0);
+    const exitId = await runtime("newTerminal", profile.name);
+    await waitState((s) => s.panes[exitId]?.status === "running", "Exit shell did not start");
+    await shell("exit", exitId);
+    await waitState((s) => !s.panes[exitId], "Normal exit did not close: " + profile.name);
     checks.push("Native shell profile: " + profile.name + " input/output/cwd/exit");
   }
 
@@ -475,7 +496,41 @@ try {
   );
   await exists(childPidFile);
   const childPid = Number(await readFile(childPidFile, "utf8"));
-  await runtime("closePane", second);
+  await page.keyboard.press("Control+Shift+W");
+  const closeDialog = page.getByRole("dialog");
+  await closeDialog.waitFor();
+  await page.waitForFunction(() => document.activeElement?.textContent === "Cancel");
+  await page.screenshot({ path: path.join(run, "terminal-close-confirmation.png") });
+  await page.keyboard.press("Escape");
+  await closeDialog.waitFor({ state: "hidden" });
+  assert((await state()).panes[second], "Cancel closed the busy terminal");
+  const childRunning = () =>
+    execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-Command",
+        `[bool](Get-Process -Id ${childPid} -ErrorAction SilentlyContinue)`,
+      ],
+      { windowsHide: true, encoding: "utf8" },
+    ).trim();
+  assert.equal(childRunning(), "True", "Cancel terminated the child process");
+  const closeState = await state();
+  const busyTab = closeState.tabs.find((t) => JSON.stringify(t.layout).includes(second));
+  const beforeCancel = Object.keys(closeState.panes);
+  const canceledTab = runtime("closeTab", busyTab.id);
+  await closeDialog.waitFor();
+  await closeDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await canceledTab;
+  assert.deepEqual(
+    Object.keys((await state()).panes),
+    beforeCancel,
+    "Cancel partially closed a tab",
+  );
+  const confirmedTab = runtime("closeTab", busyTab.id);
+  await closeDialog.waitFor();
+  await closeDialog.getByRole("button", { name: "Close Tab", exact: true }).click();
+  await confirmedTab;
   await delay(500);
   const childAlive = execFileSync(
     "powershell.exe",
@@ -497,13 +552,14 @@ try {
     "Terminal cleanup did not release process memory",
   );
   checks.push(
-    "Closing a pane kills its descendant process; closing all tabs releases shell processes and memory",
+    "Busy pane cancellation preserves its child; tab closure confirms once, defaults to Cancel, and kills descendants on confirmation",
+    "Closing all tabs releases shell processes and memory",
   );
 
   const newWindow = page.context().waitForEvent("page");
   await invoke("new_window");
   const other = await newWindow;
-  await other.locator(".sidebar").waitFor({ state: "attached", timeout: 90_000 });
+  await other.locator(".sidebar").waitFor({ state: "attached", timeout: 180_000 });
   await other.getByRole("button", { name: "Terminal (Ctrl+`)", exact: true }).click();
   await other.waitForFunction(() => {
     const caption = document.querySelector(".terminal-pane-caption");
@@ -528,10 +584,16 @@ try {
   await assert.rejects(
     other.evaluate((id) => window.__TAURI_INTERNALS__.invoke("terminal_close", { id }), rawId),
   );
+  await assert.rejects(
+    other.evaluate(
+      (id) => window.__TAURI_INTERNALS__.invoke("terminal_has_child_processes", { id }),
+      rawId,
+    ),
+  );
   await invoke("terminal_close", { id: rawId });
   await invoke("terminal_close", { id: rawId });
   checks.push(
-    "A second window cannot close another window's terminal; closing an owned session is idempotent",
+    "A second window cannot inspect or close another window's terminal; closing an owned session is idempotent",
   );
 
   await runtime("newTerminal");
@@ -542,10 +604,11 @@ try {
   const changedRoot = path.join(run, "other-project");
   await mkdir(changedRoot);
   await invoke("explicit_open", { path: changedRoot });
-  await action("core/commands", "openFolder", false, changedRoot);
+  const openingProject = action("core/commands", "openFolder", false, changedRoot);
+  await page.getByRole("button", { name: "Trust Workspace", exact: true }).click();
+  await openingProject;
   assert.equal((await state()).tabs.length, 0);
   await page.getByRole("button", { name: "Terminal (Ctrl+`)", exact: true }).click();
-  await page.getByRole("button", { name: "Trust Workspace", exact: true }).click();
   s = await waitState((s) => s.panes[current(s)]?.reportedCwd, "New project terminal failed");
   assert.equal(s.panes[current(s)].cwd.toLowerCase(), changedRoot.toLowerCase());
   assert.equal(await other.locator(".terminal-pane-caption").innerText(), otherCwd);

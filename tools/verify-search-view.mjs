@@ -146,6 +146,53 @@ try {
   await mkdir(".verification/search-view", { recursive: true });
   await page.goto(process.env.LITECODE_TEST_URL ?? "http://localhost:1420", { timeout: 60_000 });
   await search.waitFor();
+  const queryInput = panel.getByRole("textbox", { name: "Search text", exact: true });
+  const queryLayout = () =>
+    queryInput.evaluate((element) => {
+      const box = element.parentElement.getBoundingClientRect();
+      const actions = element.nextElementSibling.getBoundingClientRect();
+      return {
+        height: element.clientHeight,
+        contentHeight: element.scrollHeight,
+        actionsTop: actions.top - box.top,
+        actionsRight: box.right - actions.right,
+      };
+    });
+  await queryInput.fill("frontend");
+  const singleLine = await queryLayout();
+  await queryInput.fill("Waiting for your frontend " + "dsad".repeat(50));
+  const wrapped = await queryLayout();
+  assert.ok(wrapped.height > singleLine.height, "Soft-wrapped search text grows the input");
+  assert.equal(wrapped.height, wrapped.contentHeight, "Wrapped text is fully visible");
+  assert.equal(
+    wrapped.actionsTop,
+    singleLine.actionsTop,
+    "Options stay aligned with the first line",
+  );
+  assert.equal(wrapped.actionsRight, singleLine.actionsRight, "Options stay aligned to the right");
+  await queryInput.fill(Array.from({ length: 8 }, (_, i) => `line ${i + 1}`).join("\n"));
+  const multiline = await queryLayout();
+  assert.ok(multiline.height >= 8 * 20, "Explicit newlines grow beyond six rows");
+  assert.equal(multiline.height, multiline.contentHeight, "All eight lines are visible");
+  await shot("10-multiline-query");
+  await queryInput.fill(Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n"));
+  const capped = await queryLayout();
+  assert.equal(capped.height, multiline.height, "Long queries stop growing at eight lines");
+  assert.ok(
+    capped.contentHeight > capped.height,
+    "Overflowing query text scrolls inside the input",
+  );
+  assert.equal(
+    capped.actionsTop,
+    singleLine.actionsTop,
+    "Options stay at the top at maximum height",
+  );
+  await shot("11-query-height-limit");
+  await queryInput.fill("frontend");
+  assert.equal((await queryLayout()).height, singleLine.height, "Shortened text shrinks the input");
+  console.log(
+    "PASS: wrapped and multiline query autosizing, height limit, option alignment and shrinking",
+  );
   await search.getByRole("textbox", { name: "Search text" }).fill("function");
   await settle();
   assert.deepEqual(

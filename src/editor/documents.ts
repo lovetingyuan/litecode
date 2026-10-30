@@ -21,6 +21,7 @@ import { applyModelSettings, modelSettingKeys } from "./settings";
 import { layoutGroups, restoreLayout, splitLayout, type SplitDirection } from "./editorLayout";
 import type { FileMove } from "../explorer/explorerMove";
 import { DocumentBackups } from "./documentBackup";
+import { saveWithElevation } from "./saveWithElevation";
 
 export const models = new Map<string, monaco.editor.ITextModel>();
 export const editors = new Map<string, monaco.editor.IStandaloneCodeEditor>();
@@ -966,15 +967,27 @@ async function saveDocument(
     }
     const version = doc.version;
     const alternativeVersion = m.getAlternativeVersionId();
+    const savingModel = m;
+    const epoch = documentEpoch;
     try {
-      const newRevision = await call<string>("save_document", {
-        id,
-        version,
-        path,
-        text: m.getValue(),
-        encoding: doc.encoding,
-        revision,
-      });
+      const newRevision = await saveWithElevation(
+        { id, version, path, text: m.getValue(), encoding: doc.encoding, revision },
+        {
+          automatic: !!autoSaveMode,
+          isCurrent: () => {
+            const current = useApp.getState().docs[id];
+            return (
+              documentEpoch === epoch &&
+              models.get(id) === savingModel &&
+              current?.path === doc.path &&
+              current?.version === version &&
+              current?.encoding === doc.encoding &&
+              current?.revision === doc.revision &&
+              savingModel.getAlternativeVersionId() === alternativeVersion
+            );
+          },
+        },
+      );
       savedVersions.set(id, alternativeVersion);
       savedEncodings.set(id, doc.encoding);
       patchDoc(id, {

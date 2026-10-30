@@ -1,10 +1,11 @@
+import mediaPreviewStyles from "./MediaPreview.module.css";
+import workbenchStyles from "../styles/workbench.module.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { mediaSource } from "../core/bridge";
 import { models, patchDoc, patchMediaView } from "../editor/documents";
 import { clampScale, stepScale } from "../utils/media";
 import { Icon } from "./ui";
 import type { Doc, Group } from "../types/types";
-import "./MediaPreview.css";
 import { useApp } from "../store/store";
 
 export function MediaPreview({ doc, group }: { doc: Doc; group: Group }) {
@@ -55,14 +56,20 @@ export function MediaPreview({ doc, group }: { doc: Doc; group: Group }) {
   let content;
   if (doc.deleted) {
     content = (
-      <div className="media-message" role="status">
+      <div
+        className={`media-message w-full h-full flex flex-col items-center justify-center p-8 gap-6 text-center overflow-auto ${mediaPreviewStyles["media-message"]}`}
+        role="status"
+      >
         <Icon name="warning" />
         <p>The file could not be found. It may have been moved or deleted.</p>
       </div>
     );
   } else if (doc.kind === "binary") {
     content = (
-      <div className="media-message binary-message" role="status">
+      <div
+        className={`media-message w-full h-full flex flex-col items-center justify-center p-8 gap-6 text-center overflow-auto ${mediaPreviewStyles["media-message"]} binary-message`}
+        role="status"
+      >
         <Icon name="warning" />
         <p>
           The file is not displayed in the text editor because it is either binary or uses an
@@ -72,10 +79,16 @@ export function MediaPreview({ doc, group }: { doc: Doc; group: Group }) {
     );
   } else if (error) {
     content = (
-      <div className="media-message" role="alert">
+      <div
+        className={`media-message w-full h-full flex flex-col items-center justify-center p-8 gap-6 text-center overflow-auto ${mediaPreviewStyles["media-message"]}`}
+        role="alert"
+      >
         <Icon name="warning" />
         <p>An error occurred while loading the {doc.kind === "svg" ? "image" : doc.kind} file.</p>
-        <button className="media-retry" onClick={() => setRetry((value) => value + 1)}>
+        <button
+          className="media-retry text-link underline"
+          onClick={() => setRetry((value) => value + 1)}
+        >
           Retry
         </button>
       </div>
@@ -84,8 +97,13 @@ export function MediaPreview({ doc, group }: { doc: Doc; group: Group }) {
     content = (
       <>
         {!ready && (
-          <div className="media-loading" role="status">
-            <span className="spinner" />
+          <div
+            className="media-loading absolute inset-0 flex items-center justify-center gap-[10px] pointer-events-none"
+            role="status"
+          >
+            <span
+              className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
+            />
             <span>Loading preview…</span>
           </div>
         )}
@@ -131,7 +149,7 @@ export function MediaPreview({ doc, group }: { doc: Doc; group: Group }) {
   }
   return (
     <div
-      className={`media-preview ${doc.kind === "video" || doc.kind === "audio" ? "playback-preview" : ""}`}
+      className={`media-preview relative flex-1 min-h-0 min-w-0 overflow-hidden bg-editor ${mediaPreviewStyles["media-preview"]} ${doc.kind === "video" || doc.kind === "audio" ? `playback-preview flex items-center justify-center p-6 ${mediaPreviewStyles["playback-preview"]}` : ""}`}
       tabIndex={0}
       aria-label={`Preview of ${doc.name}`}
     >
@@ -212,7 +230,7 @@ function ImagePreview({
   return (
     <div
       ref={host}
-      className="image-viewport"
+      className="image-viewport w-full h-full overflow-auto"
       tabIndex={0}
       aria-label="Image preview, Ctrl+scroll or click to zoom"
       onScroll={(event) => {
@@ -239,7 +257,7 @@ function ImagePreview({
       }}
     >
       <div
-        className="image-stage"
+        className={`image-stage min-w-full min-h-full flex items-center justify-center p-4 ${mediaPreviewStyles["image-stage"]}`}
         style={
           natural
             ? { width: natural.width * actual + 32, height: natural.height * actual + 32 }
@@ -250,11 +268,9 @@ function ImagePreview({
           src={source}
           alt={doc.name}
           draggable={false}
-          className={actual >= 3 ? "pixelated" : ""}
+          className={`${actual >= 3 ? "pixelated" : ""} ${natural ? "" : "invisible"}`}
           style={
-            natural
-              ? { width: natural.width * actual, height: natural.height * actual }
-              : { visibility: "hidden" }
+            natural ? { width: natural.width * actual, height: natural.height * actual } : undefined
           }
           onClick={(event) => {
             host.current?.focus({ preventScroll: true });

@@ -1,3 +1,5 @@
+import { actionButtonClass } from "./ui";
+import markdownPreviewStyles from "./MarkdownPreview.module.css";
 import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -9,7 +11,6 @@ import { codeLanguage, loadSyntax, monaco } from "../editor/monaco";
 import { previewFontStyle } from "../editor/font";
 import { notify, useApp } from "../store/store";
 import type { Doc, Group } from "../types/types";
-import "./MarkdownPreview.css";
 
 export function MarkdownPreview({ doc, group }: { doc: Doc; group: Group }) {
   const settings = useApp((s) => s.settings);
@@ -51,7 +52,7 @@ export function MarkdownPreview({ doc, group }: { doc: Doc; group: Group }) {
   return (
     <div
       ref={host}
-      className="markdown-preview"
+      className={`markdown-preview flex-1 min-w-0 min-h-0 overflow-auto bg-editor text-foreground ${markdownPreviewStyles["markdown-preview"]}`}
       style={previewFontStyle(settings)}
       tabIndex={0}
       aria-label={`Markdown preview: ${doc.name}`}
@@ -145,11 +146,13 @@ const MarkdownContent = memo(function MarkdownContent({
     pre: PreviewCodeBlock,
   };
   return (
-    <article className="markdown-body">
+    <article
+      className={`markdown-body max-w-245 my-0 mx-auto text-[14px] leading-[1.65] select-text ${markdownPreviewStyles["markdown-body"]}`}
+    >
       {text.trim().length > 0 && (
         <button
           type="button"
-          className="btn btn-xs"
+          className={`${actionButtonClass} compact`}
           aria-pressed={allowRemote}
           title="Loading remote images shares your IP address with their hosts. Only HTTPS images are allowed."
           onClick={() => setAllowRemote((allowed) => !allowed)}

@@ -1,3 +1,4 @@
+import workbenchStyles from "../styles/workbench.module.css";
 import {
   useEffect,
   useImperativeHandle,
@@ -71,7 +72,7 @@ export function PaneLayout({
   return (
     <div
       ref={host}
-      className="pane-layout"
+      className="pane-layout relative w-full h-full min-w-0 min-h-0 overflow-hidden"
       onDoubleClickCapture={(event) => {
         const index = indexOf(event.target);
         if (index < 0) {
@@ -189,7 +190,10 @@ export function WorkbenchLayout({
     return () => observer.disconnect();
   }, []);
   return (
-    <div ref={host} className="workbench-layout">
+    <div
+      ref={host}
+      className={`workbench-layout flex-1 min-w-0 min-h-0 ${workbenchStyles["workbench-layout"]}`}
+    >
       <PaneLayout
         label="Primary side bar width"
         proportionalLayout={false}

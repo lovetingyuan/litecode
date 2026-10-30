@@ -1,0 +1,42 @@
+.update-panel :global(.action-button),
+button.update-button {
+  border: 1px solid var(--lc-border-strong);
+  background: var(--lc-button-secondary);
+  color: var(--lc-foreground);
+}
+.update-panel :global(.action-button):global(.primary),
+button.update-button {
+  background: var(--lc-focus);
+  border-color: var(--lc-focus);
+  color: var(--lc-foreground-strong);
+}
+.update-panel :global(.action-button):disabled {
+  opacity: 0.5;
+}
+.update-panel ul {
+  list-style: disc;
+  padding-left: 20px;
+}
+.update-panel ol {
+  list-style: decimal;
+  padding-left: 20px;
+}
+.update-panel a {
+  color: var(--lc-link);
+  text-decoration: underline;
+}
+.update-panel li {
+  margin: 6px 0;
+}
+.update-progress {
+  appearance: none;
+}
+.update-progress::-webkit-progress-bar {
+  background: var(--lc-border-strong);
+}
+.update-progress::-webkit-progress-value {
+  background: var(--lc-focus);
+}
+.update-progress::-moz-progress-bar {
+  background: var(--lc-focus);
+}

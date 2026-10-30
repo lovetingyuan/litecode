@@ -208,13 +208,13 @@
     "editor.formatOnSave": {
       "type": "boolean",
       "default": false,
-      "description": "保存时是否格式化文档，需要已安装对应语言的格式化工具。"
+      "description": "保存时是否格式化文档。HTML、Markdown 等使用内置 Oxfmt，需要可用的 Node.js；Rust 需要 rustfmt。项目配置也可选择其他格式化工具。"
     },
     "editor.defaultFormatter": {
       "type": ["string", "null"],
       "enum": [null, "esbenp.prettier-vscode", "oxc.oxc-vscode", "rust-lang.rust-analyzer"],
       "default": null,
-      "description": "默认格式化工具。null 表示自动选择：Rust 使用 rustfmt；HTML 使用 Prettier；其他文件根据项目配置选择 Prettier 或 Oxfmt。也可填写列出的工具标识。"
+      "description": "默认格式化工具。null 表示自动选择：Rust 使用 rustfmt；其他支持的文件（含 HTML、Markdown）根据项目配置选择 Prettier，否则使用 Oxfmt。应用内置 Oxfmt，无需安装语言工具，但需要 Node.js。也可填写列出的工具标识。"
     },
     "files.autoSave": {
       "enum": ["off", "afterDelay", "onFocusChange", "onWindowChange"],
@@ -309,7 +309,7 @@
     "oxfmt.path": {
       "type": ["string", "null"],
       "default": null,
-      "description": "Oxfmt 可执行文件路径。null 表示先从 PATH 查找，再尝试项目和应用安装的 Oxfmt。"
+      "description": "Oxfmt 可执行文件路径。null 表示依次尝试项目、应用内置、应用安装的 Oxfmt，最后从 PATH 查找。内置 npm 版本支持 HTML，需要 Node.js；独立二进制不支持 HTML。"
     },
     "editor.lineNumbers": {
       "enum": ["off", "on", "relative", "interval"],

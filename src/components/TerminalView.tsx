@@ -1,3 +1,5 @@
+import terminalStyles from "../styles/terminal.module.css";
+import workbenchStyles from "../styles/workbench.module.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { ContextMenu } from "@base-ui/react/context-menu";
@@ -33,7 +35,6 @@ import { PaneLayout } from "./EditorGrid";
 import { input } from "./dialog";
 import { Icon, IconButton } from "./ui";
 import "@xterm/xterm/css/xterm.css";
-import "../styles/terminal.css";
 
 const noCommit = () => {};
 const safe = (operation: Promise<unknown>) => {
@@ -81,13 +82,28 @@ export default function TerminalView() {
     }
   }
   return (
-    <section className="terminal-view" aria-label="Terminal" hidden={!visible}>
-      <div className="terminal-toolbar">
-        <div ref={tabBar} className="terminal-tabs" role="tablist" aria-label="Terminal tabs">
+    <section
+      className={`terminal-view flex flex-col relative w-full h-full min-w-0 min-h-0 bg-editor text-foreground ${terminalStyles["terminal-view"]}`}
+      aria-label="Terminal"
+      hidden={!visible}
+    >
+      <div
+        className={`terminal-toolbar flex items-center h-[35px] bg-sidebar border-b border-b-panel ${terminalStyles["terminal-toolbar"]}`}
+      >
+        <div
+          ref={tabBar}
+          className={`terminal-tabs flex flex-1 min-w-0 h-full overflow-x-auto overflow-y-hidden ${terminalStyles["terminal-tabs"]}`}
+          role="tablist"
+          aria-label="Terminal tabs"
+        >
           {tabs.map((tab) => (
             <ContextMenu.Root key={tab.id}>
               <ContextMenu.Trigger
-                render={<div className={`terminal-tab${tab.id === selected ? " active" : ""}`} />}
+                render={
+                  <div
+                    className={`terminal-tab relative flex items-center min-w-[110px] max-w-60 shrink-0 border-r border-r-panel border-t border-t-transparent ${terminalStyles["terminal-tab"]}${tab.id === selected ? " active" : ""}`}
+                  />
+                }
               >
                 <button
                   role="tab"
@@ -140,14 +156,16 @@ export default function TerminalView() {
                 </button>
                 <IconButton
                   icon="close"
-                  className="terminal-tab-close"
+                  className="terminal-tab-close absolute right-1 opacity-[0]"
                   label={`Close Terminal Tab ${tab.name ?? panes[tab.activePane]?.profile ?? "Terminal"}`}
                   onClick={() => closeTab(tab.id)}
                 />
               </ContextMenu.Trigger>
               <ContextMenu.Portal>
                 <ContextMenu.Positioner className="z-90">
-                  <ContextMenu.Popup className="context-menu">
+                  <ContextMenu.Popup
+                    className={`context-menu bg-editor text-foreground p-1 border border-strong rounded-[5px] min-w-[210px] z-[90] ${workbenchStyles["context-menu"]}`}
+                  >
                     <ContextMenu.Item onClick={() => safe(rename(tab.id))}>
                       Rename…
                     </ContextMenu.Item>
@@ -165,7 +183,9 @@ export default function TerminalView() {
             </ContextMenu.Root>
           ))}
         </div>
-        <div className="terminal-actions">
+        <div
+          className={`terminal-actions flex items-center gap-[2px] py-0 px-[5px] shrink-0 ${terminalStyles["terminal-actions"]}`}
+        >
           <IconButton
             icon="add"
             label="New Terminal (Ctrl+Shift+`)"
@@ -183,7 +203,9 @@ export default function TerminalView() {
             />
             <Menu.Portal>
               <Menu.Positioner className="z-90" side="bottom" align="end">
-                <Menu.Popup className="context-menu">
+                <Menu.Popup
+                  className={`context-menu bg-editor text-foreground p-1 border border-strong rounded-[5px] min-w-[210px] z-[90] ${workbenchStyles["context-menu"]}`}
+                >
                   {profiles.map((profile) => (
                     <Menu.Item key={profile.name} onClick={() => newTerminal(profile.name)}>
                       <span>{profile.name}</span>
@@ -222,10 +244,10 @@ export default function TerminalView() {
         </div>
       </div>
       {finding && <TerminalFind />}
-      <div className="terminal-content">
+      <div className="terminal-content relative flex-1 min-h-0 min-w-0 overflow-hidden">
         {tabs.map((tab) => (
           <div
-            className="terminal-panel"
+            className={`terminal-panel w-full h-full ${terminalStyles["terminal-panel"]}`}
             key={tab.id}
             id={`terminal-panel-${tab.id}`}
             role="tabpanel"
@@ -240,7 +262,9 @@ export default function TerminalView() {
           </div>
         ))}
         {!tabs.length && (
-          <div className="terminal-empty">
+          <div
+            className={`terminal-empty flex flex-col gap-3 items-center justify-center w-full h-full text-subtle ${terminalStyles["terminal-empty"]}`}
+          >
             <Icon name="terminal" />
             <p>No terminal is running.</p>
             <button onClick={() => newTerminal()}>New Terminal</button>
@@ -312,7 +336,7 @@ function TerminalPane({ id, visible }: { id: string; visible: boolean }) {
       <ContextMenu.Trigger
         render={
           <div
-            className={`terminal-pane${focused ? " focused" : ""}`}
+            className={`terminal-pane relative w-full h-full min-w-0 min-h-0 overflow-hidden ${terminalStyles["terminal-pane"]}${focused ? " focused" : ""}`}
             data-terminal-pane={id}
             onFocusCapture={() => selectPane(id)}
             onPointerDown={() => selectPane(id)}
@@ -348,18 +372,24 @@ function TerminalPane({ id, visible }: { id: string; visible: boolean }) {
           }
         }}
       >
-        <div ref={host} className="terminal-host" />
-        <div className="terminal-pane-caption" title={pane.cwd}>
+        <div ref={host} className="terminal-host absolute inset-[24px_1px_1px_6px]" />
+        <div
+          className="terminal-pane-caption absolute top-[3px] left-[7px] right-[30px] overflow-hidden text-ellipsis whitespace-nowrap text-git-ignored text-[11px] pointer-events-none"
+          title={pane.cwd}
+        >
           {pane.status === "starting" ? "Starting…" : pane.cwd}
         </div>
         <IconButton
           icon="close"
-          className="terminal-pane-close"
+          className="terminal-pane-close absolute top-[1px] right-[3px] opacity-[0] z-[2]"
           label="Close Terminal Pane"
           onClick={() => closePane(id)}
         />
         {(pane.status === "error" || pane.status === "exited") && (
-          <div className="terminal-exit" role="status">
+          <div
+            className={`terminal-exit absolute z-[7] bottom-0 left-0 right-0 flex gap-3 items-center justify-between py-2 px-3 bg-widget border-t border-t-strong ${terminalStyles["terminal-exit"]}`}
+            role="status"
+          >
             <span>{pane.error}</span>
             <button onClick={() => safe(restartPane(id))}>
               {pane.errorCode === "workspaceTrust"
@@ -371,7 +401,9 @@ function TerminalPane({ id, visible }: { id: string; visible: boolean }) {
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Positioner className="z-90">
-          <ContextMenu.Popup className="context-menu">
+          <ContextMenu.Popup
+            className={`context-menu bg-editor text-foreground p-1 border border-strong rounded-[5px] min-w-[210px] z-[90] ${workbenchStyles["context-menu"]}`}
+          >
             <ContextMenu.Item onClick={() => safe(copyTerminal(id))}>Copy</ContextMenu.Item>
             <ContextMenu.Item onClick={() => safe(pasteTerminal(id))}>Paste</ContextMenu.Item>
             <ContextMenu.Item
@@ -412,7 +444,11 @@ function TerminalFind() {
     focusTerminal();
   };
   return (
-    <div className="terminal-find" role="search" aria-label="Find in terminal">
+    <div
+      className={`terminal-find absolute top-10 right-[15px] z-[5] flex items-center gap-[3px] p-[5px] bg-widget ${terminalStyles["terminal-find"]}`}
+      role="search"
+      aria-label="Find in terminal"
+    >
       <input
         autoFocus
         aria-label="Terminal search"

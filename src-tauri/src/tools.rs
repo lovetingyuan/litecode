@@ -303,6 +303,7 @@ pub async fn format_document(
                 "scss" => "scss",
                 "less" => "less",
                 "json" => "json",
+                "markdown" => "md",
                 _ => {
                     return Err(AppError::new(
                         "formatter",
@@ -384,8 +385,7 @@ pub async fn format_document(
                     break;
                 }
             }
-        } else if language == "html"
-            || explicit == Some("esbenp.prettier-vscode")
+        } else if explicit == Some("esbenp.prettier-vscode")
             || explicit.is_none() && (prettier_config.is_some() || prettier_script.exists())
         {
             let script = if prettier_script.exists() {
@@ -415,38 +415,37 @@ pub async fn format_document(
             }
         } else {
             let local_script = root.join("node_modules/oxfmt/bin/oxfmt");
+            let bundled = packaged(&window, "formatters/node_modules/oxfmt/bin/oxfmt");
             let installed = state
                 .data_dir
                 .join("tools/languages/node_modules/oxfmt/bin/oxfmt");
             if let Some(executable) = config["oxfmt.path"]
                 .as_str()
                 .map(PathBuf::from)
-                .or_else(|| find_executable("oxfmt"))
             {
-                let executable = if config["oxfmt.path"].is_string() {
-                    let executable = if executable.is_absolute() {
-                        executable
-                    } else {
-                        root.join(executable)
-                    };
-                    sources.push(executable.clone());
-                    process_path(&executable)
-                } else {
+                let executable = if executable.is_absolute() {
                     executable
+                } else {
+                    root.join(executable)
                 };
-                command = Command::new(executable);
-            } else if local_script.is_file() || installed.is_file() {
+                sources.push(executable.clone());
+                command = Command::new(process_path(&executable));
+            } else if local_script.is_file() || bundled.is_file() || installed.is_file() {
                 command = Command::new(node(&window, &state)?);
                 command.arg(process_path(&if local_script.is_file() {
                     sources.push(local_script.clone());
                     local_script
+                } else if bundled.is_file() {
+                    bundled
                 } else {
                     installed
                 }));
+            } else if let Some(executable) = find_executable("oxfmt") {
+                command = Command::new(executable);
             } else {
                 return Err(AppError::new(
                     "missingTool",
-                    "Oxfmt is missing. Install Language Tools, set oxfmt.path, or configure Prettier.",
+                    "Bundled Oxfmt is missing. Reinstall LiteCode, install Language Tools, or set oxfmt.path.",
                 ));
             }
             command.arg("--stdin-filepath").arg(&path);

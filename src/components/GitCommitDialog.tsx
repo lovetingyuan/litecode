@@ -1,3 +1,6 @@
+import { actionButtonClass } from "./ui";
+import workbenchStyles from "../styles/workbench.module.css";
+import gitStyles from "../styles/git.module.css";
 import { useMemo, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { errorMessage } from "../core/bridge";
@@ -68,15 +71,15 @@ export function GitCommitDialog({
     >
       <Dialog.Trigger
         ref={trigger}
-        className="btn btn-xs btn-primary"
+        className={`${actionButtonClass} compact primary bg-focus text-foreground-strong rounded-[2px] py-[5px] px-[14px] ${workbenchStyles["primary"]}`}
         disabled={!hasCommittableChanges || !!busy || submitting}
       >
         Commit
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Backdrop className="modal-backdrop" />
+        <Dialog.Backdrop className="modal-backdrop fixed inset-0 bg-backdrop z-[150]" />
         <Dialog.Popup
-          className="modal-panel git-commit-dialog"
+          className={`modal-panel fixed top-[50%] left-[50%] bg-widget border border-strong rounded-[6px] w-120 max-w-[90vw] p-6 z-[151] ${workbenchStyles["modal-panel"]} git-commit-dialog max-h-[90vh] overflow-auto ${gitStyles["git-commit-dialog"]}`}
           initialFocus={input}
           finalFocus={trigger}
         >
@@ -86,7 +89,7 @@ export function GitCommitDialog({
             {repository.detached ? " (detached)" : ""}
           </Dialog.Description>
           <form
-            className="git-commit-form"
+            className={`git-commit-form mt-4 flex flex-col gap-2 ${gitStyles["git-commit-form"]}`}
             aria-busy={submitting}
             onSubmit={(event) => {
               event.preventDefault();
@@ -119,9 +122,20 @@ export function GitCommitDialog({
             ) : !grouped.staged.length ? (
               <p className="git-commit-hint">Stage changes before committing.</p>
             ) : null}
-            <div className="modal-actions">
-              <button type="submit" className="primary" disabled={!canCommit}>
-                {submitting && <span className="spinner" aria-hidden="true" />}
+            <div
+              className={`modal-actions flex justify-end gap-2 mt-6 ${workbenchStyles["modal-actions"]}`}
+            >
+              <button
+                type="submit"
+                className={`primary bg-focus text-foreground-strong rounded-[2px] py-[5px] px-[14px] ${workbenchStyles["primary"]}`}
+                disabled={!canCommit}
+              >
+                {submitting && (
+                  <span
+                    className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
+                    aria-hidden="true"
+                  />
+                )}
                 {submitting ? "Committing…" : "Commit"}
               </button>
               <button type="button" disabled={submitting} onClick={() => setOpen(false)}>

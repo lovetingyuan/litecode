@@ -1,3 +1,4 @@
+import { terminalTheme } from "../styles/theme";
 import { Terminal, type ILink } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -206,19 +207,103 @@ function disposeRuntime(id: string) {
     void call("terminal_close", { id: r.sessionId }).catch(report);
   }
 }
-export function closePane(id = activePane()) {
-  if (!id) {
-    return;
-  }
+function removeTerminal(id: string) {
   disposeRuntime(id);
   sources.delete(id);
   removePane(id);
   requestAnimationFrame(() => focusTerminal());
 }
-export function closeTab(id: string) {
+let closing = false;
+async function requestClose(ids: string[], tab: boolean) {
+  if (closing || !ids.length) {
+    return;
+  }
+  closing = true;
+  const targets = ids.map((id) => ({
+    id,
+    runtime: runtimes.get(id),
+    attempt: useTerminal.getState().panes[id]?.attempt,
+    sessionId: runtimes.get(id)?.sessionId,
+  }));
+  const current = (target: (typeof targets)[number]) =>
+    !!useTerminal.getState().panes[target.id] &&
+    useTerminal.getState().panes[target.id].attempt === target.attempt &&
+    runtimes.get(target.id) === target.runtime &&
+    target.runtime?.sessionId === target.sessionId;
+  try {
+    const results = await Promise.all(
+      targets.map(async (target) => {
+        const r = target.runtime;
+        if (!r) {
+          return false;
+        }
+        await r.starting;
+        await r.input;
+        // A startup may install its first session while the close request waits.
+        if (runtimes.get(target.id) !== r || r.disposed) {
+          return false;
+        }
+        target.sessionId = r.sessionId;
+        if (
+          !current(target) ||
+          !target.sessionId ||
+          useTerminal.getState().panes[target.id]?.status !== "running"
+        ) {
+          return false;
+        }
+        try {
+          return await call<boolean>("terminal_has_child_processes", { id: target.sessionId });
+        } catch {
+          return current(target) ? "unknown" : false;
+        }
+      }),
+    );
+    if (!targets.some(current)) {
+      return;
+    }
+    const action = tab ? "Close Tab" : "Close Terminal";
+    if (results.some((result, index) => current(targets[index]) && result)) {
+      const unknown = results.some(
+        (result, index) => current(targets[index]) && result === "unknown",
+      );
+      const message = unknown
+        ? "Could not check for running processes. Closing will terminate the shell and any child processes."
+        : tab
+          ? "Processes are still running in this tab. Closing will terminate the shells and their child processes."
+          : "Processes are still running in this terminal. Closing will terminate the shell and its child processes.";
+      const controller = new AbortController();
+      const unsubscribe = useTerminal.subscribe(() => {
+        if (!targets.some(current)) {
+          controller.abort();
+        }
+      });
+      try {
+        if (
+          (await ask(`${action}?`, message, [action, "Cancel"], {
+            defaultChoice: "Cancel",
+            signal: controller.signal,
+          })) !== action
+        ) {
+          return;
+        }
+      } finally {
+        unsubscribe();
+      }
+    }
+    targets.filter(current).forEach((target) => removeTerminal(target.id));
+  } finally {
+    closing = false;
+  }
+}
+export async function closePane(id = activePane()) {
+  if (id) {
+    await requestClose([id], false);
+  }
+}
+export async function closeTab(id: string) {
   const tab = useTerminal.getState().tabs.find((t) => t.id === id);
   if (tab) {
-    layoutGroups(tab.layout).forEach(closePane);
+    await requestClose(layoutGroups(tab.layout), true);
   }
 }
 export function resetTerminals() {
@@ -412,7 +497,10 @@ function setGpu(r: Runtime) {
 }
 
 function createRuntime(id: string): Runtime {
-  const terminal = new Terminal(terminalOptions(useApp.getState().settings));
+  const terminal = new Terminal({
+    ...terminalOptions(useApp.getState().settings),
+    theme: terminalTheme(),
+  });
   const fit = new FitAddon(),
     search = new SearchAddon();
   terminal.loadAddon(fit);
@@ -427,7 +515,7 @@ function createRuntime(id: string): Runtime {
     }),
   );
   const node = document.createElement("div");
-  node.className = "terminal-surface";
+  node.className = "terminal-surface w-full h-full";
   const r: Runtime = {
     terminal,
     fit,
@@ -470,7 +558,7 @@ function createRuntime(id: string): Runtime {
         return;
       }
       if (event.kind === "exit" && event.exitCode === 0 && !event.error) {
-        closePane(id);
+        removeTerminal(id);
         return;
       }
       const message = event.error ?? `Shell exited with code ${event.exitCode ?? "unknown"}.`;
@@ -768,7 +856,7 @@ useApp.subscribe((state, previous) => {
   }
   if (state.settings !== previous.settings) {
     for (const r of runtimes.values()) {
-      r.terminal.options = terminalOptions(state.settings);
+      r.terminal.options = { ...terminalOptions(state.settings), theme: terminalTheme() };
       setGpu(r);
       scheduleFit(r);
     }

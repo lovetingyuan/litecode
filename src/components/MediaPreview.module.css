@@ -1,0 +1,68 @@
+/* Include the vendor icon attribute so contextual sizing survives lazy stylesheet order. */
+.media-preview {
+  outline-offset: -1px;
+}
+.image-stage img {
+  flex-shrink: 0;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  cursor: zoom-in;
+  background: repeating-conic-gradient(var(--lc-code-background) 0% 25%, transparent 0% 50%) 0
+    0/16px 16px;
+  user-select: none;
+}
+.image-stage img:global(.pixelated) {
+  image-rendering: pixelated;
+}
+.playback-preview video {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  outline: none;
+}
+.playback-preview audio {
+  width: min(480px, 100%);
+}
+.media-preview :global(.media-message) > :global(.codicon[class*="codicon-"]) {
+  font-size: 64px;
+  color: var(--lc-warning);
+}
+.media-message p {
+  max-width: 760px;
+  font-size: 16px;
+  line-height: 1.5;
+  margin: 0;
+}
+.media-menu {
+  box-shadow: 0 2px 10px var(--lc-shadow);
+}
+.media-menu [role="menuitem"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  outline: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.media-menu [role="menuitem"][data-highlighted] {
+  background: var(--lc-selection);
+}
+.media-menu :global(.codicon[class*="codicon-"]) {
+  width: 16px;
+  text-align: center;
+}
+.breadcrumbs :global(.editor-view-trigger) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.breadcrumbs-path > span {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}

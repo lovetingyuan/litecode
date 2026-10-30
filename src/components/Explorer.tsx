@@ -1,3 +1,5 @@
+import { treeTheme } from "../styles/theme";
+import workbenchStyles from "../styles/workbench.module.css";
 import {
   useEffect,
   useLayoutEffect,
@@ -138,15 +140,15 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     },
     unsafeCSS: `
       ${sidebarScrollbarCSS}
-      [data-file-tree-sticky-overlay-content]{box-shadow:0 3px 3px -3px #000}
+      [data-file-tree-sticky-overlay-content]{box-shadow:0 3px 3px -3px var(--lc-shadow-solid)}
       svg[data-icon-name]{width:var(--trees-icon-width);height:var(--trees-icon-width)}
       [data-item-section="git"] [data-icon-name="file-tree-icon-dot"]{transform:none}
-      [data-file-tree-root-drag-target="true"] > [data-file-tree-virtualized-scroll]{outline:1px solid #0078d4;outline-offset:-1px;background:#04395e44}
-      [data-external-drop="true"]{outline:1px solid var(--trees-focus-border,#0078d4);outline-offset:-1px;background:var(--trees-list-active-selection-background,#04395e)}
+      [data-file-tree-root-drag-target="true"] > [data-file-tree-virtualized-scroll]{outline:1px solid var(--lc-focus);outline-offset:-1px;background:var(--lc-tree-drop-background)}
+      [data-external-drop="true"]{outline:1px solid var(--trees-focus-border,var(--lc-focus));outline-offset:-1px;background:var(--trees-list-active-selection-background,var(--lc-selection))}
       [data-file-tree-editing="true"] [data-item-section="git"],
       [data-file-tree-editing="true"] [data-item-section="decoration"]{display:none}
       [data-file-tree-editing="true"] [data-item-section="content"]{flex:1;min-width:0}
-      [data-file-tree-inline-edit-input]{min-width:0;width:100%;height:24px;box-sizing:border-box;background:#313131;border:1px solid #0078d4;border-radius:2px;padding:0 4px}
+      [data-file-tree-inline-edit-input]{min-width:0;width:100%;height:24px;box-sizing:border-box;background:var(--lc-input);border:1px solid var(--lc-focus);border-radius:2px;padding:0 4px}
       /* Keep each level at 14px and its guide centered under the parent icon. */
       [data-item-section="spacing"]{padding-left:0;margin-right:calc(-1 * var(--trees-item-row-gap))}
       [data-item-section="spacing"] > [data-item-section="spacing-item"]{
@@ -1167,19 +1169,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     // Included in the virtual layout by tools/patch-trees-scroll.mjs.
     "--trees-scroll-padding-bottom": "32px",
     "--trees-scrollbar-gutter-override": "12px",
-    ...themeToTreeStyles({
-      colors: {
-        "sideBar.background": "#181818",
-        "sideBar.foreground": "#cccccc",
-        "list.activeSelectionBackground": "#04395e",
-        "list.activeSelectionForeground": "#ffffff",
-        "list.inactiveSelectionBackground": "#37373d",
-        "list.hoverBackground": "#2a2d2e",
-        focusBorder: "#0078d4",
-        "gitDecoration.modifiedResourceForeground": "#e2c08d",
-        "gitDecoration.untrackedResourceForeground": "#73c991",
-      },
-    }),
+    ...themeToTreeStyles(treeTheme),
     "--trees-font-family-override": '"Segoe UI", sans-serif',
     "--trees-font-size-override": "15px",
     "--trees-icon-width-override": "18px",
@@ -1189,7 +1179,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   };
   return (
     <section
-      className="explorer view"
+      className={`explorer ${workbenchStyles["explorer"]} view flex flex-col h-full min-h-0 overflow-hidden`}
       aria-label="Explorer"
       tabIndex={-1}
       onContextMenu={rootContext}
@@ -1214,17 +1204,24 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       }}
     >
       {!root ? (
-        <div className="empty-sidebar">
+        <div
+          className={`empty-sidebar py-2 px-5 leading-[1.5] ${workbenchStyles["empty-sidebar"]}`}
+        >
           <p>You have not yet opened a folder.</p>
-          <button className="primary" onClick={openFolder}>
+          <button
+            className={`primary bg-focus text-foreground-strong rounded-[2px] py-[5px] px-[14px] ${workbenchStyles["primary"]}`}
+            onClick={openFolder}
+          >
             Open Folder
           </button>
-          <p className="muted">Opening a folder enables file browsing and workspace search.</p>
+          <p className="muted text-muted">
+            Opening a folder enables file browsing and workspace search.
+          </p>
         </div>
       ) : (
         <>
           <div
-            className="section-heading"
+            className={`section-heading h-8 min-h-8 flex items-center justify-between text-[11px] font-bold overflow-hidden ${workbenchStyles["section-heading"]}`}
             data-drop-target={rootDropTarget}
             onDragOver={(e) => {
               if (!draggedPaths.current.length || moveBusy.current) {
@@ -1269,7 +1266,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
               <Icon name={expanded ? "chevron-down" : "chevron-right"} />
               {basename(root).toUpperCase()}
             </button>
-            <div className="actions">
+            <div className="actions flex items-center gap-[2px] shrink-0">
               <IconButton
                 icon="new-file"
                 label="New File"
@@ -1306,7 +1303,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
           {expanded && (
             <FileTree
               model={model}
-              className="file-tree"
+              className={`file-tree block w-full overflow-hidden ${workbenchStyles["file-tree"]}`}
               style={treeStyle}
               onDragStart={(e) => {
                 if (e.defaultPrevented || !rootRef.current || !draggedPaths.current.length) {
@@ -1369,17 +1366,26 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
             />
           )}
           {workspaceDirectories()?.directories.get("")?.status === "failed" && (
-            <button className="inline-warning" onClick={() => void refreshExplorer()}>
+            <button
+              className={`inline-warning py-[5px] px-[18px] leading-[18px] m-0 text-[12px] text-warning ${workbenchStyles["inline-warning"]}`}
+              onClick={() => void refreshExplorer()}
+            >
               {workspaceDirectories()?.directories.get("")?.error} — Retry
             </button>
           )}
           {directoryWarnings.length > 0 && (
-            <button className="inline-warning" onClick={() => notify(directoryWarnings.join("\n"))}>
+            <button
+              className={`inline-warning py-[5px] px-[18px] leading-[18px] m-0 text-[12px] text-warning ${workbenchStyles["inline-warning"]}`}
+              onClick={() => notify(directoryWarnings.join("\n"))}
+            >
               {directoryWarnings.length} directory warning(s)
             </button>
           )}
           {gitState.warnings.length > 0 && (
-            <button className="inline-warning" onClick={() => notify(gitState.warnings.join("\n"))}>
+            <button
+              className={`inline-warning py-[5px] px-[18px] leading-[18px] m-0 text-[12px] text-warning ${workbenchStyles["inline-warning"]}`}
+              onClick={() => notify(gitState.warnings.join("\n"))}
+            >
               {gitState.warnings.length} Git warning(s)
             </button>
           )}
@@ -1396,7 +1402,10 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       >
         <Menu.Portal>
           <Menu.Positioner className="z-90" anchor={context?.anchor} side="right" align="start">
-            <Menu.Popup className="context-menu" data-file-tree-context-menu-root="true">
+            <Menu.Popup
+              className={`context-menu bg-editor text-foreground p-1 border border-strong rounded-[5px] min-w-[210px] z-[90] ${workbenchStyles["context-menu"]}`}
+              data-file-tree-context-menu-root="true"
+            >
               {[
                 ["newFile", "New File…"],
                 ["newFolder", "New Folder…"],

@@ -1,3 +1,5 @@
+import workbenchStyles from "../styles/workbench.module.css";
+import mediaPreviewStyles from "./MediaPreview.module.css";
 import { Menu } from "@base-ui/react/menu";
 import { patchMediaView } from "../editor/documents";
 import {
@@ -28,7 +30,10 @@ export function MediaStatus({ doc, group }: { doc: Doc; group: Group }) {
             </Menu.Trigger>
             <Menu.Portal>
               <Menu.Positioner className="z-90" side="top" align="end" sideOffset={4}>
-                <Menu.Popup className="context-menu media-menu" aria-label="Select zoom level">
+                <Menu.Popup
+                  className={`context-menu text-foreground border border-strong z-[90] ${workbenchStyles["context-menu"]} media-menu min-w-45 p-1 bg-menu rounded-[6px] ${mediaPreviewStyles["media-menu"]}`}
+                  aria-label="Select zoom level"
+                >
                   {sizes.map((value) => (
                     <Menu.Item
                       key={value}
@@ -42,13 +47,13 @@ export function MediaStatus({ doc, group }: { doc: Doc; group: Group }) {
               </Menu.Positioner>
             </Menu.Portal>
           </Menu.Root>
-          <span className="status-item" title="Image Size">
+          <span className={`status-item ${workbenchStyles["status-item"]}`} title="Image Size">
             {doc.imageSize.width}x{doc.imageSize.height}
           </span>
         </>
       )}
       {doc.fileInfo && (
-        <span className="status-item" title="File Size">
+        <span className={`status-item ${workbenchStyles["status-item"]}`} title="File Size">
           {formatFileSize(doc.fileInfo.size)}
         </span>
       )}
@@ -83,7 +88,10 @@ export function EditorViewMenu({ doc, group }: { doc: Doc; group: Group }) {
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner className="z-90" side="bottom" align="end" sideOffset={0}>
-          <Menu.Popup className="context-menu media-menu" aria-label={`${type} editor type`}>
+          <Menu.Popup
+            className={`context-menu text-foreground border border-strong z-[90] ${workbenchStyles["context-menu"]} media-menu min-w-45 p-1 bg-menu rounded-[6px] ${mediaPreviewStyles["media-menu"]}`}
+            aria-label={`${type} editor type`}
+          >
             {options.map((option) => (
               <Menu.Item
                 key={option.mode}

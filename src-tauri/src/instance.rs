@@ -186,7 +186,10 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
                     app.manage(Instance { data_dir, focused: Mutex::new(None), ready: AtomicBool::new(false), pending: AtomicBool::new(false) });
                     tauri::async_runtime::spawn(serve(app.clone(), name, server));
                 }
-                Ok((_, _, None)) => std::process::exit(0),
+                Ok((_, _, None)) => {
+                    eprintln!("LiteCode is already running with this user data directory; activated the existing instance.");
+                    std::process::exit(0);
+                }
                 Err(error) => {
                     use windows::{core::PCWSTR, Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK}};
                     let message: Vec<u16> = format!("LiteCode could not safely open its user data directory. Close the running instance and try again.\n\n{error}\0").encode_utf16().collect();

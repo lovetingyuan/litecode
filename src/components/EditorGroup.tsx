@@ -1,3 +1,5 @@
+import editorStyles from "./EditorGroup.module.css";
+import workbenchStyles from "../styles/workbench.module.css";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useApp, setApp, notify } from "../store/store";
 import { monaco } from "../editor/monaco";
@@ -238,7 +240,7 @@ export function EditorGroup({ group }: { group: Group }) {
   return (
     <section
       data-group-id={group.id}
-      className={`editor-group ${activeGroup === group.id ? "focused" : ""}`}
+      className={`editor-group flex-1 min-w-40 flex flex-col relative overflow-hidden border-r border-r-panel ${editorStyles["editor-group"]} ${activeGroup === group.id ? "focused" : ""}`}
       aria-label="Editor group"
       onPointerDown={() => {
         if (activeGroup !== group.id) {
@@ -279,8 +281,7 @@ export function EditorGroup({ group }: { group: Group }) {
       }}
     >
       <div
-        className="tabs-toolbar"
-        style={{ display: group.tabs.length === 0 ? "none" : undefined }}
+        className={`tabs-toolbar relative h-[35px] min-h-[35px] justify-between border-b border-b-panel ${group.tabs.length === 0 ? "hidden" : "flex"} ${editorStyles["tabs-toolbar"]}`}
         onDoubleClick={(event) => {
           if (event.target !== event.currentTarget && event.target !== tabs.current) {
             return;
@@ -289,7 +290,12 @@ export function EditorGroup({ group }: { group: Group }) {
           newDocument();
         }}
       >
-        <div className="editor-tabs" ref={tabs} role="tablist" aria-label="Open editors">
+        <div
+          className={`editor-tabs flex overflow-x-auto overflow-y-hidden min-w-0 ${editorStyles["editor-tabs"]}`}
+          ref={tabs}
+          role="tablist"
+          aria-label="Open editors"
+        >
           {group.tabs.map((id) => {
             const tab = docs[id];
             if (!tab) {
@@ -304,7 +310,7 @@ export function EditorGroup({ group }: { group: Group }) {
                   tabIndex={group.active === id ? 0 : -1}
                   aria-selected={group.active === id}
                   aria-label={`${tab.name}${tab.dirty ? ", unsaved" : ""}${tab.deleted ? ", 文件已从磁盘删除" : ""}${isGitConflicted(tab.path, root, treeRoot, git) ? ", Git: Unmerged changes" : ""}`}
-                  className={`editor-tab ${group.active === id ? "active" : ""} ${group.preview === id ? "preview" : ""} ${sticky ? "pinned" : ""}`}
+                  className={`editor-tab h-full flex items-center gap-[6px] cursor-pointer whitespace-nowrap border-r border-r-panel border-t border-t-transparent select-none shrink-0 ${editorStyles["editor-tab"]} ${group.active === id ? "active" : ""} ${group.preview === id ? "preview" : ""} ${sticky ? "pinned" : ""}`}
                   draggable
                   onDragStart={(e) =>
                     e.dataTransfer.setData(
@@ -352,18 +358,21 @@ export function EditorGroup({ group }: { group: Group }) {
                 >
                   <FileIcon language={tab.language} />
                   <span
-                    className={`editor-tab-label${isGitIgnored(tab.path, root, treeRoot, git) ? " ignored" : ""}${tab.deleted ? " deleted-file-name" : ""}`}
+                    className={`editor-tab-label ${editorStyles["editor-tab-label"]}${isGitIgnored(tab.path, root, treeRoot, git) ? " ignored" : ""}${tab.deleted ? " deleted-file-name text-git-ignored line-through" : ""}`}
                   >
                     {tab.name}
                   </span>
                   {tab.conflict && !tab.deleted && <Icon name="warning" />}
                   {isGitConflicted(tab.path, root, treeRoot, git) && (
-                    <span className="git-conflict-badge" title="Git: Unmerged changes">
+                    <span
+                      className="git-conflict-badge text-git-conflict"
+                      title="Git: Unmerged changes"
+                    >
                       !
                     </span>
                   )}
                   <button
-                    className={`tab-close ${tab.dirty ? "dirty" : ""} ${sticky ? "tab-unpin" : ""}`}
+                    className={`tab-close w-5 h-5 p-[2px] flex items-center justify-center invisible ${editorStyles["tab-close"]} ${tab.dirty ? "dirty" : ""} ${sticky ? "tab-unpin" : ""}`}
                     title={`${sticky ? "Unpin" : "Close"} ${tab.name}`}
                     aria-label={`${sticky ? "Unpin" : "Close"} ${tab.name}`}
                     onClick={(e) => {
@@ -383,7 +392,7 @@ export function EditorGroup({ group }: { group: Group }) {
           })}
         </div>
         <EditorTabsScrollbar viewportRef={tabs} tabIds={group.tabs} />
-        <div className="actions">
+        <div className="actions flex items-center gap-[2px] shrink-0">
           {mergeConflictCount > 0 && textView && (
             <>
               <IconButton
@@ -416,7 +425,7 @@ export function EditorGroup({ group }: { group: Group }) {
           />
           <Menu.Root>
             <Menu.Trigger
-              className="icon-button"
+              className="icon-button w-6 h-6 p-1 inline-flex items-center justify-center"
               title="Split Editor Direction"
               aria-label="Split Editor Direction"
             >
@@ -424,7 +433,10 @@ export function EditorGroup({ group }: { group: Group }) {
             </Menu.Trigger>
             <Menu.Portal>
               <Menu.Positioner className="z-90" side="bottom" align="end">
-                <Menu.Popup className="context-menu editor-split-menu" finalFocus={false}>
+                <Menu.Popup
+                  className={`context-menu bg-editor text-foreground p-1 border border-strong rounded-[5px] min-w-[210px] z-[90] ${workbenchStyles["context-menu"]} editor-split-menu`}
+                  finalFocus={false}
+                >
                   {splitDirections.map(({ id, label, direction }) => (
                     <Menu.Item key={id} onClick={() => splitGroup(group.id, undefined, direction)}>
                       {label}
@@ -445,7 +457,9 @@ export function EditorGroup({ group }: { group: Group }) {
       </div>
       {doc && !doc.gitDiff && <EditorBreadcrumbs doc={doc} group={group} />}
       {doc?.conflict && !doc.deleted && models.has(doc.id) && (
-        <div className="conflict-banner">
+        <div
+          className={`conflict-banner flex items-center gap-2 py-[5px] px-[10px] bg-conflict-background border-b border-b-conflict-border text-[12px] ${editorStyles["conflict-banner"]}`}
+        >
           <Icon name="warning" />
           <span>The file changed on disk. Your edits are preserved.</span>
           <button onClick={() => void compareDisk(doc.id).catch((e) => notify(errorMessage(e)))}>
@@ -455,12 +469,8 @@ export function EditorGroup({ group }: { group: Group }) {
       )}
       {doc?.searchQuery && <SearchEditorBar id={doc.id} query={doc.searchQuery} />}
       <div
-        className="monaco-host"
+        className={`monaco-host flex-1 min-h-0 min-w-0 ${doc && !textView ? "hidden" : ""} ${textView ? "visible" : "invisible"}`}
         ref={host}
-        style={{
-          display: doc && !textView ? "none" : undefined,
-          visibility: textView ? "visible" : "hidden",
-        }}
       />
       {doc && isMarkdownView(doc, group) && (
         <MarkdownPreview key={doc.id} doc={doc} group={group} />
@@ -470,8 +480,10 @@ export function EditorGroup({ group }: { group: Group }) {
         <MediaPreview key={`${doc.id}:${doc.path}`} doc={doc} group={group} />
       )}
       {!doc && (
-        <div className="empty-editor">
-          <div className="editor-watermark">
+        <div
+          className={`empty-editor absolute inset-[35px_0_0] flex flex-col items-center justify-center pointer-events-none gap-10 ${editorStyles["empty-editor"]}`}
+        >
+          <div className={`editor-watermark text-watermark ${editorStyles["editor-watermark"]}`}>
             <Icon name="code" />
           </div>
           <dl>
@@ -588,7 +600,7 @@ export function EditorTabsScrollbar({
   return (
     <div
       ref={track}
-      className="editor-tabs-scrollbar"
+      className={`editor-tabs-scrollbar absolute left-0 bottom-0 h-[3px] z-[2] select-none ${editorStyles["editor-tabs-scrollbar"]}`}
       aria-hidden="true"
       onPointerDown={(event) => {
         if (event.button !== 0 || !thumb.current) {
@@ -613,7 +625,10 @@ export function EditorTabsScrollbar({
         delete event.currentTarget.dataset.dragging;
       }}
     >
-      <div ref={thumb} className="editor-tabs-scrollbar-thumb" />
+      <div
+        ref={thumb}
+        className="editor-tabs-scrollbar-thumb h-full bg-tab-scrollbar opacity-[0]"
+      />
     </div>
   );
 }
@@ -655,7 +670,9 @@ function SearchEditorBar({ id, query }: { id: string; query: Query }) {
     await call("search_start", { requestId, query: next, onBatch });
   }
   return (
-    <div className="search-editor-bar">
+    <div
+      className={`search-editor-bar flex items-center gap-2 bg-sidebar py-2 px-3 border-b border-b-panel flex-wrap ${editorStyles["search-editor-bar"]}`}
+    >
       <input
         ref={input}
         aria-label="Search Editor query"
@@ -670,7 +687,7 @@ function SearchEditorBar({ id, query }: { id: string; query: Query }) {
         <Icon name="refresh" />
         Search Again
       </button>
-      <span className="muted">Double-click a result to open its source.</span>
+      <span className="muted text-muted">Double-click a result to open its source.</span>
     </div>
   );
 }

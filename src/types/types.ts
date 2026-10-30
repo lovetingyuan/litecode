@@ -1,3 +1,12 @@
+export type SaveDocumentRequest = {
+  id: string;
+  version: number;
+  path: string;
+  text: string;
+  encoding: string;
+  revision: string | null;
+};
+
 export type DiskDocument = {
   path: string;
   text: string;
