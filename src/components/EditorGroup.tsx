@@ -1,6 +1,14 @@
 import editorStyles from "./EditorGroup.module.css";
 import workbenchStyles from "../styles/workbench.module.css";
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { useApp, setApp, notify } from "../store/store";
 import { monaco } from "../editor/monaco";
 import { editorOptions } from "../editor/settings";
@@ -39,10 +47,13 @@ import { isGitConflicted, isGitIgnored } from "../utils/gitStatus";
 import { isMarkdownView, isTextView } from "../utils/media";
 import { MediaPreview } from "./MediaPreview";
 import { EditorBreadcrumbs } from "./EditorBreadcrumbs";
-import { MarkdownPreview } from "./MarkdownPreview";
 import { GitDiffEditor } from "./GitDiffEditor";
 import { loadedWorkspacePaths } from "../explorer/workspaceTree";
 import { explorerDragFiles, explorerDragType } from "../explorer/explorerDrag";
+
+const MarkdownPreview = lazy(() =>
+  import("./MarkdownPreview").then((module) => ({ default: module.MarkdownPreview })),
+);
 
 export function EditorGroup({ group }: { group: Group }) {
   const docs = useApp((s) => s.docs);
@@ -473,7 +484,18 @@ export function EditorGroup({ group }: { group: Group }) {
         ref={host}
       />
       {doc && isMarkdownView(doc, group) && (
-        <MarkdownPreview key={doc.id} doc={doc} group={group} />
+        <Suspense
+          fallback={
+            <div
+              className="flex-1 min-h-0 flex items-center justify-center text-muted"
+              role="status"
+            >
+              Loading preview…
+            </div>
+          }
+        >
+          <MarkdownPreview key={doc.id} doc={doc} group={group} />
+        </Suspense>
       )}
       {doc?.gitDiff && <GitDiffEditor key={doc.id} doc={doc} group={group} />}
       {doc && !doc.gitDiff && !textView && !isMarkdownView(doc, group) && (

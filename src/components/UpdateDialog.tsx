@@ -1,12 +1,13 @@
 import workbenchStyles from "../styles/workbench.module.css";
 import updateDialogStyles from "./UpdateDialog.module.css";
 import { Dialog } from "@base-ui/react/dialog";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { lazy, Suspense } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { checkForUpdates, installUpdate, updateLocked, useUpdates } from "../core/updates";
 import { errorMessage } from "../core/bridge";
 import { actionButtonClass, Icon } from "./ui";
+
+const UpdateReleaseNotes = lazy(() => import("./UpdateReleaseNotes"));
 
 export function UpdateButton() {
   const version = useUpdates((s) => s.version);
@@ -69,29 +70,11 @@ export function UpdateDialog() {
                 aria-label={`Release notes for ${s.version}`}
               >
                 <h3 className="font-semibold mb-2">What’s new in {s.version}</h3>
-                <Markdown
-                  remarkPlugins={[remarkGfm]}
-                  skipHtml
-                  components={{
-                    a: ({ href, children }) =>
-                      href && /^https?:\/\//i.test(href) ? (
-                        <a
-                          href={href}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            openLink(href);
-                          }}
-                        >
-                          {children}
-                        </a>
-                      ) : (
-                        <span>{children}</span>
-                      ),
-                    img: ({ alt }) => <span>{alt}</span>,
-                  }}
-                >
-                  {s.notes || "No release notes provided."}
-                </Markdown>
+                {s.open && (
+                  <Suspense fallback={<p role="status">Loading release notes…</p>}>
+                    <UpdateReleaseNotes notes={s.notes} openLink={openLink} />
+                  </Suspense>
+                )}
               </section>
             )}
             {s.phase === "downloading" &&

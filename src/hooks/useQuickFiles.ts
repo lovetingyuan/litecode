@@ -49,15 +49,18 @@ export function useQuickFiles(
     latest.current = request;
   }, [request]);
   useEffect(() => {
-    const search = new QuickFileSearch(new FileWorker(), () =>
-      notify("File search worker failed. Reload the window to retry."),
-    );
-    service.current = search;
     return () => {
-      search.dispose();
+      service.current?.dispose();
       service.current = null;
     };
   }, []);
+  useEffect(() => {
+    if (active && !service.current) {
+      service.current = new QuickFileSearch(new FileWorker(), () =>
+        notify("File search worker failed. Reload the window to retry."),
+      );
+    }
+  }, [active]);
   useEffect(() => {
     if (!active || index?.input === indexInput) {
       return;
@@ -97,7 +100,8 @@ export function useQuickFiles(
     };
   }, [root, indexInput, excludes, active, index]);
   useEffect(() => {
-    if (index?.input === indexInput) {
+    // Replay both snapshots when file search first creates the worker or reopens.
+    if (active && index?.input === indexInput) {
       service.current?.update({
         kind: "workspace",
         root,
@@ -105,15 +109,18 @@ export function useQuickFiles(
         excludes: effectiveExcludes,
       });
     }
-  }, [index, indexInput, root, effectiveExcludes]);
+  }, [active, index, indexInput, root, effectiveExcludes]);
   useEffect(() => {
+    if (!active) {
+      return;
+    }
     service.current?.update({
       kind: "open",
       root,
       paths: JSON.parse(openPathsKey) as string[],
       excludes: effectiveExcludes,
     });
-  }, [root, openPathsKey, effectiveExcludes]);
+  }, [active, root, openPathsKey, effectiveExcludes]);
   useEffect(() => {
     if (query === null || index?.input !== indexInput) {
       service.current?.cancel();
