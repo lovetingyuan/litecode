@@ -1,3 +1,4 @@
+import type { ReplacementRange, ReplacementPlan, ReplacementEdit } from "../types/replacements";
 import { call, errorMessage } from "../core/bridge";
 import { ask } from "../components/dialog";
 import { useApp, setApp, notify, searchSession, primarySearchId } from "../store/store";
@@ -200,6 +201,85 @@ export function replaceMatches(
     }
   });
 }
+const rangeKey = (p: ReplacementRange) => `${p.line}:${p.column}:${p.endLine}:${p.endColumn}`;
+
+async function indexReplacementPlans(planned: ReplacementPlan[], job: PlanningJob) {
+  const plans = new Map<string, (typeof planned)[number]>();
+  for (let i = 0; i < planned.length; i++) {
+    if (i % 256 === 0) {
+      await yieldPlanning(job);
+    }
+    const plan = planned[i];
+    plans.set(rangeKey(plan), plan);
+  }
+
+  return plans;
+}
+
+async function selectedReplacementEdits(
+  list: SearchMatch[],
+  m: monaco.editor.ITextModel,
+  plans: Map<string, ReplacementPlan>,
+  job: PlanningJob,
+) {
+  const edits: ReplacementEdit[] = [];
+  for (let i = 0; i < list.length; i++) {
+    if (i % 256 === 0) {
+      await yieldPlanning(job);
+    }
+    const match = list[i];
+    const range = new monaco.Range(match.line, match.column, match.endLine, match.endColumn);
+    if (m.getValueInRange(range) !== match.matched) {
+      throw new Error(`${relative(match.path)} changed after searching. Search again.`);
+    }
+    const plan = plans.get(rangeKey(match));
+    if (!plan) {
+      throw new Error("Search and replacement ranges changed. Search again before replacing.");
+    }
+    edits.push({
+      start: m.getOffsetAt(range.getStartPosition()),
+      end: m.getOffsetAt(range.getEndPosition()),
+      text: plan.text,
+    });
+  }
+  edits.sort((a, b) => a.start - b.start || a.end - b.end);
+
+  return edits;
+}
+
+async function assembleReplacementText(before: string, edits: ReplacementEdit[], job: PlanningJob) {
+  const pieces: string[] = [];
+  let offset = 0;
+  for (let i = 0; i < edits.length; i++) {
+    if (i % 256 === 0) {
+      await yieldPlanning(job);
+    }
+    const edit = edits[i];
+    if (edit.start < offset) {
+      throw new Error("Replacement ranges overlap. Search again before replacing.");
+    }
+    pieces.push(before.slice(offset, edit.start), edit.text);
+    offset = edit.end;
+  }
+  pieces.push(before.slice(offset));
+  const after = pieces.join("");
+
+  return after;
+}
+
+function replacementDocument(first: SearchMatch) {
+  const doc = first.documentId
+    ? useApp.getState().docs[first.documentId]
+    : Object.values(useApp.getState().docs).find(
+        (d) => d.path && normalize(d.path) === normalize(first.path),
+      );
+  if (doc && !isTextDocument(doc)) {
+    throw new Error(`${relative(first.path)} is no longer a text document. Search again.`);
+  }
+
+  return doc;
+}
+
 async function replace(
   matches: SearchMatch[],
   replacement: string,
@@ -232,19 +312,12 @@ async function replace(
   const buffers: BufferEdit[] = [];
   const errors: string[] = [];
   const diskEdits: DiskEdit[] = [];
-  for (const list of byFile.values()) {
+  async function planFile(list: SearchMatch[]) {
     let temporary: monaco.editor.ITextModel | undefined;
     try {
       checkPlanning(job);
       const first = list[0];
-      const doc = first.documentId
-        ? useApp.getState().docs[first.documentId]
-        : Object.values(useApp.getState().docs).find(
-            (d) => d.path && normalize(d.path) === normalize(first.path),
-          );
-      if (doc && !isTextDocument(doc)) {
-        throw new Error(`${relative(first.path)} is no longer a text document. Search again.`);
-      }
+      const doc = replacementDocument(first);
       let disk: DiskDocument | undefined;
       if (!doc) {
         disk = await call<DiskDocument>("read_document", { path: first.path });
@@ -257,9 +330,7 @@ async function replace(
       }
       const version = m.getVersionId();
       const before = m.getValue();
-      const planned = await call<
-        { line: number; column: number; endLine: number; endColumn: number; text: string }[]
-      >("replacement_plan", {
+      const planned = await call<ReplacementPlan[]>("replacement_plan", {
         requestId: job.id,
         text: before,
         query,
@@ -272,52 +343,9 @@ async function replace(
           `${doc?.name ?? first.path} changed while preparing replacements. Search again.`,
         );
       }
-      const rangeKey = (p: { line: number; column: number; endLine: number; endColumn: number }) =>
-        `${p.line}:${p.column}:${p.endLine}:${p.endColumn}`;
-      const plans = new Map<string, (typeof planned)[number]>();
-      for (let i = 0; i < planned.length; i++) {
-        if (i % 256 === 0) {
-          await yieldPlanning(job);
-        }
-        const plan = planned[i];
-        plans.set(rangeKey(plan), plan);
-      }
-      const edits: { start: number; end: number; text: string }[] = [];
-      for (let i = 0; i < list.length; i++) {
-        if (i % 256 === 0) {
-          await yieldPlanning(job);
-        }
-        const match = list[i];
-        const range = new monaco.Range(match.line, match.column, match.endLine, match.endColumn);
-        if (m.getValueInRange(range) !== match.matched) {
-          throw new Error(`${relative(match.path)} changed after searching. Search again.`);
-        }
-        const plan = plans.get(rangeKey(match));
-        if (!plan) {
-          throw new Error("Search and replacement ranges changed. Search again before replacing.");
-        }
-        edits.push({
-          start: m.getOffsetAt(range.getStartPosition()),
-          end: m.getOffsetAt(range.getEndPosition()),
-          text: plan.text,
-        });
-      }
-      edits.sort((a, b) => a.start - b.start || a.end - b.end);
-      const pieces: string[] = [];
-      let offset = 0;
-      for (let i = 0; i < edits.length; i++) {
-        if (i % 256 === 0) {
-          await yieldPlanning(job);
-        }
-        const edit = edits[i];
-        if (edit.start < offset) {
-          throw new Error("Replacement ranges overlap. Search again before replacing.");
-        }
-        pieces.push(before.slice(offset, edit.start), edit.text);
-        offset = edit.end;
-      }
-      pieces.push(before.slice(offset));
-      const after = pieces.join("");
+      const plans = await indexReplacementPlans(planned, job);
+      const edits = await selectedReplacementEdits(list, m, plans, job);
+      const after = await assembleReplacementText(before, edits, job);
       checkPlanning(job);
       if (
         m.isDisposed() ||
@@ -339,7 +367,7 @@ async function replace(
             },
           }),
         );
-        return;
+        return true;
       }
       if (doc) {
         buffers.push({
@@ -360,6 +388,12 @@ async function replace(
       errors.push(errorMessage(e));
     } finally {
       temporary?.dispose();
+    }
+    return false;
+  }
+  for (const list of byFile.values()) {
+    if (await planFile(list)) {
+      return;
     }
   }
 
@@ -383,10 +417,20 @@ async function replace(
   job.applying = true;
   setApp({ replacementPhase: "applying" });
   pendingApply = transaction; // Keep the identifier even when IPC loses its response.
+  await applyReplacement(transaction, diskEdits, buffers, errors);
+  return errors;
+}
+
+async function applyReplacement(
+  transaction: Transaction,
+  diskEdits: DiskEdit[],
+  buffers: BufferEdit[],
+  errors: string[],
+) {
   try {
     const report = await call<Report>("replace_disk", {
       transactionId: transaction.id,
-      expectedRoot: root,
+      expectedRoot: transaction.root,
       edits: diskEdits,
       buffers,
     });
@@ -421,7 +465,18 @@ async function replace(
           : ""),
     );
   }
-  return errors;
+}
+
+function replacementStacks(redo: boolean): {
+  from: Transaction[];
+  to: Transaction[];
+  direction: Exclude<Direction, "apply">;
+} {
+  return {
+    from: redo ? redoStack : undoStack,
+    to: redo ? undoStack : redoStack,
+    direction: redo ? "redo" : "undo",
+  };
 }
 
 export function undoReplacement(redo = false) {
@@ -430,13 +485,12 @@ export function undoReplacement(redo = false) {
       notify("Recover or retry the unfinished replacement first.");
       return;
     }
-    const from = redo ? redoStack : undoStack;
-    const to = redo ? undoStack : redoStack;
+    const { from, to, direction } = replacementStacks(redo);
     const transaction = from[from.length - 1];
     if (!transaction) {
       return;
     }
-    const direction = redo ? "redo" : "undo";
+
     if (transaction.direction && transaction.direction !== direction) {
       notify("An operation in the other direction is unfinished. Retry or recover it first.");
       return;
@@ -513,6 +567,61 @@ export function retryReplacement() {
   });
 }
 
+function restoreRecoveryBuffers(record: Recovery) {
+  for (const buffer of record.buffers) {
+    if (!models.has(buffer.before.id)) {
+      if (
+        buffer.before.path &&
+        Object.values(useApp.getState().docs).some(
+          (doc) => doc.path && normalize(doc.path) === normalize(buffer.before.path!),
+        )
+      ) {
+        throw new Error(
+          "A replacement file is open in a different editor. Its edits were preserved; resolve that editor before recovering.",
+        );
+      }
+      restoreDocument(buffer.before);
+      showDocument(buffer.before.id, { pinned: true });
+    }
+  }
+}
+
+async function finishRecoveredReplacement(record: Recovery) {
+  const updated = (await call<Recovery[]>("replacement_recovery")).find(
+    (r) => r.transactionId === record.transactionId,
+  );
+  if (!updated) {
+    throw new Error("The recovery record changed. Inspect the retained backup before retrying.");
+  }
+  await finish(
+    {
+      id: updated.transactionId,
+      root: updated.root,
+      buffers: updated.buffers,
+      direction: "apply",
+      finishing: false,
+    },
+    updated.targetAfter,
+  );
+}
+
+function clearRecoveredReplacement(record: Recovery, choice: string) {
+  if (pendingApply?.id === record.transactionId) {
+    pendingApply = null;
+  }
+  for (const stack of [undoStack, redoStack]) {
+    const index = stack.findIndex((t) => t.id === record.transactionId);
+    if (index >= 0) {
+      if (choice === "保留现状") {
+        stack.splice(index, 1);
+      } else {
+        stack[index].direction = null;
+        stack[index].finishing = false;
+      }
+    }
+  }
+}
+
 export function recoverInterruptedReplacements() {
   return serial(async () => {
     const records = await call<Recovery[]>("replacement_recovery");
@@ -529,22 +638,7 @@ export function recoverInterruptedReplacements() {
       try {
         if (choice !== "保留现状") {
           checkRoot(record.root);
-          for (const buffer of record.buffers) {
-            if (!models.has(buffer.before.id)) {
-              if (
-                buffer.before.path &&
-                Object.values(useApp.getState().docs).some(
-                  (doc) => doc.path && normalize(doc.path) === normalize(buffer.before.path!),
-                )
-              ) {
-                throw new Error(
-                  "A replacement file is open in a different editor. Its edits were preserved; resolve that editor before recovering.",
-                );
-              }
-              restoreDocument(buffer.before);
-              showDocument(buffer.before.id, { pinned: true });
-            }
-          }
+          restoreRecoveryBuffers(record);
           await checkpoint();
           checkBuffers(record.buffers, true, true);
         }
@@ -556,39 +650,9 @@ export function recoverInterruptedReplacements() {
           throw new Error(failure(report));
         }
         if (choice !== "保留现状") {
-          const updated = (await call<Recovery[]>("replacement_recovery")).find(
-            (r) => r.transactionId === record.transactionId,
-          );
-          if (!updated) {
-            throw new Error(
-              "The recovery record changed. Inspect the retained backup before retrying.",
-            );
-          }
-          await finish(
-            {
-              id: updated.transactionId,
-              root: updated.root,
-              buffers: updated.buffers,
-              direction: "apply",
-              finishing: false,
-            },
-            updated.targetAfter,
-          );
+          await finishRecoveredReplacement(record);
         }
-        if (pendingApply?.id === record.transactionId) {
-          pendingApply = null;
-        }
-        for (const stack of [undoStack, redoStack]) {
-          const index = stack.findIndex((t) => t.id === record.transactionId);
-          if (index >= 0) {
-            if (choice === "保留现状") {
-              stack.splice(index, 1);
-            } else {
-              stack[index].direction = null;
-              stack[index].finishing = false;
-            }
-          }
-        }
+        clearRecoveredReplacement(record, choice);
         notify("恢复记录已处理，备份仍保留。");
       } catch (error) {
         notify(errorMessage(error) + "\n恢复尚未完成，备份已保留。");

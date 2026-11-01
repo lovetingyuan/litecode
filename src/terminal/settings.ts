@@ -19,18 +19,27 @@ export function terminalSetting(settings: Record<string, unknown>, name: string)
   if (value === undefined || (rule.enum && !rule.enum.includes(value))) {
     return rule.default;
   }
-  const types = Array.isArray(rule.type) ? rule.type : rule.type ? [rule.type] : [];
+  let types: string[];
+  if (Array.isArray(rule.type)) {
+    types = rule.type;
+  } else if (rule.type) {
+    types = [rule.type];
+  } else {
+    types = [];
+  }
   if (
     types.length &&
-    !types.some((type) =>
-      type === "null"
-        ? value === null
-        : type === "integer"
-          ? typeof value === "number" && Number.isInteger(value)
-          : type === "object"
-            ? typeof value === "object" && value !== null && !Array.isArray(value)
-            : typeof value === type,
-    )
+    !types.some((type) => {
+      if (type === "null") {
+        return value === null;
+      } else if (type === "integer") {
+        return typeof value === "number" && Number.isInteger(value);
+      } else if (type === "object") {
+        return typeof value === "object" && value !== null && !Array.isArray(value);
+      } else {
+        return typeof value === type;
+      }
+    })
   ) {
     return rule.default;
   }
@@ -49,6 +58,7 @@ export function terminalSetting(settings: Record<string, unknown>, name: string)
   }
   return value;
 }
+// eslint-disable-next-line sonarjs/function-return-type -- The API intentionally accepts both numeric and named font weights.
 function weight(value: unknown, fallback: "normal" | "bold"): ITerminalOptions["fontWeight"] {
   if (value === "normal" || value === "bold") {
     return value;

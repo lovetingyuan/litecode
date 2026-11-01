@@ -24,9 +24,8 @@ export function matchesWhen(
     return true;
   }
   const tokens =
-    expression
-      .match(/\s*(===|!==|==|!=|&&|\|\||!|\(|\)|'[^']*'|"[^"]*"|[\w.:-]+)\s*/g)
-      ?.map((t) => t.trim()) ?? [];
+    expression.match(/={2,3}|!==?|&&|\|\||[!()]|(["'])[^]*?\1|[\w.:-]+/g)?.map((t) => t.trim()) ??
+    [];
   if (tokens.join("").replace(/\s/g, "") !== expression.replace(/\s/g, "")) {
     return false;
   }
@@ -48,7 +47,14 @@ export function matchesWhen(
     if (!name) {
       throw new Error("Missing context");
     }
-    const actual = name === "true" ? true : name === "false" ? false : (context[name] ?? false);
+    let actual;
+    if (name === "true") {
+      actual = true;
+    } else if (name === "false") {
+      actual = false;
+    } else {
+      actual = context[name] ?? false;
+    }
     if (["==", "===", "!=", "!=="].includes(tokens[i])) {
       const operator = tokens[i++];
       const expected = tokens[i++];

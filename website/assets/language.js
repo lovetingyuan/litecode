@@ -50,18 +50,18 @@
     return;
   }
 
-  let preferred = explicit;
-  if (!preferred) {
+  function storedLanguage() {
     try {
       const saved = localStorage.getItem(key);
       if (valid(saved)) {
-        preferred = saved;
+        return saved;
       }
     } catch {
       /* Private browsing may deny all storage access. */
     }
+    return null;
   }
-  if (!preferred) {
+  function browserLanguage() {
     const languages = [...(navigator.languages || []), navigator.language];
     for (const language of languages) {
       if (typeof language !== "string") {
@@ -69,10 +69,17 @@
       }
       const match = /^(zh|en)(?:-|$)/i.exec(language.trim().replaceAll("_", "-"));
       if (match) {
-        preferred = match[1].toLowerCase();
-        break;
+        return match[1].toLowerCase();
       }
     }
+    return null;
+  }
+  let preferred = explicit;
+  if (!preferred) {
+    preferred = storedLanguage();
+  }
+  if (!preferred) {
+    preferred = browserLanguage();
   }
   preferred ||= "en";
   if (preferred === current) {

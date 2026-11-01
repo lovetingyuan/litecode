@@ -8,7 +8,7 @@ import { Icon } from "./ui";
 import type { Doc, Group } from "../types/types";
 import { useApp } from "../store/store";
 
-export function MediaPreview({ doc, group }: { doc: Doc; group: Group }) {
+export function MediaPreview({ doc, group }: Readonly<{ doc: Doc; group: Group }>) {
   const [retry, setRetry] = useState(0);
   const [source, setSource] = useState("");
   const [error, setError] = useState(false);
@@ -94,6 +94,51 @@ export function MediaPreview({ doc, group }: { doc: Doc; group: Group }) {
       </div>
     );
   } else {
+    let preview;
+    if (source) {
+      if (doc.kind === "image" || doc.kind === "svg") {
+        preview = (
+          <ImagePreview
+            key={source}
+            doc={doc}
+            group={group}
+            source={source}
+            onReady={() => setReady(true)}
+            onError={failure}
+          />
+        );
+      } else if (doc.kind === "video") {
+        preview = (
+          <video
+            key={source}
+            ref={(element) => {
+              player.current = element;
+            }}
+            src={source}
+            controls
+            preload="metadata"
+            aria-label={`Video preview: ${doc.name}`}
+            onLoadedMetadata={() => setReady(true)}
+            onError={failure}
+          />
+        );
+      } else {
+        preview = (
+          <audio
+            key={source}
+            ref={(element) => {
+              player.current = element;
+            }}
+            src={source}
+            controls
+            preload="metadata"
+            aria-label={`Audio preview: ${doc.name}`}
+            onLoadedMetadata={() => setReady(true)}
+            onError={failure}
+          />
+        );
+      }
+    }
     content = (
       <>
         {!ready && (
@@ -107,49 +152,13 @@ export function MediaPreview({ doc, group }: { doc: Doc; group: Group }) {
             <span>Loading preview…</span>
           </div>
         )}
-        {source &&
-          (doc.kind === "image" || doc.kind === "svg" ? (
-            <ImagePreview
-              key={source}
-              doc={doc}
-              group={group}
-              source={source}
-              onReady={() => setReady(true)}
-              onError={failure}
-            />
-          ) : doc.kind === "video" ? (
-            <video
-              key={source}
-              ref={(element) => {
-                player.current = element;
-              }}
-              src={source}
-              controls
-              preload="metadata"
-              aria-label={`Video preview: ${doc.name}`}
-              onLoadedMetadata={() => setReady(true)}
-              onError={failure}
-            />
-          ) : (
-            <audio
-              key={source}
-              ref={(element) => {
-                player.current = element;
-              }}
-              src={source}
-              controls
-              preload="metadata"
-              aria-label={`Audio preview: ${doc.name}`}
-              onLoadedMetadata={() => setReady(true)}
-              onError={failure}
-            />
-          ))}
+        {source && preview}
       </>
     );
   }
   return (
     <div
-      className={`media-preview relative flex-1 min-h-0 min-w-0 overflow-hidden bg-editor ${mediaPreviewStyles["media-preview"]} ${doc.kind === "video" || doc.kind === "audio" ? `playback-preview flex items-center justify-center p-6 ${mediaPreviewStyles["playback-preview"]}` : ""}`}
+      className={`media-preview relative flex-1 min-h-0 min-w-0 overflow-hidden bg-editor ${mediaPreviewStyles["media-preview"]} ${doc.kind === "video" || doc.kind === "audio" ? "playback-preview flex items-center justify-center p-6 ".concat(mediaPreviewStyles["playback-preview"]) : ""}`}
       tabIndex={0}
       aria-label={`Preview of ${doc.name}`}
     >
@@ -164,13 +173,13 @@ function ImagePreview({
   source,
   onReady,
   onError,
-}: {
+}: Readonly<{
   doc: Doc;
   group: Group;
   source: string;
   onReady(): void;
   onError(): void;
-}) {
+}>) {
   const host = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });

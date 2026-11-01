@@ -12,7 +12,7 @@ import { startupStep } from "../core/startup";
 
 let startup: Promise<void> | undefined;
 export function initializeEditor(): Promise<void> {
-  return (startup ??= (async () => {
+  startup ??= (async () => {
     const wrapper = new MonacoVscodeApiWrapper({
       $type: "classic",
       viewsConfig: { $type: "EditorService" },
@@ -35,7 +35,8 @@ export function initializeEditor(): Promise<void> {
     monaco.editor.setTheme("dark-modern");
     // Menus portaled into shadow roots under body must inherit the editor theme variables.
     document.body.classList.add("monaco-component");
-  })());
+  })();
+  return startup;
 }
 
 const filenameLanguages = new Map<string, string>();
@@ -113,7 +114,7 @@ const jsonSyntax = import.meta.glob<{
   createTokenizationSupport(comments: boolean): monaco.languages.TokensProvider;
 }>("/node_modules/monaco-languages/esm/vs/languages/features/json/tokenization.js");
 function registerSyntaxes() {
-  return (registration ??= (async () => {
+  registration ??= (async () => {
     // Register names and lazy tokenizers, including languages encountered inside Markdown.
     await registrations[
       "/node_modules/monaco-languages/esm/vs/languages/definitions/register.all.js"
@@ -153,17 +154,26 @@ function registerSyntaxes() {
               ]();
             return createTokenizationSupport(id === "jsonc");
           }
-          const syntax = id === "vue" ? "html" : id === "markdown" ? "markdown" : "typescript";
+          let syntax;
+          if (id === "vue") {
+            syntax = "html";
+          } else if (id === "markdown") {
+            syntax = "markdown";
+          } else {
+            syntax = "typescript";
+          }
           const module =
             await syntaxes[
               `/node_modules/monaco-languages/esm/vs/languages/definitions/${syntax}/${syntax}.js`
             ]();
           monaco.languages.setLanguageConfiguration(id, module.conf);
-          return id === "vue"
-            ? vueSyntax(module.language)
-            : id === "markdown"
-              ? markdownSyntax(module.language)
-              : module.language;
+          if (id === "vue") {
+            return vueSyntax(module.language);
+          } else if (id === "markdown") {
+            return markdownSyntax(module.language);
+          } else {
+            return module.language;
+          }
         },
       });
     }
@@ -190,7 +200,8 @@ function registerSyntaxes() {
       }
     }
     extensionLanguages = [...extensions].sort(([a], [b]) => b.length - a.length);
-  })());
+  })();
+  return registration;
 }
 
 const loading = new Map<string, Promise<void>>();

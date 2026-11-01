@@ -47,12 +47,13 @@ class IpcWriter extends AbstractMessageWriter {
     super();
   }
   write(message: Message) {
-    return (this.queue = this.queue
+    this.queue = this.queue
       .then(() => call<void>("lsp_send", { serverId: this.id, message }))
       .catch((e) => {
         this.fireError(e);
         throw e;
-      }));
+      });
+    return this.queue;
   }
   end() {
     this.fireClose();
@@ -208,6 +209,31 @@ export async function formatModel(m: monaco.editor.ITextModel) {
   }
 }
 
+async function registerLanguageModel(
+  id: string,
+  language: string,
+  m: monaco.editor.ITextModel,
+  epoch: number,
+) {
+  setApp({ languageStatus: `Registering ${language} document` });
+  try {
+    const reference = await createModelReference(m.uri);
+    if (epoch !== languageEpoch || m.isDisposed()) {
+      reference.dispose();
+      return false;
+    }
+    references.set(id, reference);
+  } catch (e) {
+    notify(`Language document registration: ${errorMessage(e)}`);
+    return false;
+  }
+  return true;
+}
+
+function languageServerKind(serverId: string) {
+  return serverId === "typescript" && vueEnabled ? "vue-typescript" : serverId;
+}
+
 export async function ensureLanguage(id: string, language: string) {
   if (!desktop || stopping || !serviceLanguages.has(language)) {
     return;
@@ -228,16 +254,7 @@ export async function ensureLanguage(id: string, language: string) {
     return;
   }
   if (!references.has(id)) {
-    setApp({ languageStatus: `Registering ${language} document` });
-    try {
-      const reference = await createModelReference(m.uri);
-      if (epoch !== languageEpoch || m.isDisposed()) {
-        reference.dispose();
-        return;
-      }
-      references.set(id, reference);
-    } catch (e) {
-      notify(`Language document registration: ${errorMessage(e)}`);
+    if (!(await registerLanguageModel(id, language, m, epoch))) {
       return;
     }
   }
@@ -271,12 +288,13 @@ export async function ensureLanguage(id: string, language: string) {
       return;
     }
   }
-  return startLanguage(
-    serverId,
-    serverId === "typescript" && vueEnabled ? "vue-typescript" : serverId,
-    root,
-    epoch,
-  );
+  return startLanguage(serverId, languageServerKind(serverId), root, epoch);
+}
+
+function languageSelector(serverId: string, language: string) {
+  return serverId === "typescript"
+    ? [...typescriptLanguages, ...(language === "vue-typescript" ? ["vue"] : [])]
+    : [language];
 }
 
 async function startLanguage(
@@ -328,10 +346,7 @@ async function startLanguage(
         await call("lsp_stop", { serverId });
         return;
       }
-      const selector =
-        serverId === "typescript"
-          ? [...typescriptLanguages, ...(language === "vue-typescript" ? ["vue"] : [])]
-          : [language];
+      const selector = languageSelector(serverId, language);
       client = new MonacoLanguageClient({
         id: serverId,
         name: description,
@@ -465,21 +480,27 @@ async function applyWorkspaceEdit(
     for (const [uri, edits] of Object.entries(edit.changes ?? {})) {
       targets.set(uri, { edits });
     }
-    for (const change of edit.documentChanges ?? []) {
-      if (!("textDocument" in change)) {
-        return {
-          applied: false,
-          failureReason:
-            "This workspace edit contains file operations. Use Explorer for file operations.",
-        };
+    function collectDocumentChanges() {
+      for (const change of edit.documentChanges ?? []) {
+        if (!("textDocument" in change)) {
+          return {
+            applied: false,
+            failureReason:
+              "This workspace edit contains file operations. Use Explorer for file operations.",
+          };
+        }
+        const edits = change.edits.filter(
+          (e): e is import("vscode-languageserver-protocol").TextEdit => "newText" in e,
+        );
+        if (edits.length !== change.edits.length) {
+          return { applied: false, failureReason: "Snippet workspace edits are not supported" };
+        }
+        targets.set(change.textDocument.uri, { version: change.textDocument.version, edits });
       }
-      const edits = change.edits.filter(
-        (e): e is import("vscode-languageserver-protocol").TextEdit => "newText" in e,
-      );
-      if (edits.length !== change.edits.length) {
-        return { applied: false, failureReason: "Snippet workspace edits are not supported" };
-      }
-      targets.set(change.textDocument.uri, { version: change.textDocument.version, edits });
+    }
+    const failure = collectDocumentChanges();
+    if (failure) {
+      return failure;
     }
     const prepared: {
       m: monaco.editor.ITextModel;
@@ -568,6 +589,18 @@ export async function restartLanguages() {
 }
 
 export type SymbolItem = { name: string; path: string; line: number; column: number; kind: number };
+function requestSymbols<T>(
+  client: MonacoLanguageClient,
+  workspace: boolean,
+  query: string,
+  activeModel: monaco.editor.ITextModel | undefined,
+) {
+  return client.sendRequest<T>(
+    workspace ? "workspace/symbol" : "textDocument/documentSymbol",
+    workspace ? { query } : { textDocument: { uri: activeModel!.uri.toString() } },
+  );
+}
+
 export async function symbols(query: string, workspace: boolean): Promise<SymbolItem[]> {
   const output: SymbolItem[] = [];
   const s = useApp.getState();
@@ -594,10 +627,7 @@ export async function symbols(query: string, workspace: boolean): Promise<Symbol
       range?: { start: { line: number; character: number } };
       children?: Symbol[];
     };
-    const response = await client.sendRequest<Symbol[]>(
-      workspace ? "workspace/symbol" : "textDocument/documentSymbol",
-      workspace ? { query } : { textDocument: { uri: activeModel!.uri.toString() } },
-    );
+    const response = await requestSymbols<Symbol[]>(client, workspace, query, activeModel);
     const visit = (list: Symbol[]) => {
       for (const symbol of list ?? []) {
         const start =

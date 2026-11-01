@@ -51,17 +51,17 @@ describe("Lazy workspace directories", () => {
     expect(read).toHaveBeenCalledTimes(3);
   });
   it("remaps moved directories without retaining them in their old parent", async () => {
-    const read = vi
-      .fn()
-      .mockImplementation(async (directory) =>
-        snapshot(
-          directory === ""
-            ? ["src/", "dst/"]
-            : directory === "src"
-              ? ["src/moved/"]
-              : ["src/moved/a.txt"],
-        ),
-      );
+    const read = vi.fn().mockImplementation(async (directory) => {
+      let paths;
+      if (directory === "") {
+        paths = ["src/", "dst/"];
+      } else if (directory === "src") {
+        paths = ["src/moved/"];
+      } else {
+        paths = ["src/moved/a.txt"];
+      }
+      return snapshot(paths);
+    });
     const cache = new DirectoryCache("C:/project", read);
     await cache.load("");
     await cache.load("src");

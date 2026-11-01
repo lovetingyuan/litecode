@@ -93,6 +93,12 @@ export async function createBranch(repository: string, source?: GitBranch) {
   });
 }
 
+function trackingBranch(branches: GitBranch[], name: string, upstream: string) {
+  return branches.find(
+    (branch) => !branch.remote && branch.name === name && branch.upstream === upstream,
+  );
+}
+
 export async function switchBranch(
   repository: string,
   source: GitBranch,
@@ -119,8 +125,8 @@ export async function switchBranch(
     await runGitOperation(repository, { kind: "switch", branch: target.branch });
     return;
   }
-  if (target.kind === "choose") {
-    const name = await choose(target.branches);
+  async function chooseLocalBranch(branches: GitBranch[], branch: GitBranch) {
+    const name = await choose(branches);
     if (!name || !valid()) {
       return;
     }
@@ -128,14 +134,14 @@ export async function switchBranch(
     if (!valid() || info.operation) {
       return;
     }
-    const local = info.branches.find(
-      (b) => !b.remote && b.name === name && b.upstream === branch.name,
-    );
+    const local = trackingBranch(info.branches, name, branch.name);
     if (!local || branchSwitchTarget(local, info.branches).kind !== "switch") {
       return;
     }
     await runGitOperation(repository, { kind: "switch", branch: name });
-    return;
+  }
+  if (target.kind === "choose") {
+    return chooseLocalBranch(target.branches, branch);
   }
   let name: string | null = target.name;
   if (info.branches.some((b) => !b.remote && b.name === name)) {

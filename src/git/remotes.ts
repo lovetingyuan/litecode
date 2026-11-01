@@ -24,7 +24,7 @@ export function commitWebUrl(
     default:
       return null;
   }
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/${path}/${sha}`;
+  url.pathname = `${url.pathname.replace(/(?<!\/)\/+$/, "")}/${path}/${sha}`;
   url.search = "";
   url.hash = "";
   return url.href;
@@ -39,7 +39,7 @@ export function remoteWebUrl(address: string | null): string | null {
   if (/^[a-z]:/i.test(value) || value.includes("\\")) {
     return null;
   }
-  const scp = !value.includes("://") && value.match(/^[^@/:\s]+@([^/:\s]+):([^\s]+)$/);
+  const scp = !value.includes("://") && /^[^@/:\s]+@([^/:\s]+):([^\s]+)$/.exec(value);
   if (!scp && !/^(?:https?|ssh):\/\//i.test(value)) {
     return null;
   }
@@ -48,7 +48,7 @@ export function remoteWebUrl(address: string | null): string | null {
     if (
       !["http:", "https:", "ssh:"].includes(url.protocol) ||
       !url.hostname ||
-      !url.pathname.replace(/^\/+|\/+$/g, "")
+      !url.pathname.replace(/^\/+|(?<!\/)\/+$/g, "")
     ) {
       return null;
     }
@@ -58,7 +58,7 @@ export function remoteWebUrl(address: string | null): string | null {
     }
     url.username = "";
     url.password = "";
-    url.pathname = url.pathname.replace(/\/+$/, "").replace(/\.git$/, "");
+    url.pathname = url.pathname.replace(/(?<!\/)\/+$/, "").replace(/\.git$/, "");
     return url.href;
   } catch {
     return null;

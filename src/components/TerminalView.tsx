@@ -133,16 +133,21 @@ export default function TerminalView() {
                     if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
                       event.preventDefault();
                       const index = tabs.indexOf(tab);
-                      selectTab(
-                        tabs[
-                          event.key === "Home"
-                            ? 0
-                            : event.key === "End"
-                              ? tabs.length - 1
-                              : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
-                                tabs.length
-                        ].id,
-                      );
+                      let nextIndex;
+                      if (event.key === "Home") {
+                        nextIndex = 0;
+                      } else if (event.key === "End") {
+                        nextIndex = tabs.length - 1;
+                      } else {
+                        let nextIndexPart1;
+                        if (event.key === "ArrowRight") {
+                          nextIndexPart1 = 1;
+                        } else {
+                          nextIndexPart1 = -1;
+                        }
+                        nextIndex = (index + nextIndexPart1 + tabs.length) % tabs.length;
+                      }
+                      selectTab(tabs[nextIndex].id);
                     }
                   }}
                 >
@@ -279,11 +284,11 @@ function TerminalLayout({
   node,
   tabId,
   visible,
-}: {
+}: Readonly<{
   node: EditorLayout;
   tabId: string;
   visible: boolean;
-}) {
+}>) {
   if (node.type === "group") {
     return <TerminalPane id={node.id} visible={visible} />;
   }
@@ -317,7 +322,7 @@ function TerminalLayout({
   );
 }
 
-function TerminalPane({ id, visible }: { id: string; visible: boolean }) {
+function TerminalPane({ id, visible }: Readonly<{ id: string; visible: boolean }>) {
   const pane = useTerminal((s) => s.panes[id]);
   const focused = useTerminal((s) => s.tabs.find((t) => t.id === s.activeTab)?.activePane === id);
   const settings = useApp((s) => s.settings);

@@ -4,8 +4,11 @@
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   const theme = document.querySelector("#theme");
   const applyTheme = () => {
-    root.dataset.theme =
-      theme.value === "system" ? (systemTheme.matches ? "dark" : "light") : theme.value;
+    if (theme.value === "system") {
+      root.dataset.theme = systemTheme.matches ? "dark" : "light";
+    } else {
+      root.dataset.theme = theme.value;
+    }
     root.dataset.themePreference = theme.value;
   };
   if (theme) {

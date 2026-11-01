@@ -11,7 +11,21 @@ import { errorMessage } from "../core/bridge";
 import { IconButton } from "./ui";
 import type { Doc, GitDiffContent, Group } from "../types/types";
 
-export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
+function saveDiffView(
+  groupId: string,
+  documentId: string,
+  view: monaco.editor.IDiffEditorViewState | null,
+) {
+  setApp((s) => ({
+    groups: s.groups.map((g) =>
+      g.id === groupId && g.tabs.includes(documentId)
+        ? { ...g, views: { ...g.views, [documentId]: view } }
+        : g,
+    ),
+  }));
+}
+
+export function GitDiffEditor({ doc, group }: Readonly<{ doc: Doc; group: Group }>) {
   const host = useRef<HTMLDivElement>(null);
   const instance = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
   const settings = useApp((s) => s.settings);
@@ -92,11 +106,10 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
           readOnly: !shared,
           renderSideBySide: !inlineState.current,
           renderSideBySideInlineBreakpoint: 0,
-          originalAriaLabel: staged
-            ? "HEAD version"
-            : conflicted
-              ? "Local version before conflict"
-              : "Index version",
+          originalAriaLabel:
+            (staged && "HEAD version") ||
+            (conflicted && "Local version before conflict") ||
+            "Index version",
           modifiedAriaLabel: staged ? "Index version" : "Working tree version",
         });
         const code = editor.getModifiedEditor();
@@ -105,13 +118,7 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
         dispose = () => {
           if (instance.current === editor) {
             const view = editor.saveViewState();
-            setApp((s) => ({
-              groups: s.groups.map((g) =>
-                g.id === group.id && g.tabs.includes(doc.id)
-                  ? { ...g, views: { ...g.views, [doc.id]: view } }
-                  : g,
-              ),
-            }));
+            saveDiffView(group.id, doc.id, view);
             instance.current = null;
           }
           if (editors.get(group.id) === code) {
@@ -203,11 +210,9 @@ export function GitDiffEditor({ doc, group }: { doc: Doc; group: Group }) {
         className={`git-diff-toolbar h-[30px] shrink-0 flex items-center justify-between gap-2 border-b border-b-panel bg-editor text-[12px] text-muted ${gitStyles["git-diff-toolbar"]}`}
       >
         <span className="truncate" title={`${diff.repository}/${diff.path}`}>
-          {diff.staged
-            ? "HEAD ↔ Index"
-            : diff.conflicted
-              ? "Local ↔ Working Tree"
-              : "Index ↔ Working Tree"}
+          {(diff.staged && "HEAD ↔ Index") ||
+            (diff.conflicted && "Local ↔ Working Tree") ||
+            "Index ↔ Working Tree"}
         </span>
         <div className="actions flex items-center gap-[2px] shrink-0">
           <IconButton

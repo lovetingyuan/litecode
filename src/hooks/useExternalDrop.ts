@@ -116,8 +116,14 @@ export function useExternalDrop(ready: boolean) {
       if (tree?.scroll) {
         const el = tree.scroll;
         const bounds = el.getBoundingClientRect();
-        const delta =
-          event.clientY < bounds.top + 30 ? -14 : event.clientY > bounds.bottom - 30 ? 14 : 0;
+        let delta;
+        if (event.clientY < bounds.top + 30) {
+          delta = -14;
+        } else if (event.clientY > bounds.bottom - 30) {
+          delta = 14;
+        } else {
+          delta = 0;
+        }
         if (delta) {
           scroll = setInterval(() => {
             el.scrollTop += delta;
@@ -130,6 +136,46 @@ export function useExternalDrop(ready: boolean) {
         clear();
       }
     }
+    function postDroppedFiles(
+      files: File[],
+      batchId: string,
+      controller: AbortController,
+      setTimer: (timer: ReturnType<typeof setTimeout>) => void,
+    ) {
+      const bridge = (window as Window & { chrome?: { webview?: NativeWebview } }).chrome?.webview;
+      if (!bridge?.postMessageWithAdditionalObjects) {
+        throw new Error(
+          "External file drops require the Windows desktop app and a current WebView2 runtime.",
+        );
+      }
+      const received = new Promise<ResolvedDrop>((resolve, reject) => {
+        pending.set(batchId, { resolve, reject });
+        setTimer(
+          setTimeout(
+            () => reject(new Error("Could not resolve the dropped files. Please drag them again.")),
+            15000,
+          ),
+        );
+        controller.signal.addEventListener(
+          "abort",
+          () => reject(new DOMException("Drop cancelled", "AbortError")),
+          { once: true },
+        );
+      });
+      // File objects must cross the native boundary before the drop callback yields.
+      // Wry's earlier native listener requires a string and aborts dispatch for objects.
+      try {
+        bridge.postMessageWithAdditionalObjects(
+          JSON.stringify({ type: "litecode-external-drop", batchId }),
+          files,
+        );
+      } catch (error) {
+        pending.get(batchId)?.reject(new Error(errorMessage(error)));
+      }
+
+      return received;
+    }
+
     async function perform(event: DragEvent) {
       if (!hasExternalFiles(event.dataTransfer)) {
         return;
@@ -148,35 +194,9 @@ export function useExternalDrop(ready: boolean) {
       const batchId = crypto.randomUUID();
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        const bridge = (window as Window & { chrome?: { webview?: NativeWebview } }).chrome
-          ?.webview;
-        if (!bridge?.postMessageWithAdditionalObjects) {
-          throw new Error(
-            "External file drops require the Windows desktop app and a current WebView2 runtime.",
-          );
-        }
-        const received = new Promise<ResolvedDrop>((resolve, reject) => {
-          pending.set(batchId, { resolve, reject });
-          timeout = setTimeout(
-            () => reject(new Error("Could not resolve the dropped files. Please drag them again.")),
-            15000,
-          );
-          controller.signal.addEventListener(
-            "abort",
-            () => reject(new DOMException("Drop cancelled", "AbortError")),
-            { once: true },
-          );
+        const received = postDroppedFiles(files, batchId, controller, (timer) => {
+          timeout = timer;
         });
-        // File objects must cross the native boundary before the drop callback yields.
-        // Wry's earlier native listener requires a string and aborts dispatch for objects.
-        try {
-          bridge.postMessageWithAdditionalObjects(
-            JSON.stringify({ type: "litecode-external-drop", batchId }),
-            files,
-          );
-        } catch (error) {
-          pending.get(batchId)?.reject(new Error(errorMessage(error)));
-        }
         const drop = await received;
         if (controller.signal.aborted) {
           return;

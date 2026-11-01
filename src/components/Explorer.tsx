@@ -1,3 +1,8 @@
+import {
+  revealRenamedEntry,
+  revealCreatedEntry,
+  selectRevealedEntry,
+} from "../explorer/treeNavigation";
 import { treeTheme } from "../styles/theme";
 import workbenchStyles from "../styles/workbench.module.css";
 import {
@@ -68,12 +73,42 @@ import { deleteInternalFiles, pasteInternalFiles } from "../explorer/documentFil
 import { gitConflictDecoration } from "../utils/gitStatus";
 
 export { refreshTree } from "../explorer/workspaceTree";
+function moveArguments(
+  base: string,
+  planned: NonNullable<ReturnType<typeof treeMovePlan>>,
+  directory: FileTreeDropContext["target"]["directoryPath"],
+) {
+  return {
+    sources: planned.map((p) => join(base, p.from)),
+    targetDirectory: directory ? join(base, directory) : base,
+    expectedRoot: base,
+  };
+}
+
+function moveQuestion(
+  moves: FileMove[],
+  base: string,
+  directory: FileTreeDropContext["target"]["directoryPath"],
+) {
+  const names = moves.map((move) => basename(move.from));
+  const destination = directory?.replace(/\/$/, "") || basename(base);
+
+  return {
+    title: `Are you sure you want to move ${moves.length === 1 ? "'".concat(names[0], "'") : "the following ".concat(String(moves.length), " files and folders")} into '${destination}'?`,
+    items: moves.map((move, index) =>
+      names.filter((name) => name === names[index]).length > 1
+        ? relative(move.from, base)
+        : names[index],
+    ),
+  };
+}
+
 export function revealInTree(path: string) {
   setApp({ sidebar: "explorer" });
   window.dispatchEvent(new CustomEvent("reveal-tree", { detail: path }));
 }
 
-export function Explorer({ openFolder }: { openFolder: () => void }) {
+export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
   const root = useApp((s) => s.root);
   const workspaceEpoch = useApp((s) => s.workspaceEpoch);
   const gitState = useApp((s) => s.gitState);
@@ -197,6 +232,20 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   useLayoutEffect(() => {
     rootRef.current = root;
   }, [root]);
+  function validCreation(request: NonNullable<typeof creation.current>) {
+    return (
+      creation.current === request &&
+      useApp.getState().root === request.root &&
+      useApp.getState().workspaceEpoch === request.epoch
+    );
+  }
+  function clearPendingReveal(refreshed: boolean) {
+    if (refreshed) {
+      manualRefresh.current = null;
+    }
+    explicitReveal.current = null;
+    revealPending.current = false;
+  }
   function renameOptions(source: string, directory: boolean) {
     const state = useApp.getState();
     const base = state.root;
@@ -209,10 +258,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     creation.current = request;
     revealPending.current = false;
     explicitReveal.current = null;
-    const valid = () =>
-      creation.current === request &&
-      useApp.getState().root === base &&
-      useApp.getState().workspaceEpoch === request.epoch;
+    const valid = () => validCreation(request);
     const args = { expectedRoot: base, session: cache.session, source };
     return {
       validateSync: (name: string) =>
@@ -260,27 +306,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
             if (!valid()) {
               return;
             }
-            const target = result.relativePath + (result.isDirectory ? "/" : "");
-            if (result.changed && model.getItem(source)) {
-              const parts = result.relativePath.split("/");
-              for (let depth = 1; depth < parts.length; depth++) {
-                const path = parts.slice(0, depth).join("/") + "/";
-                if (!model.getItem(path)) {
-                  model.add(path);
-                }
-              }
-              model.move(source + (directory ? "/" : ""), target);
-            }
-            const parts = result.relativePath.split("/");
-            for (let depth = 1; depth < parts.length; depth++) {
-              const ancestor = model.getItem(parts.slice(0, depth).join("/"));
-              if (ancestor && "expand" in ancestor) {
-                ancestor.expand();
-              }
-            }
-            model.getItem(target)?.select();
-            model.focusPath(target);
-            model.scrollToPath(target, { focus: true, offset: "nearest" });
+            revealRenamedEntry(model, result, source, directory);
             if (creation.current === request) {
               creation.current = null;
             }
@@ -342,10 +368,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     model.cancelEditing();
     const request = { root: base, epoch: state.workspaceEpoch, parent };
     creation.current = request;
-    const valid = () =>
-      creation.current === request &&
-      useApp.getState().root === base &&
-      useApp.getState().workspaceEpoch === request.epoch;
+    const valid = () => validCreation(request);
     revealPending.current = false;
     explicitReveal.current = null;
     setExpanded(true);
@@ -397,19 +420,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
               return;
             }
             if (target) {
-              for (const selected of model.getSelectedPaths()) {
-                model.getItem(selected)?.deselect();
-              }
-              const parts = target.replace(/\/$/, "").split("/");
-              for (let depth = 1; depth < parts.length; depth++) {
-                const ancestor = model.getItem(parts.slice(0, depth).join("/"));
-                if (ancestor && "expand" in ancestor) {
-                  ancestor.expand();
-                }
-              }
-              model.getItem(target)?.select();
-              model.focusPath(target);
-              model.scrollToPath(target, { focus: result.kind === "newFolder", offset: "nearest" });
+              revealCreatedEntry(model, target, result.kind === "newFolder");
               if (result.kind === "newFolder") {
                 requestAnimationFrame(() => {
                   const current = useApp.getState();
@@ -504,7 +515,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         }
         if (report.failed.length) {
           notify(
-            `Pasted ${report.copied.length} item(s).\n${report.failed.map((item) => `${pathTitle(item.path)}: ${item.message}`).join("\n")}`,
+            `Pasted ${report.copied.length} item(s).\n${report.failed.map((item) => "".concat(pathTitle(item.path), ": ").concat(item.message)).join("\n")}`,
           );
         }
       } catch (error) {
@@ -624,7 +635,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
               }
               if (report.failed.length) {
                 notify(
-                  `Copied ${report.copied.length} item(s).\n${report.failed.map((item) => `${pathTitle(item.path)}: ${item.message}`).join("\n")}`,
+                  `Copied ${report.copied.length} item(s).\n${report.failed.map((item) => "".concat(pathTitle(item.path), ": ").concat(item.message)).join("\n")}`,
                 );
               }
               if (report.copied.length === 1) {
@@ -715,30 +726,16 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       if (abort.signal.aborted) {
         return;
       }
-      const args = {
-        sources: planned.map((p) => join(base, p.from)),
-        targetDirectory: event.target.directoryPath ? join(base, event.target.directoryPath) : base,
-        expectedRoot: base,
-      };
+      const args = moveArguments(base, planned, event.target.directoryPath);
       const moves = await call<FileMove[]>("plan_file_moves", args);
       if (abort.signal.aborted || !moves.length) {
         return;
       }
-      const names = moves.map((move) => basename(move.from));
-      const destination = event.target.directoryPath?.replace(/\/$/, "") || basename(base);
-      const choice = await ask(
-        `Are you sure you want to move ${moves.length === 1 ? `'${names[0]}'` : `the following ${moves.length} files and folders`} into '${destination}'?`,
-        "",
-        ["Move", "Cancel"],
-        {
-          items: moves.map((move, index) =>
-            names.filter((name) => name === names[index]).length > 1
-              ? relative(move.from, base)
-              : names[index],
-          ),
-          signal: abort.signal,
-        },
-      );
+      const question = moveQuestion(moves, base, event.target.directoryPath);
+      const choice = await ask(question.title, "", ["Move", "Cancel"], {
+        items: question.items,
+        signal: abort.signal,
+      });
       if (choice !== "Move" || abort.signal.aborted) {
         return;
       }
@@ -772,7 +769,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       if (report.failed.length) {
         moveError = new Error(report.failed.map((failure) => failure.message).join("\n"));
         notify(
-          `Moved ${report.moved.length} item(s). The remaining items were not moved.\n${report.failed.map((f) => `${relative(f.path, base)}: ${f.message}`).join("\n")}`,
+          `Moved ${report.moved.length} item(s). The remaining items were not moved.\n${report.failed.map((f) => "".concat(relative(f.path, base), ": ").concat(f.message)).join("\n")}`,
         );
       }
     } catch (e) {
@@ -920,7 +917,7 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
   const structureVersion = workspaceDirectories()?.revision ?? 0;
   useEffect(() => {
     const path = explicitReveal.current?.path ?? active?.path;
-    const base = root ? visiblePath(root).replace(/[\\/]+$/, "") : null;
+    const base = root ? visiblePath(root).replace(/(?<![\\/])[\\/]+$/, "") : null;
     if (
       !path ||
       !base ||
@@ -970,13 +967,16 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
       revealPending.current = true;
     }
     // A newer editor activation supersedes an explicit reveal waiting for tree data.
+    function outdatedReveal(pending: typeof explicitReveal.current) {
+      return (
+        pending &&
+        (pending.group !== activeGroup ||
+          pending.activePath !== active?.path ||
+          pending.request !== tabRevealRequest)
+      );
+    }
     const pending = explicitReveal.current;
-    if (
-      pending &&
-      (pending.group !== activeGroup ||
-        pending.activePath !== active?.path ||
-        pending.request !== tabRevealRequest)
-    ) {
+    if (outdatedReveal(pending)) {
       explicitReveal.current = null;
     }
     // Collapsing the workspace is a user action, not a request to reveal again.
@@ -1000,79 +1000,57 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     }
     const focus = explicitReveal.current !== null;
     const path = explicitReveal.current?.path ?? active?.path;
-    const base = root ? visiblePath(root).replace(/[\\/]+$/, "") : null;
+    const base = root ? visiblePath(root).replace(/(?<![\\/])[\\/]+$/, "") : null;
     if (!path || !base || !normalize(visiblePath(path)).startsWith(normalize(base) + "/")) {
-      if (refreshed) {
-        manualRefresh.current = null;
-      }
-      explicitReveal.current = null;
-      revealPending.current = false;
+      clearPendingReveal(refreshed);
       return;
     }
-    const canonicalPath =
-      revealTarget?.path === path && revealTarget.root === root ? revealTarget.canonical : null;
-    const item = canonicalPath ? model.getItem(canonicalPath) : null;
-    // A newly opened file can precede the scan that first includes it.
-    if (!item) {
-      if (
-        refreshed &&
-        revealTarget?.path === path &&
-        revealTarget.root === root &&
-        revealTarget.canonical === null
-      ) {
-        manualRefresh.current = null;
-        revealPending.current = false;
+    function revealFile(path: string, focus: boolean, refreshed: boolean) {
+      const canonicalPath =
+        revealTarget?.path === path && revealTarget.root === root ? revealTarget.canonical : null;
+      const item = canonicalPath ? model.getItem(canonicalPath) : null;
+      // A newly opened file can precede the scan that first includes it.
+      if (!item) {
+        if (
+          refreshed &&
+          revealTarget?.path === path &&
+          revealTarget.root === root &&
+          revealTarget.canonical === null
+        ) {
+          manualRefresh.current = null;
+          revealPending.current = false;
+        }
+        return;
       }
-      return;
-    }
-    if (item.isDirectory()) {
-      if (refreshed) {
-        manualRefresh.current = null;
+      if (item.isDirectory()) {
+        clearPendingReveal(refreshed);
+        return;
       }
-      explicitReveal.current = null;
-      revealPending.current = false;
-      return;
-    }
-    if (!expanded) {
-      setExpanded(true);
-      return;
-    }
-    const target = item.getPath();
-    // Keep pointer/keyboard navigation in the tree stable; editor navigation reveals context.
-    const navigatingTree =
-      !focus &&
-      document.activeElement === model.getFileTreeContainer() &&
-      model.getFocusedPath() === target;
-    const parts = target.split("/");
-    for (let depth = 1; depth < parts.length; depth++) {
-      const parent = model.getItem(parts.slice(0, depth).join("/"));
-      if (parent && "expand" in parent) {
-        parent.expand();
+      if (!expanded) {
+        setExpanded(true);
+        return;
       }
-    }
-    for (const selected of model.getSelectedPaths()) {
-      if (selected !== target) {
-        model.getItem(selected)?.deselect();
+      const target = item.getPath();
+      // Keep pointer/keyboard navigation in the tree stable; editor navigation reveals context.
+      const navigatingTree =
+        !focus &&
+        // eslint-disable-next-line sonarjs/different-types-comparison -- Compare shared runtime object identities; structural typings do not make these references distinct.
+        document.activeElement === model.getFileTreeContainer() &&
+        model.getFocusedPath() === target;
+      selectRevealedEntry(model, item, target, navigatingTree);
+      clearPendingReveal(refreshed);
+      if (focus) {
+        // Automatic reveals retain DOM focus; explicit reveals transfer it after rendering.
+        const frame = requestAnimationFrame(() => {
+          model
+            .getFileTreeContainer()
+            ?.shadowRoot?.querySelector<HTMLElement>(`[data-item-path="${CSS.escape(target)}"]`)
+            ?.focus({ preventScroll: true });
+        });
+        return () => cancelAnimationFrame(frame);
       }
     }
-    item.select();
-    model.focusPath(target);
-    model.scrollToPath(target, { focus: false, offset: navigatingTree ? "nearest" : "center" });
-    if (refreshed) {
-      manualRefresh.current = null;
-    }
-    explicitReveal.current = null;
-    revealPending.current = false;
-    if (focus) {
-      // Automatic reveals retain DOM focus; explicit reveals transfer it after rendering.
-      const frame = requestAnimationFrame(() => {
-        model
-          .getFileTreeContainer()
-          ?.shadowRoot?.querySelector<HTMLElement>(`[data-item-path="${CSS.escape(target)}"]`)
-          ?.focus({ preventScroll: true });
-      });
-      return () => cancelAnimationFrame(frame);
-    }
+    return revealFile(path, focus, refreshed);
   }, [
     model,
     activeGroup,
@@ -1087,6 +1065,27 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
     explicitRequest,
     refreshRequest,
   ]);
+
+  async function rememberExplorerPaths(paths: string[], root: string, kind: string) {
+    const items = paths.filter(Boolean);
+    if (items.length) {
+      await clipboardRef.current!.remember(
+        items.map((p) => join(root, p)),
+        kind === "cut",
+      );
+    }
+  }
+
+  async function copyExplorerPaths(paths: string[], root: string, kind: string) {
+    const text = paths
+      .map((p) => (kind === "fullPath" ? join(root, p).replace(/\//g, "\\") : p))
+      .join("\r\n");
+    if (desktop) {
+      await (await import("@tauri-apps/plugin-clipboard-manager")).writeText(text);
+    } else {
+      await navigator.clipboard.writeText(text);
+    }
+  }
 
   async function action(
     kind: string,
@@ -1116,24 +1115,11 @@ export function Explorer({ openFolder }: { openFolder: () => void }) {
         return;
       }
       if (kind === "copy" || kind === "cut") {
-        const items = paths.filter(Boolean);
-        if (items.length) {
-          await clipboardRef.current!.remember(
-            items.map((p) => join(root, p)),
-            kind === "cut",
-          );
-        }
+        await rememberExplorerPaths(paths, root, kind);
         return;
       }
       if (kind === "fullPath" || kind === "relativePath") {
-        const text = paths
-          .map((p) => (kind === "fullPath" ? join(root, p).replace(/\//g, "\\") : p))
-          .join("\r\n");
-        if (desktop) {
-          await (await import("@tauri-apps/plugin-clipboard-manager")).writeText(text);
-        } else {
-          await navigator.clipboard.writeText(text);
-        }
+        await copyExplorerPaths(paths, root, kind);
         return;
       }
       if (kind === "reveal") {

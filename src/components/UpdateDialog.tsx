@@ -28,20 +28,22 @@ export function UpdateButton() {
 export function UpdateDialog() {
   const s = useUpdates();
   const busy = s.phase === "checking" || s.phase === "downloading" || updateLocked(s.phase);
-  const status =
-    s.phase === "checking"
-      ? "Checking for updates…"
-      : s.phase === "current"
-        ? "You are using the latest version."
-        : s.phase === "downloading"
-          ? `Downloading… ${(s.downloaded / 1048576).toFixed(1)} MB${s.total ? ` / ${(s.total / 1048576).toFixed(1)} MB` : ""}`
-          : s.phase === "preparing"
-            ? "Saving all editor windows before installing…"
-            : s.phase === "installing"
-              ? "Installing update… LiteCode will reopen automatically."
-              : s.version
-                ? `LiteCode ${s.version} is available.`
-                : "Check for a new version of LiteCode.";
+  let status;
+  if (s.phase === "checking") {
+    status = "Checking for updates…";
+  } else if (s.phase === "current") {
+    status = "You are using the latest version.";
+  } else if (s.phase === "downloading") {
+    status = `Downloading… ${(s.downloaded / 1048576).toFixed(1)} MB${s.total ? " / ".concat((s.total / 1048576).toFixed(1), " MB") : ""}`;
+  } else if (s.phase === "preparing") {
+    status = "Saving all editor windows before installing…";
+  } else if (s.phase === "installing") {
+    status = "Installing update… LiteCode will reopen automatically.";
+  } else if (s.version) {
+    status = `LiteCode ${s.version} is available.`;
+  } else {
+    status = "Check for a new version of LiteCode.";
+  }
   const openLink = (url: string) =>
     void openUrl(url).catch((error) => useUpdates.setState({ error: errorMessage(error) }));
   return (

@@ -17,7 +17,7 @@ import { useApp } from '../store/store'
 import type { Doc, GitBlameCommit, GitCommitDetails, GitFileBlame, GitInfo } from '../types/types'
 import { actionButtonClass, Icon, IconButton } from './ui'
 
-export function GitLineStatus({ doc }: { doc?: Doc }) {
+export function GitLineStatus({ doc }: Readonly<{ doc?: Doc }>) {
   const root = useApp(s => s.root)
   const snapshot = useApp(s => s.gitState)
   const activeGroup = useApp(s => s.activeGroup)

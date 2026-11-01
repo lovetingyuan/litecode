@@ -26,6 +26,66 @@ type SettingRule = {
   additionalProperties?: boolean | SettingRule;
 };
 
+function matchesSettingType(value: unknown, type: string): boolean {
+  if (type === "null") {
+    return value === null;
+  }
+  if (type === "array") {
+    return Array.isArray(value);
+  }
+  if (type === "integer") {
+    return typeof value === "number" && Number.isInteger(value);
+  }
+  if (type === "object") {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+  return typeof value === type;
+}
+
+function validSettingObject(object: Record<string, unknown>, rule: SettingRule): boolean {
+  if (rule.required?.some((key) => !Object.prototype.hasOwnProperty.call(object, key))) {
+    return false;
+  }
+  for (const [key, item] of Object.entries(object)) {
+    const property =
+      rule.properties && Object.prototype.hasOwnProperty.call(rule.properties, key)
+        ? rule.properties[key]
+        : undefined;
+    if (property ? !validSetting(item, property) : rule.additionalProperties === false) {
+      return false;
+    }
+    if (
+      !property &&
+      typeof rule.additionalProperties === "object" &&
+      !validSetting(item, rule.additionalProperties)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function settingTypes(rule: SettingRule) {
+  let types: string[];
+  if (Array.isArray(rule.type)) {
+    types = rule.type;
+  } else if (rule.type) {
+    types = [rule.type];
+  } else {
+    types = [];
+  }
+  return types;
+}
+
+function invalidSettingNumber(value: unknown, rule: SettingRule) {
+  return (
+    typeof value === "number" &&
+    (!Number.isFinite(value) ||
+      (rule.minimum !== undefined && value < rule.minimum) ||
+      (rule.maximum !== undefined && value > rule.maximum))
+  );
+}
+
 function validSetting(value: unknown, rule: SettingRule): boolean {
   if (rule.anyOf && !rule.anyOf.some((candidate) => validSetting(value, candidate))) {
     return false;
@@ -33,33 +93,11 @@ function validSetting(value: unknown, rule: SettingRule): boolean {
   if (rule.enum && !rule.enum.includes(value)) {
     return false;
   }
-  const types = Array.isArray(rule.type) ? rule.type : rule.type ? [rule.type] : [];
-  if (
-    types.length &&
-    !types.some((type) => {
-      if (type === "null") {
-        return value === null;
-      }
-      if (type === "array") {
-        return Array.isArray(value);
-      }
-      if (type === "integer") {
-        return typeof value === "number" && Number.isInteger(value);
-      }
-      if (type === "object") {
-        return value !== null && typeof value === "object" && !Array.isArray(value);
-      }
-      return typeof value === type;
-    })
-  ) {
+  const types = settingTypes(rule);
+  if (types.length && !types.some((type) => matchesSettingType(value, type))) {
     return false;
   }
-  if (
-    typeof value === "number" &&
-    (!Number.isFinite(value) ||
-      (rule.minimum !== undefined && value < rule.minimum) ||
-      (rule.maximum !== undefined && value > rule.maximum))
-  ) {
+  if (invalidSettingNumber(value, rule)) {
     return false;
   }
   if (typeof value === "string" && rule.pattern && !new RegExp(rule.pattern).test(value)) {
@@ -73,26 +111,7 @@ function validSetting(value: unknown, rule: SettingRule): boolean {
     return false;
   }
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-    const object = value as Record<string, unknown>;
-    if (rule.required?.some((key) => !Object.prototype.hasOwnProperty.call(object, key))) {
-      return false;
-    }
-    for (const [key, item] of Object.entries(object)) {
-      const property =
-        rule.properties && Object.prototype.hasOwnProperty.call(rule.properties, key)
-          ? rule.properties[key]
-          : undefined;
-      if (property ? !validSetting(item, property) : rule.additionalProperties === false) {
-        return false;
-      }
-      if (
-        !property &&
-        typeof rule.additionalProperties === "object" &&
-        !validSetting(item, rule.additionalProperties)
-      ) {
-        return false;
-      }
-    }
+    return validSettingObject(value as Record<string, unknown>, rule);
   }
   return true;
 }
@@ -165,6 +184,17 @@ function splitSettingGap(text: string) {
   return { tail: cleaned.trimEnd(), leading: "" };
 }
 
+function containsComma(text: string) {
+  const scanner = createScanner(text);
+  let trailingComma = false;
+  for (let token = scanner.scan(); token !== SyntaxKind.EOF; token = scanner.scan()) {
+    if (token === SyntaxKind.CommaToken) {
+      trailingComma = true;
+    }
+  }
+  return trailingComma;
+}
+
 export function organizeSettings(text: string): string {
   parseConfiguration(text);
   const root = parseTree(text, [], { allowTrailingComma: true })!;
@@ -173,7 +203,7 @@ export function organizeSettings(text: string): string {
     return text;
   }
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
-  const indent = text.slice(0, properties[0].offset).match(/(?:^|\n)([\t ]*)$/)?.[1] || "  ";
+  const indent = /(?:^|\n)([\t ]*)$/.exec(text.slice(0, properties[0].offset))?.[1] || "  ";
   const close = root.offset + root.length - 1;
   let leading = cleanSettingGap(text.slice(root.offset + 1, properties[0].offset));
   const entries = properties.map((property, index) => {
@@ -192,14 +222,16 @@ export function organizeSettings(text: string): string {
     return entry;
   });
   const last = properties[properties.length - 1];
-  const scanner = createScanner(text.slice(last.offset + last.length, close));
-  let trailingComma = false;
-  for (let token = scanner.scan(); token !== SyntaxKind.EOF; token = scanner.scan()) {
-    if (token === SyntaxKind.CommaToken) {
-      trailingComma = true;
+  const trailingComma = containsComma(text.slice(last.offset + last.length, close));
+  const compare = (a: string, b: string) => {
+    if (a < b) {
+      return -1;
+    } else if (a > b) {
+      return 1;
+    } else {
+      return 0;
     }
-  }
-  const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+  };
   entries.sort(
     (a, b) =>
       a.group - b.group ||
@@ -251,6 +283,10 @@ export function updateSetting(text: string, key: string, value: unknown) {
   return applyEdits(text, modify(text, [key], value, { formattingOptions }));
 }
 
+function settingIndent(text: string) {
+  return /^[\t ]*/.exec(text.slice(text.lastIndexOf("\n") + 1))![0];
+}
+
 export function completeSettings(text: string): string {
   const values = parseConfiguration(text);
   for (const [key, setting] of Object.entries(schema.properties)) {
@@ -270,7 +306,7 @@ export function completeSettings(text: string): string {
       setting &&
       !text.slice(previousEnd, property.offset).includes(`// ${setting.description}`)
     ) {
-      const indent = text.slice(0, property.offset).match(/(?:^|\n)([\t ]*)[^\n]*$/)?.[1] ?? "  ";
+      const indent = settingIndent(text.slice(0, property.offset));
       const eol = text.includes("\r\n") ? "\r\n" : "\n";
       edits.push({
         offset: property.offset,

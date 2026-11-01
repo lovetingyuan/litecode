@@ -3,7 +3,7 @@ import type { ButtonHTMLAttributes } from "react";
 // Shared button geometry and states stay consistent across dialogs and toolbars.
 export const actionButtonClass = `action-button inline-flex items-center justify-center shrink-0 gap-[6px] h-8 py-0 px-3 border border-strong rounded-[3px] [&.primary]:rounded-[2px] bg-button-secondary text-foreground text-[13px] font-semibold whitespace-nowrap ${workbenchStyles["action-button"]}`;
 
-export function Icon({ name, className = "" }: { name: string; className?: string }) {
+export function Icon({ name, className = "" }: Readonly<{ name: string; className?: string }>) {
   return (
     <span
       className={`codicon text-[16px] align-middle shrink-0 codicon-${name} ${className}`}
@@ -11,7 +11,7 @@ export function Icon({ name, className = "" }: { name: string; className?: strin
     />
   );
 }
-export function FileIcon({ language }: { language: string }) {
+export function FileIcon({ language }: Readonly<{ language: string }>) {
   const icons: Record<string, [string, string]> = {
     typescript: ["symbol-color", "text-file-typescript"],
     javascript: ["symbol-color", "text-file-javascript"],

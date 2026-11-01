@@ -117,6 +117,48 @@ function pinEditor(context: EditorContext | undefined, sticky: boolean) {
 function quick(value: string) {
   setApp({ quick: value });
 }
+async function activateWorkspace(
+  path: string,
+  switching: boolean,
+  info: NonNullable<Awaited<ReturnType<typeof prepareWorkspaceOpen>>>,
+) {
+  if (switching) {
+    await stopLanguages();
+  }
+  const config = await call<{
+    settings: Record<string, unknown>;
+    keybindings: import("../types/types").Keybinding[] | null;
+  }>("configuration");
+  if (switching) {
+    await resetEditors();
+  }
+  if (!info.alreadyOpen) {
+    rememberWorkspaceTrust(path, info.trust?.trusted === false);
+  }
+  setApp({
+    ...(switching ? { view: "editor" as const } : {}),
+    root: path,
+    settings: config.settings,
+    keybindings: config.keybindings ?? [],
+  });
+  if (switching) {
+    await checkpoint();
+  }
+  await refreshTree();
+}
+
+async function confirmWorkspaceDocumentsClose() {
+  for (const id of Object.keys(useApp.getState().docs)) {
+    if (useApp.getState().docs[id]?.gitDiff) {
+      continue;
+    }
+    if (!(await confirmDocumentClose(id))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 let openingFolder = false;
 export async function openFolder(newWindow = false, recentPath?: string, reuseExisting = true) {
   if (openingFolder) {
@@ -146,13 +188,8 @@ export async function openFolder(newWindow = false, recentPath?: string, reuseEx
       !newWindow &&
       (!root || normalize(root).replace(/\/$/, "") !== normalize(path).replace(/\/$/, ""));
     if (switching) {
-      for (const id of Object.keys(useApp.getState().docs)) {
-        if (useApp.getState().docs[id]?.gitDiff) {
-          continue;
-        }
-        if (!(await confirmDocumentClose(id))) {
-          return;
-        }
+      if (!(await confirmWorkspaceDocumentsClose())) {
+        return;
       }
     }
     await checkpoint();
@@ -163,29 +200,7 @@ export async function openFolder(newWindow = false, recentPath?: string, reuseEx
       ...(info.trust ? { trust: info.trust } : {}),
     });
     if (same) {
-      if (switching) {
-        await stopLanguages();
-      }
-      const config = await call<{
-        settings: Record<string, unknown>;
-        keybindings: import("../types/types").Keybinding[] | null;
-      }>("configuration");
-      if (switching) {
-        await resetEditors();
-      }
-      if (!info.alreadyOpen) {
-        rememberWorkspaceTrust(path, info.trust?.trusted === false);
-      }
-      setApp({
-        ...(switching ? { view: "editor" as const } : {}),
-        root: path,
-        settings: config.settings,
-        keybindings: config.keybindings ?? [],
-      });
-      if (switching) {
-        await checkpoint();
-      }
-      await refreshTree();
+      await activateWorkspace(path, switching, info);
     }
   } finally {
     setApp({ openingWorkspace: null });
@@ -228,23 +243,35 @@ export const commands: Command[] = [
     menu: "View",
     run: () => setApp({ sidebar: "git", view: "editor" }),
   },
-  ...(["current", "incoming", "both"] as const).map((choice) => ({
-    id: `merge-conflict.accept.${choice}`,
-    label: `Merge Conflict: Accept ${choice === "current" ? "Current" : choice === "incoming" ? "Incoming" : "Both"} Change${choice === "both" ? "s" : ""}`,
-    run: (context?: EditorContext) => {
-      const target = editorTarget(context);
-      const instance = target ? editors.get(target.group.id) : undefined;
-      if (target && instance && instance.getModel() === models.get(target.doc.id)) {
-        acceptInlineConflict(instance, choice);
-      }
-    },
-  })),
+  ...(["current", "incoming", "both"] as const).map((choice) => {
+    let choiceLabel;
+    if (choice === "current") {
+      choiceLabel = "Current";
+    } else if (choice === "incoming") {
+      choiceLabel = "Incoming";
+    } else {
+      choiceLabel = "Both";
+    }
+    return {
+      id: `merge-conflict.accept.${choice}`,
+      label: `Merge Conflict: Accept ${choiceLabel} Change${choice === "both" ? "s" : ""}`,
+      run: (context?: EditorContext) => {
+        const target = editorTarget(context);
+        const instance = target ? editors.get(target.group.id) : undefined;
+        // eslint-disable-next-line sonarjs/different-types-comparison -- Compare shared runtime object identities; structural typings do not make these references distinct.
+        if (target && instance && instance.getModel() === models.get(target.doc.id)) {
+          acceptInlineConflict(instance, choice);
+        }
+      },
+    };
+  }),
   ...(["next", "previous"] as const).map((direction) => ({
     id: `merge-conflict.${direction}`,
     label: `Merge Conflict: ${direction === "next" ? "Next" : "Previous"} Conflict`,
     run: (context?: EditorContext) => {
       const target = editorTarget(context);
       const instance = target ? editors.get(target.group.id) : undefined;
+      // eslint-disable-next-line sonarjs/different-types-comparison -- Compare shared runtime object identities; structural typings do not make these references distinct.
       if (target && instance && instance.getModel() === models.get(target.doc.id)) {
         navigateInlineConflict(instance, direction);
       }
@@ -877,7 +904,7 @@ export const commands: Command[] = [
       );
       const ignored = Object.keys(settings).filter((key) => !keys.has(key));
       newDocument(
-        `# VS Code settings import review\n\nCopy the supported settings below into Preferences: Open User Settings (JSON), or .litecode/settings.json.\n\nThe original .vscode/settings.json remains unchanged.\n\nSupported:\n\n\x60\x60\x60json\n${JSON.stringify(supported, null, 2)}\n\x60\x60\x60\n\nIgnored settings:\n${ignored.map((key) => `- ${key}`).join("\n") || "(none)"}\n`,
+        `# VS Code settings import review\n\nCopy the supported settings below into Preferences: Open User Settings (JSON), or .litecode/settings.json.\n\nThe original .vscode/settings.json remains unchanged.\n\nSupported:\n\n\x60\x60\x60json\n${JSON.stringify(supported, null, 2)}\n\x60\x60\x60\n\nIgnored settings:\n${ignored.map((key) => "- ".concat(key)).join("\n") || "(none)"}\n`,
         "Settings Import.md",
       );
     },
@@ -982,6 +1009,91 @@ export function commandShortcut(
   )?.key;
 }
 
+function eventKey(e: KeyboardEvent) {
+  let physical;
+  if (e.code === "Backquote") {
+    physical = "`";
+  } else if (e.ctrlKey && /^Digit\d$/.test(e.code)) {
+    physical = e.code.slice(5);
+  } else {
+    physical = e.key;
+  }
+  const key = `${e.ctrlKey ? "Ctrl+" : ""}${e.shiftKey ? "Shift+" : ""}${e.altKey ? "Alt+" : ""}${physical.length === 1 ? physical.toUpperCase() : (({ ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down" } as Record<string, string>)[physical] ?? physical)}`;
+
+  return key;
+}
+
+function blockWorkspaceKeys(e: KeyboardEvent) {
+  chord = "";
+  const target = e.target instanceof Element ? e.target : null;
+  const allowed =
+    e.key === "Tab" ||
+    target?.closest('[role="dialog"]') ||
+    (["Enter", " "].includes(e.key) && target?.closest(".window-controls"));
+  if (!allowed) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+}
+
+function runTerminalShortcut(
+  e: KeyboardEvent,
+  defaults: ReturnType<typeof defaultBindings>,
+  sequence: string,
+) {
+  const command = defaults.find(
+    (c) =>
+      normalizeKey(c.key) === sequence &&
+      (c.command.id.startsWith("workbench.action.terminal.") ||
+        [
+          "workbench.action.showCommands",
+          "workbench.action.quickOpen",
+          "workbench.view.explorer",
+          "workbench.view.scm",
+          "workbench.action.findInFiles",
+        ].includes(c.command.id)),
+  )?.command.id;
+  if (command) {
+    e.preventDefault();
+    e.stopPropagation();
+    void execute(command);
+  }
+}
+
+function runGlobalShortcut(
+  e: KeyboardEvent,
+  defaults: ReturnType<typeof defaultBindings>,
+  sequence: string,
+  typing: boolean,
+  key: string,
+) {
+  // Text-editing shortcuts belong to Monaco or the focused input, preserving its context rules.
+  const global = defaults.filter(
+    (c) =>
+      (c.command.id === "workbench.action.findInFiles" ||
+        !["Edit", "Selection"].includes(c.command.menu ?? "")) &&
+      !["F2", "F12", "Shift+F12", "Shift+Alt+F"].includes(c.key),
+  );
+  const command = global.find((c) => normalizeKey(c.key) === sequence)?.command.id;
+  if (
+    command &&
+    (!typing ||
+      [
+        "Ctrl+S",
+        "Ctrl+Shift+S",
+        "Ctrl+Shift+P",
+        "Ctrl+P",
+        "Ctrl+Shift+F",
+        "Ctrl+Shift+G",
+        "Ctrl+O",
+      ].includes(key))
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    void execute(command);
+  }
+}
+
 let chord = "";
 export function installKeys() {
   function handler(e: KeyboardEvent) {
@@ -989,16 +1101,7 @@ export function installKeys() {
       return;
     }
     if (useApp.getState().openingWorkspace !== null) {
-      chord = "";
-      const target = e.target instanceof Element ? e.target : null;
-      const allowed =
-        e.key === "Tab" ||
-        target?.closest('[role="dialog"]') ||
-        (["Enter", " "].includes(e.key) && target?.closest(".window-controls"));
-      if (!allowed) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-      }
+      blockWorkspaceKeys(e);
       return;
     }
     if (
@@ -1012,13 +1115,7 @@ export function installKeys() {
     const target = e.target as HTMLElement;
     const typing =
       ["INPUT", "TEXTAREA"].includes(target.tagName) && !target.closest(".monaco-editor");
-    const physical =
-      e.code === "Backquote"
-        ? "`"
-        : e.ctrlKey && /^Digit\d$/.test(e.code)
-          ? e.code.slice(5)
-          : e.key;
-    const key = `${e.ctrlKey ? "Ctrl+" : ""}${e.shiftKey ? "Shift+" : ""}${e.altKey ? "Alt+" : ""}${physical.length === 1 ? physical.toUpperCase() : (({ ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down" } as Record<string, string>)[physical] ?? physical)}`;
+    const key = eventKey(e);
     const state = useApp.getState();
     const context = keyContext(target);
     const sequence = normalizeKey(chord ? `${chord} ${key}` : key);
@@ -1051,50 +1148,10 @@ export function installKeys() {
       return;
     }
     if (context.terminalFocus) {
-      const command = defaults.find(
-        (c) =>
-          normalizeKey(c.key) === sequence &&
-          (c.command.id.startsWith("workbench.action.terminal.") ||
-            [
-              "workbench.action.showCommands",
-              "workbench.action.quickOpen",
-              "workbench.view.explorer",
-              "workbench.view.scm",
-              "workbench.action.findInFiles",
-            ].includes(c.command.id)),
-      )?.command.id;
-      if (command) {
-        e.preventDefault();
-        e.stopPropagation();
-        void execute(command);
-      }
+      runTerminalShortcut(e, defaults, sequence);
       return;
     }
-    // Text-editing shortcuts belong to Monaco or the focused input, preserving its context rules.
-    const global = defaults.filter(
-      (c) =>
-        (c.command.id === "workbench.action.findInFiles" ||
-          !["Edit", "Selection"].includes(c.command.menu ?? "")) &&
-        !["F2", "F12", "Shift+F12", "Shift+Alt+F"].includes(c.key),
-    );
-    const command = global.find((c) => normalizeKey(c.key) === sequence)?.command.id;
-    if (
-      command &&
-      (!typing ||
-        [
-          "Ctrl+S",
-          "Ctrl+Shift+S",
-          "Ctrl+Shift+P",
-          "Ctrl+P",
-          "Ctrl+Shift+F",
-          "Ctrl+Shift+G",
-          "Ctrl+O",
-        ].includes(key))
-    ) {
-      e.preventDefault();
-      e.stopPropagation();
-      void execute(command);
-    }
+    runGlobalShortcut(e, defaults, sequence, typing, key);
     if (key === "Ctrl+Tab" && !typing) {
       e.preventDefault();
       e.stopPropagation();

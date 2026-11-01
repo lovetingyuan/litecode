@@ -22,7 +22,7 @@ import { FileIcon } from "./EditorGroup";
 import { languageFor } from "../editor/monaco";
 import { Icon } from "./ui";
 import { symbols, type SymbolItem } from "../editor/languages";
-import type { SearchMatch } from "../types/types";
+import type { SearchBatch, SearchMatch } from "../types/types";
 
 type Item = {
   id: string;
@@ -33,6 +33,39 @@ type Item = {
   positions?: number[];
   run: (side: boolean, background: boolean) => unknown;
 };
+function locationItems(query: string): Item[] {
+  const offset = query.startsWith(":offset");
+  const values = query
+    .replace(offset ? ":offset" : ":", "")
+    .trim()
+    .split(/[,:]/)
+    .map(Number);
+  return [
+    {
+      id: "line",
+      label: offset
+        ? `Go to offset ${values[0] || 0}`
+        : `Go to line ${values[0] || 1}, column ${values[1] || 1}`,
+      run: () => {
+        const e = editor();
+        const m = e?.getModel();
+        const position = offset
+          ? m?.getPositionAt(Math.max(0, values[0] || 0))
+          : { lineNumber: Math.max(1, values[0] || 1), column: Math.max(1, values[1] || 1) };
+        if (position) {
+          e?.setPosition(position);
+          e?.revealPositionInCenter(position);
+        }
+        e?.focus();
+      },
+    },
+  ];
+}
+
+function isSymbolQuery(query: string) {
+  return query.startsWith("@") || query.startsWith("#");
+}
+
 export function QuickOpen() {
   const request = useApp((s) => s.quick);
   const docs = useApp((s) => s.docs);
@@ -41,7 +74,14 @@ export function QuickOpen() {
   const recent = useApp((s) => s.recent);
   const settingsKey = useApp((s) => quickFileSettingsKey(s.settings));
   const picker = typeof request === "object" ? request : null;
-  const prefill = typeof request === "string" ? request : request ? "" : null;
+  let prefill;
+  if (typeof request === "string") {
+    prefill = request;
+  } else if (request) {
+    prefill = "";
+  } else {
+    prefill = null;
+  }
   const [value, setValue] = useState(prefill);
   const [previousRequest, setPreviousRequest] = useState(request);
   const [results, setResults] = useState<SearchMatch[]>([]);
@@ -168,21 +208,23 @@ export function QuickOpen() {
       if (!query.text) {
         return;
       }
+      const receiveBatch = (batch: SearchBatch) => {
+        if (cancelled) {
+          return;
+        }
+        setResults((previous) => [...previous, ...batch.matches]);
+        void call("search_ack", { requestId, sequence: batch.sequence });
+        if (batch.errors.length) {
+          notify(batch.errors.join("\n"));
+        }
+      };
+
       void checkpoint()
         .then(async () => {
           if (cancelled) {
             return;
           }
-          const onBatch = channel((batch) => {
-            if (cancelled) {
-              return;
-            }
-            setResults((previous) => [...previous, ...batch.matches]);
-            void call("search_ack", { requestId, sequence: batch.sequence });
-            if (batch.errors.length) {
-              notify(batch.errors.join("\n"));
-            }
-          });
+          const onBatch = channel(receiveBatch);
           await call("search_start", { requestId, query, onBatch });
         })
         .catch((e) => {
@@ -236,34 +278,9 @@ export function QuickOpen() {
       }));
     }
     if (query.startsWith(":")) {
-      const offset = query.startsWith(":offset");
-      const values = query
-        .replace(offset ? ":offset" : ":", "")
-        .trim()
-        .split(/[,:]/)
-        .map(Number);
-      return [
-        {
-          id: "line",
-          label: offset
-            ? `Go to offset ${values[0] || 0}`
-            : `Go to line ${values[0] || 1}, column ${values[1] || 1}`,
-          run: () => {
-            const e = editor();
-            const m = e?.getModel();
-            const position = offset
-              ? m?.getPositionAt(Math.max(0, values[0] || 0))
-              : { lineNumber: Math.max(1, values[0] || 1), column: Math.max(1, values[1] || 1) };
-            if (position) {
-              e?.setPosition(position);
-              e?.revealPositionInCenter(position);
-            }
-            e?.focus();
-          },
-        },
-      ];
+      return locationItems(query);
     }
-    if (query.startsWith("@") || query.startsWith("#")) {
+    if (isSymbolQuery(query)) {
       return symbolItems.map((symbol, index) => ({
         id: `symbol-${index}`,
         label: symbol.name,
@@ -462,6 +479,7 @@ export function QuickOpen() {
               composing.current = false;
             }}
             onKeyDown={(e) => {
+              // eslint-disable-next-line sonarjs/deprecation -- Keep keyCode 229 as the existing IME compatibility fallback alongside isComposing.
               if (composing.current || e.nativeEvent.isComposing || e.keyCode === 229) {
                 e.stopPropagation();
                 return;

@@ -247,6 +247,7 @@ describe("Workspace replacement safety", () => {
       column: i + 1,
       endColumn: i + 2,
     }));
+    // eslint-disable-next-line sonarjs/function-return-type -- The IPC mock intentionally returns each command's distinct response shape.
     custom = (command) => {
       if (command === "read_document") {
         return { text: "a".repeat(1000), encoding: "utf8", revision: "before" };
@@ -265,6 +266,7 @@ describe("Workspace replacement safety", () => {
   it("builds selected unsorted edits in UTF-16 coordinates without replacing unselected matches", async () => {
     const text = "a🙂 a中 a";
     const hits = [1, 5, 8].map((column) => ({ ...hit, column, endColumn: column + 1 }));
+    // eslint-disable-next-line sonarjs/function-return-type -- The IPC mock intentionally returns each command's distinct response shape.
     custom = (command) => {
       if (command === "read_document") {
         return { text, encoding: "utf8", revision: "before" };

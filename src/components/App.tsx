@@ -27,7 +27,7 @@ import {
 import { commands, execute, installKeys, openFolder } from "../core/commands";
 import { Explorer, refreshTree } from "./Explorer";
 import { handleWorkspaceChanges } from "../explorer/workspaceTree";
-import type { WorkspaceChanges } from "../types/types";
+import type { Bootstrap, Session, WorkspaceChanges } from "../types/types";
 import { SearchView } from "./SearchView";
 import { EditorLayoutView, WorkbenchLayout } from "./EditorGrid";
 import { WelcomePage } from "./WelcomePage";
@@ -51,9 +51,91 @@ import { startupMark, startupStep } from "../core/startup";
 const TerminalView = lazy(() => import("./TerminalView"));
 const GitView = lazy(() => import("./GitView").then((module) => ({ default: module.GitView })));
 
+function workspaceChanged(payload: WorkspaceChanges) {
+  void handleWorkspaceChanges(payload).then((accepted) => {
+    if (accepted) {
+      void refreshDocuments(
+        payload.rescan
+          ? undefined
+          : [
+              ...payload.changes.map(
+                ({ path }) => `${payload.root.replace(/(?<![\\/])[\\/]+$/, "")}/${path}`,
+              ),
+              ...(payload.gitPaths ?? []),
+            ],
+      );
+    }
+  });
+}
+
+function restoreSessionGroups(boot: Bootstrap, session: Partial<Session>) {
+  const docs = useApp.getState().docs;
+  const legacySvg = boot.documents
+    .filter((d) => (!d.kind || d.kind === "text") && /\.svg$/i.test(d.path ?? ""))
+    .map((d) => d.id);
+  return session.groups?.map((g) =>
+    normalizeGroup({
+      ...g,
+      tabs: g.tabs.filter((id) => !!docs[id]),
+      active: g.active && docs[g.active] ? g.active : (g.tabs.find((id) => !!docs[id]) ?? null),
+      views: g.views ?? {},
+      mediaViews: {
+        ...Object.fromEntries(
+          legacySvg
+            .filter((id) => g.tabs.includes(id))
+            .map((id) => [id, { mode: "text" as const }]),
+        ),
+        ...g.mediaViews,
+      },
+    }),
+  );
+}
+
+function restoreSessionDiffs(boot: Bootstrap, session: Partial<Session>) {
+  for (const doc of session.gitDiffs ?? []) {
+    if (doc.gitDiff && boot.root && normalize(doc.gitDiff.workspace) === normalize(boot.root)) {
+      setApp((s) => ({
+        docs: {
+          ...s.docs,
+          [doc.id]: {
+            ...doc,
+            dirty: !!(doc.gitDiff?.sourceId && s.docs[doc.gitDiff.sourceId]?.dirty),
+          },
+        },
+      }));
+    }
+  }
+}
+
+function restoredSidebar(session: Partial<Session>) {
+  let sidebar: "explorer" | "search" | "git" | null;
+  if (session.sidebar === "") {
+    sidebar = null;
+  } else if (session.sidebar === "search") {
+    sidebar = "search";
+  } else if (session.sidebar === "git") {
+    sidebar = "git";
+  } else {
+    sidebar = "explorer";
+  }
+  return sidebar;
+}
+
+async function openInitialPath(entry: NonNullable<Bootstrap["initialOpen"]>) {
+  try {
+    if (entry.directory) {
+      await openFolder(false, entry.path, false);
+    } else {
+      await openPath(entry.path, { pinned: true });
+    }
+  } catch (error) {
+    notify(`Could not open ${entry.path}: ${errorMessage(error)}`);
+  }
+}
+
 let startup: Promise<void> | undefined;
 function start() {
-  return (startup ??= (async () => {
+  startup ??= (async () => {
     // Recovery/settings I/O and editor service initialization are independent.
     const [, boot] = await Promise.all([
       startupStep("editor-initialized", initializeEditor),
@@ -75,43 +157,13 @@ function start() {
       restoreDocument(mirror, { synchronized: true });
     }
     const session = boot.session ?? {};
-    for (const doc of session.gitDiffs ?? []) {
-      if (doc.gitDiff && boot.root && normalize(doc.gitDiff.workspace) === normalize(boot.root)) {
-        setApp((s) => ({
-          docs: {
-            ...s.docs,
-            [doc.id]: {
-              ...doc,
-              dirty: !!(doc.gitDiff?.sourceId && s.docs[doc.gitDiff.sourceId]?.dirty),
-            },
-          },
-        }));
-      }
-    }
+    restoreSessionDiffs(boot, session);
     if (session.query) {
       patchSearch(primarySearchId, { query: session.query });
       setApp({ searchHistory: session.searchHistory ?? [] });
     }
-    const docs = useApp.getState().docs;
-    const legacySvg = boot.documents
-      .filter((d) => (!d.kind || d.kind === "text") && /\.svg$/i.test(d.path ?? ""))
-      .map((d) => d.id);
-    const valid = session.groups?.map((g) =>
-      normalizeGroup({
-        ...g,
-        tabs: g.tabs.filter((id) => !!docs[id]),
-        active: g.active && docs[g.active] ? g.active : (g.tabs.find((id) => !!docs[id]) ?? null),
-        views: g.views ?? {},
-        mediaViews: {
-          ...Object.fromEntries(
-            legacySvg
-              .filter((id) => g.tabs.includes(id))
-              .map((id) => [id, { mode: "text" as const }]),
-          ),
-          ...g.mediaViews,
-        },
-      }),
-    );
+    const valid = restoreSessionGroups(boot, session);
+    const sidebar = restoredSidebar(session);
     setApp({
       ready: true,
       ...(valid?.length
@@ -128,14 +180,7 @@ function start() {
       sidebarWidth: Number.isFinite(session.sidebarWidth)
         ? Math.max(170, session.sidebarWidth!)
         : 260,
-      sidebar:
-        session.sidebar === ""
-          ? null
-          : session.sidebar === "search"
-            ? "search"
-            : session.sidebar === "git"
-              ? "git"
-              : "explorer",
+      sidebar: sidebar,
       gitRepository: session.gitRepository ?? null,
       gitTab: session.gitTab ?? "changes",
       gitLayout: session.gitLayout ?? "list",
@@ -152,20 +197,13 @@ function start() {
     }
     await startupStep("documents-refreshed", refreshDocuments);
     if (boot.initialOpen) {
-      try {
-        if (boot.initialOpen.directory) {
-          await openFolder(false, boot.initialOpen.path, false);
-        } else {
-          await openPath(boot.initialOpen.path, { pinned: true });
-        }
-      } catch (error) {
-        notify(`Could not open ${boot.initialOpen.path}: ${errorMessage(error)}`);
-      }
+      await openInitialPath(boot.initialOpen);
     }
     if (desktop) {
       void recoverInterruptedReplacements().catch((error) => notify(errorMessage(error)));
     }
-  })());
+  })();
+  return startup;
 }
 
 export default function App() {
@@ -230,20 +268,7 @@ export default function App() {
     const cleanups: (() => void)[] = [];
     void (async () => {
       const onChange = await listen<WorkspaceChanges>("workspace-changed", ({ payload }) => {
-        void handleWorkspaceChanges(payload).then((accepted) => {
-          if (accepted) {
-            void refreshDocuments(
-              payload.rescan
-                ? undefined
-                : [
-                    ...payload.changes.map(
-                      ({ path }) => `${payload.root.replace(/[\\/]+$/, "")}/${path}`,
-                    ),
-                    ...(payload.gitPaths ?? []),
-                  ],
-            );
-          }
-        });
+        workspaceChanged(payload);
       });
       if (disposed) {
         onChange();
@@ -318,12 +343,12 @@ export default function App() {
   }, []);
   const group = s.groups.find((g) => g.id === s.activeGroup);
   const doc = s.docs[group?.active ?? ""];
-  const rootName = s.root ? basename(pathTitle(s.root).replace(/[\\/]+$/, "")) : "";
+  const rootName = s.root ? basename(pathTitle(s.root).replace(/(?<![\\/])[\\/]+$/, "")) : "";
   const showWelcome = s.ready && !s.root && s.groups.every((group) => group.tabs.length === 0);
   useEffect(() => {
     if (desktop) {
       void getCurrentWindow().setTitle(
-        `${doc?.dirty ? "● " : ""}${doc?.name ? `${doc.name} — ` : ""}${s.root ? `${basename(s.root)} — ` : ""}LiteCode`,
+        `${doc?.dirty ? "● " : ""}${doc?.name ? "".concat(doc.name, " — ") : ""}${s.root ? "".concat(basename(s.root), " — ") : ""}LiteCode`,
       );
     }
   }, [doc?.name, doc?.dirty, s.root]);
@@ -341,6 +366,134 @@ export default function App() {
     if (action === "close") {
       void win.close();
     }
+  }
+  function renderStatusBar() {
+    return (
+      <footer
+        className={`statusbar h-[22px] min-h-[22px] flex justify-between bg-sidebar border-t border-t-panel text-[12px] select-none ${workbenchStyles["statusbar"]}`}
+        inert={openingWorkspace}
+      >
+        <div className="status-left flex items-stretch min-w-0">
+          <span
+            className={`remote-indicator flex items-center text-foreground-strong px-[10px] mr-[5px] ${import.meta.env.DEV ? "bg-remote-development" : "bg-button"}`}
+            title={import.meta.env.DEV ? "Local window (Development)" : "Local window"}
+          >
+            <Icon name="remote" />
+          </span>
+          {s.root && (
+            <Popover.Root key={s.root}>
+              <Popover.Trigger
+                className={`workspace-status ${workbenchStyles["workspace-status"]}`}
+                title={rootName}
+                aria-label={`Project Folder: ${rootName}`}
+              >
+                <Icon name="folder" />
+                <span>{rootName}</span>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Positioner
+                  className="z-90"
+                  side="top"
+                  align="start"
+                  sideOffset={4}
+                  collisionPadding={8}
+                >
+                  <Popover.Popup
+                    className={`workspace-popup flex items-start gap-3 w-[max-content] max-w-[min(560px,_calc(100vw_-_16px),_var(--available-width))] max-h-[var(--available-height)] overflow-y-auto p-2 bg-widget text-foreground border border-strong rounded-[4px] ${workbenchStyles["workspace-popup"]}`}
+                    aria-label="Project folder"
+                    initialFocus={false}
+                  >
+                    <span
+                      className={`workspace-path flex-1 min-w-0 py-[3px] px-0 leading-[18px] select-text ${workbenchStyles["workspace-path"]}`}
+                    >
+                      {pathTitle(s.root)}
+                    </span>
+                    <Popover.Close
+                      render={
+                        <IconButton
+                          icon="folder-opened"
+                          label="Open Project Folder in File Explorer"
+                        />
+                      }
+                      onClick={() =>
+                        void call("open_directory", { path: s.root }).catch((error) =>
+                          notify(errorMessage(error)),
+                        )
+                      }
+                    />
+                  </Popover.Popup>
+                </Popover.Positioner>
+              </Popover.Portal>
+            </Popover.Root>
+          )}
+          {s.gitState.branch && (
+            <button
+              type="button"
+              className={`status-item ${workbenchStyles["status-item"]}`}
+              title="Current Git branch"
+              aria-label={`Show Git Repository: ${s.gitState.branch}`}
+              onClick={() => {
+                setApp({ view: "editor", sidebar: "git", gitTab: "info" });
+                scheduleBackup();
+              }}
+            >
+              <Icon name="source-control" />
+              {s.gitState.branch}
+            </button>
+          )}
+          <button
+            title="Show Problems"
+            onClick={() => void editor()?.getAction("editor.action.marker.next")?.run()}
+          >
+            <Icon name="error" />
+            {diagnostics.errors}
+            <Icon name="warning" />
+            {diagnostics.warnings}
+          </button>
+          <HttpServiceStatus />
+        </div>
+        <div
+          className={`status-right flex items-stretch min-w-0 ${workbenchStyles["status-right"]}`}
+        >
+          <GitLineStatus
+            doc={s.view === "editor" && doc && isTextView(doc, group) ? doc : undefined}
+          />
+          {s.view === "editor" && doc && isTextView(doc, group) && (
+            <>
+              <button onClick={() => setApp({ quick: ":" })}>
+                Ln {s.cursor.line}, Col {s.cursor.column}
+                {s.cursor.selected ? ` (${s.cursor.selected} selected)` : ""}
+              </button>
+              <IndentationStatus documentId={doc.id} />
+              <button className="encoding-status" onClick={changeEncoding}>
+                {doc.encoding.toUpperCase().replace("UTF8", "UTF-8")}
+              </button>
+              <button onClick={changeEol}>{doc.eol}</button>
+              <button onClick={() => void execute("litecode.setLanguage")}>
+                {doc.language === "plaintext" ? "Plain Text" : doc.language}
+              </button>
+            </>
+          )}
+          {s.view === "editor" && doc && group && !doc.gitDiff && !isTextView(doc, group) && (
+            <MediaStatus doc={doc} group={group} />
+          )}
+          {s.searchSessions.some((search) => search.searching) && <span>Searching…</span>}
+          <span
+            className={`status-item ${workbenchStyles["status-item"]}`}
+            title={s.languageStatus}
+          >
+            <Icon name="check" />
+          </span>
+          <button
+            title="Notifications"
+            onClick={() => notify(s.notice ?? "No new notifications.")}
+            aria-label="Notifications"
+          >
+            <Icon name="bell" />
+          </button>
+        </div>
+      </footer>
+    );
   }
   return (
     <>
@@ -552,7 +705,7 @@ export default function App() {
                 aria-label="Editors"
               >
                 <div
-                  className={`editor-groups flex flex-1 min-w-0 overflow-hidden ${editorStyles["editor-groups"]}${showWelcome ? " welcome-hidden" : ""}${s.view === "terminal" ? ` workbench-editor-hidden ${terminalStyles["workbench-editor-hidden"]}` : ""}`}
+                  className={`editor-groups flex flex-1 min-w-0 overflow-hidden ${editorStyles["editor-groups"]}${showWelcome ? " welcome-hidden" : ""}${s.view === "terminal" ? " workbench-editor-hidden ".concat(terminalStyles["workbench-editor-hidden"]) : ""}`}
                   inert={showWelcome || s.view === "terminal"}
                   aria-hidden={showWelcome || s.view === "terminal" || undefined}
                 >
@@ -617,130 +770,7 @@ export default function App() {
             )}
           </div>
         )}
-        <footer
-          className={`statusbar h-[22px] min-h-[22px] flex justify-between bg-sidebar border-t border-t-panel text-[12px] select-none ${workbenchStyles["statusbar"]}`}
-          inert={openingWorkspace}
-        >
-          <div className="status-left flex items-stretch min-w-0">
-            <span
-              className={`remote-indicator flex items-center text-foreground-strong px-[10px] mr-[5px] ${import.meta.env.DEV ? "bg-remote-development" : "bg-button"}`}
-              title={import.meta.env.DEV ? "Local window (Development)" : "Local window"}
-            >
-              <Icon name="remote" />
-            </span>
-            {s.root && (
-              <Popover.Root key={s.root}>
-                <Popover.Trigger
-                  className={`workspace-status ${workbenchStyles["workspace-status"]}`}
-                  title={rootName}
-                  aria-label={`Project Folder: ${rootName}`}
-                >
-                  <Icon name="folder" />
-                  <span>{rootName}</span>
-                </Popover.Trigger>
-                <Popover.Portal>
-                  <Popover.Positioner
-                    className="z-90"
-                    side="top"
-                    align="start"
-                    sideOffset={4}
-                    collisionPadding={8}
-                  >
-                    <Popover.Popup
-                      className={`workspace-popup flex items-start gap-3 w-[max-content] max-w-[min(560px,_calc(100vw_-_16px),_var(--available-width))] max-h-[var(--available-height)] overflow-y-auto p-2 bg-widget text-foreground border border-strong rounded-[4px] ${workbenchStyles["workspace-popup"]}`}
-                      aria-label="Project folder"
-                      initialFocus={false}
-                    >
-                      <span
-                        className={`workspace-path flex-1 min-w-0 py-[3px] px-0 leading-[18px] select-text ${workbenchStyles["workspace-path"]}`}
-                      >
-                        {pathTitle(s.root)}
-                      </span>
-                      <Popover.Close
-                        render={
-                          <IconButton
-                            icon="folder-opened"
-                            label="Open Project Folder in File Explorer"
-                          />
-                        }
-                        onClick={() =>
-                          void call("open_directory", { path: s.root }).catch((error) =>
-                            notify(errorMessage(error)),
-                          )
-                        }
-                      />
-                    </Popover.Popup>
-                  </Popover.Positioner>
-                </Popover.Portal>
-              </Popover.Root>
-            )}
-            {s.gitState.branch && (
-              <button
-                type="button"
-                className={`status-item ${workbenchStyles["status-item"]}`}
-                title="Current Git branch"
-                aria-label={`Show Git Repository: ${s.gitState.branch}`}
-                onClick={() => {
-                  setApp({ view: "editor", sidebar: "git", gitTab: "info" });
-                  scheduleBackup();
-                }}
-              >
-                <Icon name="source-control" />
-                {s.gitState.branch}
-              </button>
-            )}
-            <button
-              title="Show Problems"
-              onClick={() => void editor()?.getAction("editor.action.marker.next")?.run()}
-            >
-              <Icon name="error" />
-              {diagnostics.errors}
-              <Icon name="warning" />
-              {diagnostics.warnings}
-            </button>
-            <HttpServiceStatus />
-          </div>
-          <div
-            className={`status-right flex items-stretch min-w-0 ${workbenchStyles["status-right"]}`}
-          >
-            <GitLineStatus
-              doc={s.view === "editor" && doc && isTextView(doc, group) ? doc : undefined}
-            />
-            {s.view === "editor" && doc && isTextView(doc, group) && (
-              <>
-                <button onClick={() => setApp({ quick: ":" })}>
-                  Ln {s.cursor.line}, Col {s.cursor.column}
-                  {s.cursor.selected ? ` (${s.cursor.selected} selected)` : ""}
-                </button>
-                <IndentationStatus documentId={doc.id} />
-                <button className="encoding-status" onClick={changeEncoding}>
-                  {doc.encoding.toUpperCase().replace("UTF8", "UTF-8")}
-                </button>
-                <button onClick={changeEol}>{doc.eol}</button>
-                <button onClick={() => void execute("litecode.setLanguage")}>
-                  {doc.language === "plaintext" ? "Plain Text" : doc.language}
-                </button>
-              </>
-            )}
-            {s.view === "editor" && doc && group && !doc.gitDiff && !isTextView(doc, group) && (
-              <MediaStatus doc={doc} group={group} />
-            )}
-            {s.searchSessions.some((search) => search.searching) && <span>Searching…</span>}
-            <span
-              className={`status-item ${workbenchStyles["status-item"]}`}
-              title={s.languageStatus}
-            >
-              <Icon name="check" />
-            </span>
-            <button
-              title="Notifications"
-              onClick={() => notify(s.notice ?? "No new notifications.")}
-              aria-label="Notifications"
-            >
-              <Icon name="bell" />
-            </button>
-          </div>
-        </footer>
+        {renderStatusBar()}
         {s.notice && (
           <div
             className={`notification fixed right-[18px] bottom-[38px] w-105 max-w-[calc(100vw_-_36px)] bg-widget border border-strong rounded-[5px] z-[100] flex items-start p-3 gap-[9px] ${workbenchStyles["notification"]}`}
@@ -790,7 +820,7 @@ export default function App() {
   );
 }
 
-function IndentationStatus({ documentId }: { documentId: string }) {
+function IndentationStatus({ documentId }: Readonly<{ documentId: string }>) {
   const model = models.get(documentId);
   const [options, setOptions] = useState(() => model?.getOptions());
   useEffect(() => {

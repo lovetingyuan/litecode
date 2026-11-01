@@ -10,7 +10,10 @@
     /* Browsing with storage disabled still supports themes. */
   }
   const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-  document.documentElement.dataset.theme =
-    preference === "system" ? (dark ? "dark" : "light") : preference;
+  if (preference === "system") {
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  } else {
+    document.documentElement.dataset.theme = preference;
+  }
   document.documentElement.dataset.themePreference = preference;
 })();

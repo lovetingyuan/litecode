@@ -87,6 +87,54 @@ export async function refreshTree(changedPaths?: readonly string[]): Promise<voi
     void refreshGit(cache);
   }
 }
+function invalidateDescendants(cache: DirectoryCache, path: string, affected: Set<string>) {
+  // Replacements can keep the directory name while changing all its children.
+  for (const directory of cache.directories.keys()) {
+    if (
+      directory.toLowerCase() === directoryPath(path).toLowerCase() ||
+      directory.toLowerCase().startsWith(directoryPath(path).toLowerCase() + "/")
+    ) {
+      cache.invalidate(directory);
+      if (expanded.has(directory)) {
+        affected.add(directory);
+      }
+    }
+  }
+}
+
+function changedDirectories(
+  cache: DirectoryCache,
+  event: WorkspaceChanges,
+  structural: WorkspaceChanges["changes"],
+) {
+  const affected = new Set<string>();
+  if (event.rescan) {
+    for (const directory of cache.directories.keys()) {
+      cache.invalidate(directory);
+      if (directory === "" || expanded.has(directory)) {
+        affected.add(directory);
+      }
+    }
+    return affected;
+  }
+  {
+    for (const { path } of structural) {
+      const parent = parentDirectory(path);
+      const existingParent = [...cache.directories.keys()].find(
+        (directory) => directory.toLowerCase() === parent.toLowerCase(),
+      );
+      if (existingParent !== undefined) {
+        cache.invalidate(existingParent);
+        if (existingParent === "" || expanded.has(existingParent)) {
+          affected.add(existingParent);
+        }
+      }
+      invalidateDescendants(cache, path, affected);
+    }
+  }
+  return affected;
+}
+
 export async function handleWorkspaceChanges(event: WorkspaceChanges): Promise<boolean> {
   const cache = workspaceDirectories();
   if (
@@ -105,46 +153,25 @@ export async function handleWorkspaceChanges(event: WorkspaceChanges): Promise<b
   if (event.rescan || structural.length || ignoreChanged || event.fileIndexChanged) {
     setApp((state) => ({ fileIndexVersion: state.fileIndexVersion + 1 }));
   }
-  const affected = new Set<string>();
-  if (event.rescan) {
-    for (const directory of cache.directories.keys()) {
-      cache.invalidate(directory);
-      if (directory === "" || expanded.has(directory)) {
-        affected.add(directory);
-      }
-    }
-  } else {
-    for (const { path } of structural) {
-      const parent = parentDirectory(path);
-      const existingParent = [...cache.directories.keys()].find(
-        (directory) => directory.toLowerCase() === parent.toLowerCase(),
-      );
-      if (existingParent !== undefined) {
-        cache.invalidate(existingParent);
-        if (existingParent === "" || expanded.has(existingParent)) {
-          affected.add(existingParent);
-        }
-      }
-      // Replacements can keep the directory name while changing all its children.
-      for (const directory of cache.directories.keys()) {
-        if (
-          directory.toLowerCase() === directoryPath(path).toLowerCase() ||
-          directory.toLowerCase().startsWith(directoryPath(path).toLowerCase() + "/")
-        ) {
-          cache.invalidate(directory);
-          if (expanded.has(directory)) {
-            affected.add(directory);
-          }
-        }
-      }
-    }
-  }
+  const affected = changedDirectories(cache, event, structural);
   await Promise.all([...affected].map((directory) => cache.load(directory)));
   if (event.gitChanged && !cache.disposed) {
     void refreshGit(cache);
   }
   return !cache.disposed;
 }
+function treePathVisible(model: FileTree, path: string) {
+  let visible = true;
+  for (let slash = path.indexOf("/"); slash >= 0; slash = path.indexOf("/", slash + 1)) {
+    const ancestor = model.getItem(path.slice(0, slash));
+    if (!ancestor || !("isExpanded" in ancestor) || !ancestor.isExpanded()) {
+      visible = false;
+      break;
+    }
+  }
+  return visible;
+}
+
 export function attachWorkspaceTree(model: FileTree, changed: () => void) {
   const cache = workspaceDirectories();
   model.resetPaths([]);
@@ -185,15 +212,7 @@ export function attachWorkspaceTree(model: FileTree, changed: () => void) {
         if (!("isExpanded" in item) || !item.isExpanded()) {
           continue;
         }
-        let visible = true;
-        for (let slash = path.indexOf("/"); slash >= 0; slash = path.indexOf("/", slash + 1)) {
-          const ancestor = model.getItem(path.slice(0, slash));
-          if (!ancestor || !("isExpanded" in ancestor) || !ancestor.isExpanded()) {
-            visible = false;
-            break;
-          }
-        }
-        if (!visible) {
+        if (!treePathVisible(model, path)) {
           continue;
         }
         next.add(path);

@@ -15,7 +15,7 @@ export function breadcrumbSegments(
   root: string | null,
 ): BreadcrumbSegment[] {
   const value = visible(path ?? name);
-  const base = root ? visible(root).replace(/\/+$/, "") : null;
+  const base = root ? visible(root).replace(/(?<!\/)\/+$/, "") : null;
   const inWorkspace = !!path && !!base && value.toLowerCase().startsWith(base.toLowerCase() + "/");
   const relative = inWorkspace ? value.slice(base!.length + 1) : value;
   const parts = relative.split("/");
@@ -86,6 +86,7 @@ export function attachBreadcrumbTree(
     await sync.update(
       localDirectory,
       localPaths,
+      // eslint-disable-next-line sonarjs/different-types-comparison -- Compare shared runtime object identities; structural typings do not make these references distinct.
       () => valid() && cache.directories.get(directory)?.paths === paths,
     );
   };

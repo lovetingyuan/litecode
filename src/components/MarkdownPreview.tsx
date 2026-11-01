@@ -12,7 +12,7 @@ import { previewFontStyle } from "../editor/font";
 import { notify, useApp } from "../store/store";
 import type { Doc, Group } from "../types/types";
 
-export function MarkdownPreview({ doc, group }: { doc: Doc; group: Group }) {
+export function MarkdownPreview({ doc, group }: Readonly<{ doc: Doc; group: Group }>) {
   const settings = useApp((s) => s.settings);
   const host = useRef<HTMLDivElement>(null);
   const savedScroll = useRef(group.mediaViews?.[doc.id]);
@@ -234,7 +234,7 @@ const PreviewCode = memo(function PreviewCode({
 });
 
 function jumpToHeading(container: HTMLElement, hash: string) {
-  const heading = container.querySelector<HTMLElement>(`#${CSS.escape(`markdown-${hash}`)}`);
+  const heading = container.querySelector<HTMLElement>(`#${CSS.escape("markdown-".concat(hash))}`);
   if (!heading) {
     return;
   }
@@ -243,7 +243,11 @@ function jumpToHeading(container: HTMLElement, hash: string) {
   heading.scrollIntoView({ block: "start" });
 }
 
-function PreviewImage({ src, alt, title }: { src?: string; alt?: string; title?: string }) {
+function PreviewImage({
+  src,
+  alt,
+  title,
+}: Readonly<{ src?: string; alt?: string; title?: string }>) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return (

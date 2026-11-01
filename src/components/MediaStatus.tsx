@@ -16,7 +16,7 @@ import {
 import { Icon } from "./ui";
 import type { Doc, Group, MediaView } from "../types/types";
 
-export function MediaStatus({ doc, group }: { doc: Doc; group: Group }) {
+export function MediaStatus({ doc, group }: Readonly<{ doc: Doc; group: Group }>) {
   const scale = group.mediaViews?.[doc.id]?.scale ?? "fit";
   const label = (value: number | "fit") =>
     value === "fit" ? "Whole Image" : `${Math.round(value * 100)}%`;
@@ -65,32 +65,47 @@ export function MediaStatus({ doc, group }: { doc: Doc; group: Group }) {
   );
 }
 
-export function EditorViewMenu({ doc, group }: { doc: Doc; group: Group }) {
+export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group }>) {
   const html = isHtmlDocument(doc);
   const starting = useHtmlPreviews((state) => state.starting.includes(doc.id));
   const markdown = isMarkdownDocument(doc);
-  const mode = markdown
-    ? isMarkdownView(doc, group)
-      ? "markdown"
-      : "text"
-    : isTextView(doc, group)
-      ? "text"
-      : "image";
-  const options: { mode: NonNullable<MediaView["mode"]> | "html"; label: string }[] = html
-    ? [
-        { mode: "text", label: "Edit" },
-        { mode: "html", label: "HTML Preview" },
-      ]
-    : markdown
-      ? [
-          { mode: "text", label: "Text Editor" },
-          { mode: "markdown", label: "Markdown Preview" },
-        ]
-      : [
-          { mode: "image", label: "Image Preview" },
-          { mode: "text", label: "Text Editor" },
-        ];
-  const type = html ? "HTML" : markdown ? "Markdown" : "SVG";
+  let mode;
+  if (markdown) {
+    if (isMarkdownView(doc, group)) {
+      mode = "markdown";
+    } else {
+      mode = "text";
+    }
+  } else if (isTextView(doc, group)) {
+    mode = "text";
+  } else {
+    mode = "image";
+  }
+  let options: { mode: NonNullable<MediaView["mode"]> | "html"; label: string }[];
+  if (html) {
+    options = [
+      { mode: "text", label: "Edit" },
+      { mode: "html", label: "HTML Preview" },
+    ];
+  } else if (markdown) {
+    options = [
+      { mode: "text", label: "Text Editor" },
+      { mode: "markdown", label: "Markdown Preview" },
+    ];
+  } else {
+    options = [
+      { mode: "image", label: "Image Preview" },
+      { mode: "text", label: "Text Editor" },
+    ];
+  }
+  let type;
+  if (html) {
+    type = "HTML";
+  } else if (markdown) {
+    type = "Markdown";
+  } else {
+    type = "SVG";
+  }
   return (
     <Menu.Root>
       <Menu.Trigger

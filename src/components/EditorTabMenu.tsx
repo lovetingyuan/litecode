@@ -26,11 +26,11 @@ export function EditorTabMenu({
   group,
   documentId,
   children,
-}: {
+}: Readonly<{
   group: Group;
   documentId: string;
   children: ReactElement;
-}) {
+}>) {
   const [open, setOpen] = useState(false);
   const restoreTrigger = useRef(true);
   const doc = useApp((s) => s.docs[documentId]);

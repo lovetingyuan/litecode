@@ -33,7 +33,7 @@ export function rankPreparedPath(
   return { path, score, positions };
 }
 export function parseLocation(value: string) {
-  const match = value.match(/^(.*?)(?::(\d+))(?::(\d+))?$/);
+  const match = /^(.*?)(?::(\d+))(?::(\d+))?$/.exec(value);
   return match
     ? {
         query: match[1],

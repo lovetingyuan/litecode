@@ -29,11 +29,13 @@ export function changePaneSizes(
   const remaining = Math.max(0, height - panes.reduce((sum, pane) => sum + pane.minimum, 0));
   const expanded = panes.filter((pane) => pane.expanded);
   const total = expanded.reduce((sum, pane) => sum + weights[pane.kind]!, 0);
-  return panes.map(
-    (pane) =>
-      pane.minimum +
-      (pane.expanded ? remaining * (total ? weights[pane.kind]! / total : 1 / expanded.length) : 0),
-  );
+  return panes.map((pane) => {
+    if (!pane.expanded) {
+      return pane.minimum;
+    }
+    const share = total ? weights[pane.kind]! / total : 1 / expanded.length;
+    return pane.minimum + remaining * share;
+  });
 }
 
 export function resizedPaneWeights(

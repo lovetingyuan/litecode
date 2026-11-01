@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
 } from "react";
 import { useApp, notify, patchSearch, primarySearchId, searchSession } from "../store/store";
 import {
@@ -96,16 +97,18 @@ function SearchTabs() {
         className={`search-tabs ${searchStyles["search-tabs"]}`}
         onKeyDown={(event) => {
           const index = sessions.findIndex((session) => session.id === activeId);
-          const next =
-            event.key === "Home"
-              ? 0
-              : event.key === "End"
-                ? sessions.length - 1
-                : event.key === "ArrowRight"
-                  ? (index + 1) % sessions.length
-                  : event.key === "ArrowLeft"
-                    ? (index + sessions.length - 1) % sessions.length
-                    : -1;
+          let next;
+          if (event.key === "Home") {
+            next = 0;
+          } else if (event.key === "End") {
+            next = sessions.length - 1;
+          } else if (event.key === "ArrowRight") {
+            next = (index + 1) % sessions.length;
+          } else if (event.key === "ArrowLeft") {
+            next = (index + sessions.length - 1) % sessions.length;
+          } else {
+            next = -1;
+          }
           if (next < 0 || !(event.target as HTMLElement).closest('[role="tab"]')) {
             return;
           }
@@ -150,7 +153,7 @@ function SearchTabs() {
   );
 }
 
-function SearchPanel({ id }: { id: string }) {
+function SearchPanel({ id }: Readonly<{ id: string }>) {
   const session = useApp((s) => s.searchSessions.find((search) => search.id === id)!);
   const active = useApp((s) => s.activeSearchId === id);
   const multiple = useApp((s) => s.searchSessions.length > 1);
@@ -333,11 +336,68 @@ function SearchPanel({ id }: { id: string }) {
   }
   const first = Math.max(0, Math.floor(scroll / resultHeight) - 5);
   const visible = rows.slice(first, first + Math.ceil(height / resultHeight) + 12);
-  return (
-    <div
-      className={`view flex flex-col h-full min-h-0 overflow-hidden search-panel flex flex-col flex-1 min-h-0 min-w-0 ${searchStyles["search-panel"]}`}
-      hidden={!active}
-    >
+  function moveResultSelection(key: string) {
+    let nextRow;
+    if (selected < 0) {
+      nextRow = 0;
+    } else {
+      let nextRowPart2;
+      if (key === "ArrowDown") {
+        nextRowPart2 = 1;
+      } else {
+        nextRowPart2 = -1;
+      }
+      nextRow = selected + nextRowPart2;
+    }
+    const index = Math.min(rows.length - 1, Math.max(0, nextRow));
+    setSelected(index);
+    const top = viewport.current?.scrollTop ?? 0;
+    if (index * resultHeight < top) {
+      viewport.current?.scrollTo({ top: index * resultHeight });
+    } else if ((index + 1) * resultHeight > top + height) {
+      viewport.current?.scrollTo({ top: (index + 1) * resultHeight - height });
+    }
+  }
+
+  function changeResultExpansion(e: KeyboardEvent<HTMLDivElement>, row: ResultRow) {
+    if (e.key === "ArrowRight" && row.kind !== "match") {
+      e.preventDefault();
+      if (collapsed.has(row.path)) {
+        toggle(row.path);
+      }
+    }
+    if (e.key === "ArrowLeft" && row.kind !== "match") {
+      e.preventDefault();
+      if (!collapsed.has(row.path)) {
+        toggle(row.path);
+      }
+    }
+  }
+
+  function searchSummary() {
+    let summary;
+    if (id === primarySearchId && replacementPhase) {
+      if (replacementPhase === "planning") {
+        summary = "Planning replacements…";
+      } else {
+        summary = "Applying replacements…";
+      }
+    } else if (searching) {
+      summary = "Searching…";
+    } else if (query.text) {
+      if (results.length) {
+        summary = `${results.length} results in ${files.length} files`;
+      } else {
+        summary = "No results found.";
+      }
+    } else {
+      summary = "Search across files in your workspace.";
+    }
+    return summary;
+  }
+  const summary = searchSummary();
+  function renderSearchToolbar() {
+    return (
       <div
         className={`view-title h-[35px] min-h-[35px] flex items-center justify-between text-[11px] ${workbenchStyles["view-title"]}`}
       >
@@ -369,16 +429,184 @@ function SearchPanel({ id }: { id: string }) {
             icon={allCollapsed ? "expand-all" : "collapse-all"}
             label={allCollapsed ? "Expand All Results" : "Collapse All Results"}
             onClick={() => {
-              setCollapsed(
-                allCollapsed
-                  ? new Set<string>()
-                  : new Set(listMode ? files.map((file) => file.path) : paths),
-              );
+              let collapsedPaths;
+              if (allCollapsed) {
+                collapsedPaths = new Set<string>();
+              } else {
+                let collapsedPathsPart1;
+                if (listMode) {
+                  collapsedPathsPart1 = files.map((file) => file.path);
+                } else {
+                  collapsedPathsPart1 = paths;
+                }
+                collapsedPaths = new Set(collapsedPathsPart1);
+              }
+              setCollapsed(collapsedPaths);
               resetSelection();
             }}
           />
         </div>
       </div>
+    );
+  }
+  function renderSearchForm() {
+    return (
+      <div className="search-form">
+        <div className="search-inputs">
+          {id === primarySearchId && (
+            <IconButton
+              className="icon-button w-6 h-6 p-1 inline-flex items-center justify-center search-replace-toggle"
+              icon={replace ? "chevron-down" : "chevron-right"}
+              label="Toggle Replace"
+              aria-expanded={replace}
+              aria-controls={`search-replace-row-${id}`}
+              onClick={() => setReplace(!replace)}
+            />
+          )}
+          <div className="search-query-row">
+            <div className="input-options">
+              <textarea
+                ref={input}
+                value={query.text}
+                rows={1}
+                placeholder="Search"
+                aria-label="Search text"
+                onChange={(e) => update({ text: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
+                    e.preventDefault();
+                    search();
+                  }
+                  if (e.key === "Escape") {
+                    if (id === primarySearchId) {
+                      cancelReplacementPlan();
+                    }
+                    clearTimeout(pendingSearch.current);
+                    cancelSearch(id);
+                  }
+                  if (e.altKey && e.key === "ArrowUp" && history.length) {
+                    update({
+                      text: history[Math.min(history.indexOf(query.text) + 1, history.length - 1)],
+                    });
+                  }
+                }}
+              />
+              <div className="actions flex items-center gap-[2px] shrink-0">
+                <IconButton
+                  className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.caseSensitive ? " active" : ""}`}
+                  icon="case-sensitive"
+                  label="Match Case (Alt+C)"
+                  aria-pressed={query.caseSensitive}
+                  onClick={() => update({ caseSensitive: !query.caseSensitive })}
+                />
+                <IconButton
+                  className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.wholeWord ? " active" : ""}`}
+                  icon="whole-word"
+                  label="Match Whole Word (Alt+W)"
+                  aria-pressed={query.wholeWord}
+                  onClick={() => update({ wholeWord: !query.wholeWord })}
+                />
+                <IconButton
+                  className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.regex ? " active" : ""}`}
+                  icon="regex"
+                  label="Use Regular Expression (Alt+R)"
+                  aria-pressed={query.regex}
+                  onClick={() => update({ regex: !query.regex })}
+                />
+              </div>
+            </div>
+          </div>
+          {replace && (
+            <div className="search-query-row" id={`search-replace-row-${id}`}>
+              <div className="input-options">
+                <input
+                  placeholder="Replace"
+                  aria-label="Replace text"
+                  value={replacement}
+                  onChange={(e) => setReplacement(e.target.value)}
+                />
+                <IconButton
+                  className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${preserve ? " active" : ""}`}
+                  icon="preserve-case"
+                  label="Preserve Case"
+                  aria-pressed={preserve}
+                  onClick={() => setPreserve(!preserve)}
+                />
+              </div>
+              <IconButton
+                className="icon-button w-6 h-6 p-1 inline-flex items-center justify-center search-replace-all"
+                icon="replace-all"
+                label="Replace All"
+                disabled={!results.length || !!replacementPhase}
+                onClick={() => void replaceRows(results)}
+              />
+            </div>
+          )}
+        </div>
+        <div className="search-options-row">
+          <IconButton
+            icon="ellipsis"
+            label="Toggle Search Details"
+            aria-expanded={details}
+            aria-controls={`search-details-${id}`}
+            onClick={() => setDetails(!details)}
+          />
+        </div>
+        {details && (
+          <div className="search-details" id={`search-details-${id}`}>
+            <label htmlFor={`search-include-${id}`}>files to include</label>
+            <div className="input-options">
+              <input
+                id={`search-include-${id}`}
+                value={query.include}
+                onChange={(e) => update({ include: e.target.value })}
+                placeholder="e.g. *.ts, src/**/include"
+              />
+              <div className="actions flex items-center gap-[2px] shrink-0">
+                <IconButton
+                  className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.changedOnly ? " active" : ""}`}
+                  icon="edit-code"
+                  label="Search only Changed Files"
+                  aria-pressed={query.changedOnly}
+                  onClick={() => update({ changedOnly: !query.changedOnly })}
+                />
+                <IconButton
+                  className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.openOnly ? " active" : ""}`}
+                  icon="book"
+                  label="Search only in Open Editors"
+                  aria-pressed={query.openOnly}
+                  onClick={() => update({ openOnly: !query.openOnly })}
+                />
+              </div>
+            </div>
+            <label htmlFor={`search-exclude-${id}`}>files to exclude</label>
+            <div className="input-options">
+              <input
+                id={`search-exclude-${id}`}
+                value={query.exclude}
+                onChange={(e) => update({ exclude: e.target.value })}
+              />
+              <div className="actions flex items-center gap-[2px] shrink-0">
+                <IconButton
+                  className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.useIgnore ? " active" : ""}`}
+                  icon="exclude"
+                  label="Use Exclude Settings and Ignore Files"
+                  aria-pressed={query.useIgnore}
+                  onClick={() => update({ useIgnore: !query.useIgnore })}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div
+      className={`view flex flex-col h-full min-h-0 overflow-hidden search-panel flex flex-col flex-1 min-h-0 min-w-0 ${searchStyles["search-panel"]}`}
+      hidden={!active}
+    >
+      {renderSearchToolbar()}
       {active && <SearchTabs />}
       <div
         className="search-panel-content flex flex-col flex-1 min-h-0 min-w-0"
@@ -387,168 +615,9 @@ function SearchPanel({ id }: { id: string }) {
         aria-labelledby={multiple ? `search-tab-${id}` : undefined}
         aria-label={id === primarySearchId ? "Search" : query.text || `Search ${session.number}`}
       >
-        <div className="search-form">
-          <div className="search-inputs">
-            {id === primarySearchId && (
-              <IconButton
-                className="icon-button w-6 h-6 p-1 inline-flex items-center justify-center search-replace-toggle"
-                icon={replace ? "chevron-down" : "chevron-right"}
-                label="Toggle Replace"
-                aria-expanded={replace}
-                aria-controls={`search-replace-row-${id}`}
-                onClick={() => setReplace(!replace)}
-              />
-            )}
-            <div className="search-query-row">
-              <div className="input-options">
-                <textarea
-                  ref={input}
-                  value={query.text}
-                  rows={1}
-                  placeholder="Search"
-                  aria-label="Search text"
-                  onChange={(e) => update({ text: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
-                      e.preventDefault();
-                      search();
-                    }
-                    if (e.key === "Escape") {
-                      if (id === primarySearchId) {
-                        cancelReplacementPlan();
-                      }
-                      clearTimeout(pendingSearch.current);
-                      cancelSearch(id);
-                    }
-                    if (e.altKey && e.key === "ArrowUp" && history.length) {
-                      update({
-                        text: history[
-                          Math.min(history.indexOf(query.text) + 1, history.length - 1)
-                        ],
-                      });
-                    }
-                  }}
-                />
-                <div className="actions flex items-center gap-[2px] shrink-0">
-                  <IconButton
-                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.caseSensitive ? " active" : ""}`}
-                    icon="case-sensitive"
-                    label="Match Case (Alt+C)"
-                    aria-pressed={query.caseSensitive}
-                    onClick={() => update({ caseSensitive: !query.caseSensitive })}
-                  />
-                  <IconButton
-                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.wholeWord ? " active" : ""}`}
-                    icon="whole-word"
-                    label="Match Whole Word (Alt+W)"
-                    aria-pressed={query.wholeWord}
-                    onClick={() => update({ wholeWord: !query.wholeWord })}
-                  />
-                  <IconButton
-                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.regex ? " active" : ""}`}
-                    icon="regex"
-                    label="Use Regular Expression (Alt+R)"
-                    aria-pressed={query.regex}
-                    onClick={() => update({ regex: !query.regex })}
-                  />
-                </div>
-              </div>
-            </div>
-            {replace && (
-              <div className="search-query-row" id={`search-replace-row-${id}`}>
-                <div className="input-options">
-                  <input
-                    placeholder="Replace"
-                    aria-label="Replace text"
-                    value={replacement}
-                    onChange={(e) => setReplacement(e.target.value)}
-                  />
-                  <IconButton
-                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${preserve ? " active" : ""}`}
-                    icon="preserve-case"
-                    label="Preserve Case"
-                    aria-pressed={preserve}
-                    onClick={() => setPreserve(!preserve)}
-                  />
-                </div>
-                <IconButton
-                  className="icon-button w-6 h-6 p-1 inline-flex items-center justify-center search-replace-all"
-                  icon="replace-all"
-                  label="Replace All"
-                  disabled={!results.length || !!replacementPhase}
-                  onClick={() => void replaceRows(results)}
-                />
-              </div>
-            )}
-          </div>
-          <div className="search-options-row">
-            <IconButton
-              icon="ellipsis"
-              label="Toggle Search Details"
-              aria-expanded={details}
-              aria-controls={`search-details-${id}`}
-              onClick={() => setDetails(!details)}
-            />
-          </div>
-          {details && (
-            <div className="search-details" id={`search-details-${id}`}>
-              <label htmlFor={`search-include-${id}`}>files to include</label>
-              <div className="input-options">
-                <input
-                  id={`search-include-${id}`}
-                  value={query.include}
-                  onChange={(e) => update({ include: e.target.value })}
-                  placeholder="e.g. *.ts, src/**/include"
-                />
-                <div className="actions flex items-center gap-[2px] shrink-0">
-                  <IconButton
-                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.changedOnly ? " active" : ""}`}
-                    icon="edit-code"
-                    label="Search only Changed Files"
-                    aria-pressed={query.changedOnly}
-                    onClick={() => update({ changedOnly: !query.changedOnly })}
-                  />
-                  <IconButton
-                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.openOnly ? " active" : ""}`}
-                    icon="book"
-                    label="Search only in Open Editors"
-                    aria-pressed={query.openOnly}
-                    onClick={() => update({ openOnly: !query.openOnly })}
-                  />
-                </div>
-              </div>
-              <label htmlFor={`search-exclude-${id}`}>files to exclude</label>
-              <div className="input-options">
-                <input
-                  id={`search-exclude-${id}`}
-                  value={query.exclude}
-                  onChange={(e) => update({ exclude: e.target.value })}
-                />
-                <div className="actions flex items-center gap-[2px] shrink-0">
-                  <IconButton
-                    className={`icon-button w-6 h-6 p-1 inline-flex items-center justify-center option${query.useIgnore ? " active" : ""}`}
-                    icon="exclude"
-                    label="Use Exclude Settings and Ignore Files"
-                    aria-pressed={query.useIgnore}
-                    onClick={() => update({ useIgnore: !query.useIgnore })}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        {renderSearchForm()}
         <div className="search-summary" aria-live="polite">
-          {id === primarySearchId && replacementPhase
-            ? replacementPhase === "planning"
-              ? "Planning replacements…"
-              : "Applying replacements…"
-            : searching
-              ? "Searching…"
-              : query.text
-                ? results.length
-                  ? `${results.length} results in ${files.length} files`
-                  : "No results found."
-                : "Search across files in your workspace."}
+          {summary}
         </div>
         {limited && (
           <p
@@ -584,17 +653,7 @@ function SearchPanel({ id }: { id: string }) {
               if (!rows.length) {
                 return;
               }
-              const index = Math.min(
-                rows.length - 1,
-                Math.max(0, selected < 0 ? 0 : selected + (e.key === "ArrowDown" ? 1 : -1)),
-              );
-              setSelected(index);
-              const top = viewport.current?.scrollTop ?? 0;
-              if (index * resultHeight < top) {
-                viewport.current?.scrollTo({ top: index * resultHeight });
-              } else if ((index + 1) * resultHeight > top + height) {
-                viewport.current?.scrollTo({ top: (index + 1) * resultHeight - height });
-              }
+              moveResultSelection(e.key);
             }
             const row = rows[selected];
             if (!row) {
@@ -608,18 +667,7 @@ function SearchPanel({ id }: { id: string }) {
                 void openMatch(row.match).catch((e) => notify(errorMessage(e)));
               }
             }
-            if (e.key === "ArrowRight" && row.kind !== "match") {
-              e.preventDefault();
-              if (collapsed.has(row.path)) {
-                toggle(row.path);
-              }
-            }
-            if (e.key === "ArrowLeft" && row.kind !== "match") {
-              e.preventDefault();
-              if (!collapsed.has(row.path)) {
-                toggle(row.path);
-              }
-            }
+            changeResultExpansion(e, row);
             if (e.key === "Delete") {
               removeRow(row);
             }

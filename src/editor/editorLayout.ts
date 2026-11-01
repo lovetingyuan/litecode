@@ -98,6 +98,24 @@ export function restoreLayout(value: unknown, groups: string[]): EditorLayout {
   return branch([restored, ...missing], "horizontal");
 }
 
+function insertSplitGroup(
+  node: Extract<EditorLayout, { type: "split" }>,
+  index: number,
+  leaf: EditorLayout,
+  before: boolean,
+): EditorLayout {
+  const children = [...node.children];
+  children.splice(index + (before ? 0 : 1), 0, leaf);
+  const sizes = [...node.sizes];
+  if (equalSizes(sizes)) {
+    sizes.splice(0, sizes.length, ...children.map(() => total(node.sizes) / children.length));
+  } else {
+    sizes[index] /= 2;
+    sizes.splice(index + (before ? 0 : 1), 0, sizes[index]);
+  }
+  return { ...node, children, sizes };
+}
+
 export function splitLayout(
   node: EditorLayout,
   source: string,
@@ -108,20 +126,14 @@ export function splitLayout(
   const before = direction === "left" || direction === "up";
   const leaf: EditorLayout = { type: "group", id };
   if (node.type === "group") {
-    return node.id !== source ? node : branch(before ? [leaf, node] : [node, leaf], axis);
+    if (node.id !== source) {
+      return node;
+    }
+    return branch(before ? [leaf, node] : [node, leaf], axis);
   }
   const index = node.children.findIndex((child) => child.type === "group" && child.id === source);
   if (node.axis === axis && index >= 0) {
-    const children = [...node.children];
-    children.splice(index + (before ? 0 : 1), 0, leaf);
-    const sizes = [...node.sizes];
-    if (equalSizes(sizes)) {
-      sizes.splice(0, sizes.length, ...children.map(() => total(node.sizes) / children.length));
-    } else {
-      sizes[index] /= 2;
-      sizes.splice(index + (before ? 0 : 1), 0, sizes[index]);
-    }
-    return { ...node, children, sizes };
+    return insertSplitGroup(node, index, leaf, before);
   }
   return {
     ...node,

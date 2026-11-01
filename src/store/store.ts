@@ -75,6 +75,21 @@ type State = {
   languageStatus: string;
   set: (patch: Partial<State> | ((state: State) => Partial<State>)) => void;
 };
+function updateEditorLayout(next: Partial<State>, state: State, groups: Group[], ids: string[]) {
+  let layout = "editorLayout" in next ? (next.editorLayout ?? null) : state.editorLayout;
+  if (!("editorLayout" in next) && layout) {
+    for (const id of layoutGroups(layout)) {
+      if (!ids.includes(id)) {
+        layout = layout && removeLayoutGroup(layout, id);
+      }
+    }
+  }
+  next.editorLayout = ids.length ? restoreLayout(layout, ids) : null;
+  if (next.editorLayout) {
+    next.groups = layoutGroups(next.editorLayout).map((id) => groups.find((g) => g.id === id)!);
+  }
+}
+
 export const useApp = create<State>((set) => ({
   ready: false,
   openingWorkspace: null,
@@ -122,20 +137,7 @@ export const useApp = create<State>((set) => ({
         !!next.groups &&
         (ids.length !== state.groups.length || ids.some((id, i) => id !== state.groups[i].id));
       if (changed || "editorLayout" in next) {
-        let layout = "editorLayout" in next ? (next.editorLayout ?? null) : state.editorLayout;
-        if (!("editorLayout" in next) && layout) {
-          for (const id of layoutGroups(layout)) {
-            if (!ids.includes(id)) {
-              layout = layout && removeLayoutGroup(layout, id);
-            }
-          }
-        }
-        next.editorLayout = ids.length ? restoreLayout(layout, ids) : null;
-        if (next.editorLayout) {
-          next.groups = layoutGroups(next.editorLayout).map((id) =>
-            groups.find((g) => g.id === id)!,
-          );
-        }
+        updateEditorLayout(next, state, groups, ids);
       }
       if (changed || next.activeGroup !== undefined || next.groupMru !== undefined) {
         const mru = [...new Set([...(next.groupMru ?? state.groupMru), ...ids])].filter((id) =>

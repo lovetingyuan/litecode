@@ -24,6 +24,70 @@ const slashes = (path: string) =>
     .replace(/^\\\\\?\\/, "")
     .replace(/\\/g, "/");
 
+function searchPathPrefix(path: string, base: string, ignoreCase: boolean) {
+  const inRoot =
+    base &&
+    (ignoreCase ? path.toLowerCase().startsWith(base.toLowerCase()) : path.startsWith(base));
+  let prefix;
+  if (inRoot) {
+    prefix = base;
+  } else if (path.startsWith("//")) {
+    prefix = "//";
+  } else if (path.startsWith("/")) {
+    prefix = "/";
+  } else {
+    prefix = "";
+  }
+  return prefix;
+}
+
+function addSearchFiles(
+  files: SearchFile[],
+  base: string,
+  ignoreCase: boolean,
+  tree: SearchNode[],
+  folders: Map<string, SearchFolder>,
+) {
+  for (const file of files) {
+    const path = slashes(file.path);
+    const prefix = searchPathPrefix(path, base, ignoreCase);
+    const relative = path.slice(prefix.length);
+    const segments = relative.split("/").slice(0, -1);
+    let children = tree;
+    let parent = prefix;
+    for (const name of segments) {
+      parent += (parent && !parent.endsWith("/") ? "/" : "") + name;
+      const key = ignoreCase ? parent.toLowerCase() : parent;
+      let folder = folders.get(key);
+      if (!folder) {
+        folder = { kind: "folder", path: parent, name: name || "/", count: 0, children: [] };
+        folders.set(key, folder);
+        children.push(folder);
+      }
+      folder.count += file.count;
+      children = folder.children;
+    }
+    children.push(file);
+  }
+}
+
+function sort(nodes: SearchNode[]) {
+  nodes.sort((a, b) => {
+    if (a.kind === b.kind) {
+      return a.name.localeCompare(b.name);
+    } else if (a.kind === "folder") {
+      return -1;
+    } else {
+      return 1;
+    }
+  });
+  for (const node of nodes) {
+    if (node.kind === "folder") {
+      sort(node.children);
+    }
+  }
+}
+
 export function buildSearchResults(results: SearchMatch[], root: string | null) {
   const byFile = new Map<string, SearchFile>();
   results.forEach((match, index) => {
@@ -46,40 +110,7 @@ export function buildSearchResults(results: SearchMatch[], root: string | null) 
   const folders = new Map<string, SearchFolder>();
   const base = root ? slashes(root).replace(/\/$/, "") + "/" : "";
   const ignoreCase = /^[a-z]:\//i.test(base) || base.startsWith("//");
-  for (const file of files) {
-    const path = slashes(file.path);
-    const inRoot =
-      base &&
-      (ignoreCase ? path.toLowerCase().startsWith(base.toLowerCase()) : path.startsWith(base));
-    const prefix = inRoot ? base : path.startsWith("//") ? "//" : path.startsWith("/") ? "/" : "";
-    const relative = path.slice(prefix.length);
-    const segments = relative.split("/").slice(0, -1);
-    let children = tree;
-    let parent = prefix;
-    for (const name of segments) {
-      parent += (parent && !parent.endsWith("/") ? "/" : "") + name;
-      const key = ignoreCase ? parent.toLowerCase() : parent;
-      let folder = folders.get(key);
-      if (!folder) {
-        folder = { kind: "folder", path: parent, name: name || "/", count: 0, children: [] };
-        folders.set(key, folder);
-        children.push(folder);
-      }
-      folder.count += file.count;
-      children = folder.children;
-    }
-    children.push(file);
-  }
-  function sort(nodes: SearchNode[]) {
-    nodes.sort((a, b) =>
-      a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "folder" ? -1 : 1,
-    );
-    for (const node of nodes) {
-      if (node.kind === "folder") {
-        sort(node.children);
-      }
-    }
-  }
+  addSearchFiles(files, base, ignoreCase, tree, folders);
   sort(tree);
   return {
     files,

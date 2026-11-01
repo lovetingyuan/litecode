@@ -7,7 +7,7 @@ export type DirectoryState = {
   dirty: boolean;
   promise?: Promise<void>;
 };
-export const directoryPath = (path: string) => path.replace(/\\/g, "/").replace(/\/+$/, "");
+export const directoryPath = (path: string) => path.replace(/\\/g, "/").replace(/(?<!\/)\/+$/, "");
 export const parentDirectory = (path: string) =>
   directoryPath(path).split("/").slice(0, -1).join("/");
 const key = (path: string) => directoryPath(path).toLowerCase();
@@ -92,6 +92,86 @@ export class DirectoryCache {
   private async emit(directory?: string, paths?: string[]) {
     await Promise.all([...this.listeners].map((listener) => listener(directory, paths)));
   }
+  private applyDirectoryResult(entry: DirectoryState, result: DirectorySnapshot) {
+    const next = new Set(result.paths);
+    for (const previous of entry.paths) {
+      if (previous.endsWith("/") && !next.has(previous)) {
+        for (const cached of this.directories.keys()) {
+          if (cached === directoryPath(previous) || cached.startsWith(previous)) {
+            this.directories.delete(cached);
+          }
+        }
+      }
+    }
+    if (entry.paths.length !== result.paths.length || entry.paths.some((path) => !next.has(path))) {
+      this.revision++;
+    }
+    entry.paths = result.paths;
+    entry.warnings = result.warnings;
+  }
+
+  private currentEntry(path: string, entry: DirectoryState) {
+    return !this.disposed && this.directories.get(path) === entry;
+  }
+  private deferHeldLoad(path: string, entry: DirectoryState) {
+    if (!this.held(path)) {
+      return false;
+    }
+    entry.dirty = true;
+    entry.status = "stale";
+    this.deferredLoads.add(path);
+    return true;
+  }
+  private async loadDirectoryEntry(
+    path: string,
+    entry: DirectoryState,
+  ): Promise<"stop" | "continue"> {
+    try {
+      const result = await this.read(path, this.session);
+      if (!this.currentEntry(path, entry)) {
+        return "stop";
+      }
+      if (
+        key(result.root) !== key(this.root) ||
+        (this.session !== null && result.session !== this.session)
+      ) {
+        throw new Error("Workspace changed while reading the directory");
+      }
+      this.session = result.session;
+      if (this.deferHeldLoad(path, entry)) {
+        return "stop";
+      }
+      // An invalidation after this request started makes its result obsolete.
+      if (entry.dirty) {
+        return "continue";
+      }
+      this.applyDirectoryResult(entry, result);
+      await this.emit(path, result.paths);
+      if (!this.currentEntry(path, entry)) {
+        return "stop";
+      }
+      entry.status = entry.dirty ? "stale" : "loaded";
+    } catch (error) {
+      if (!this.currentEntry(path, entry)) {
+        return "stop";
+      }
+      if (this.deferHeldLoad(path, entry)) {
+        return "stop";
+      }
+      entry.status = "failed";
+      entry.error =
+        error instanceof Error
+          ? error.message
+          : String(
+              (
+                error as {
+                  message?: string;
+                }
+              )?.message ?? error,
+            );
+    }
+    return "continue";
+  }
   load(directory: string, force = false): Promise<void> {
     const path = directoryPath(directory);
     const entry = this.entry(path);
@@ -118,72 +198,8 @@ export class DirectoryCache {
           entry.status = "loading";
           entry.error = undefined;
           await this.emit();
-          try {
-            const result = await this.read(path, this.session);
-            if (this.disposed || this.directories.get(path) !== entry) {
-              return;
-            }
-            if (
-              key(result.root) !== key(this.root) ||
-              (this.session !== null && result.session !== this.session)
-            ) {
-              throw new Error("Workspace changed while reading the directory");
-            }
-            this.session = result.session;
-            if (this.held(path)) {
-              entry.dirty = true;
-              entry.status = "stale";
-              this.deferredLoads.add(path);
-              break;
-            }
-            // An invalidation after this request started makes its result obsolete.
-            if (entry.dirty) {
-              continue;
-            }
-            const next = new Set(result.paths);
-            for (const previous of entry.paths) {
-              if (previous.endsWith("/") && !next.has(previous)) {
-                for (const cached of this.directories.keys()) {
-                  if (cached === directoryPath(previous) || cached.startsWith(previous)) {
-                    this.directories.delete(cached);
-                  }
-                }
-              }
-            }
-            if (
-              entry.paths.length !== result.paths.length ||
-              entry.paths.some((path) => !next.has(path))
-            ) {
-              this.revision++;
-            }
-            entry.paths = result.paths;
-            entry.warnings = result.warnings;
-            await this.emit(path, result.paths);
-            if (this.disposed || this.directories.get(path) !== entry) {
-              return;
-            }
-            entry.status = entry.dirty ? "stale" : "loaded";
-          } catch (error) {
-            if (this.disposed || this.directories.get(path) !== entry) {
-              return;
-            }
-            if (this.held(path)) {
-              entry.dirty = true;
-              entry.status = "stale";
-              this.deferredLoads.add(path);
-              break;
-            }
-            entry.status = "failed";
-            entry.error =
-              error instanceof Error
-                ? error.message
-                : String(
-                    (
-                      error as {
-                        message?: string;
-                      }
-                    )?.message ?? error,
-                  );
+          if ((await this.loadDirectoryEntry(path, entry)) === "stop") {
+            break;
           }
         } while (entry.dirty && !this.disposed);
       } finally {

@@ -125,7 +125,7 @@ export function PaneLayout({
   );
 }
 
-export function EditorLayoutView({ node }: { node: EditorLayout }) {
+export function EditorLayoutView({ node }: Readonly<{ node: EditorLayout }>) {
   const group = useApp((s) =>
     node.type === "group" ? s.groups.find((g) => g.id === node.id) : undefined,
   );
@@ -141,7 +141,7 @@ export function EditorLayoutView({ node }: { node: EditorLayout }) {
   );
 }
 
-function EditorSplitView({ node }: { node: EditorSplit }) {
+function EditorSplitView({ node }: Readonly<{ node: EditorSplit }>) {
   return (
     <PaneLayout
       vertical={node.axis === "vertical"}
@@ -172,10 +172,10 @@ function EditorSplitView({ node }: { node: EditorSplit }) {
 export function WorkbenchLayout({
   sidebar,
   children,
-}: {
+}: Readonly<{
   sidebar: ReactNode;
   children: ReactNode;
-}) {
+}>) {
   const visible = useApp((s) => !!s.sidebar && s.view === "editor");
   const sidebarWidth = useApp((s) => s.sidebarWidth);
   const layout = useApp((s) => s.editorLayout);
@@ -215,7 +215,7 @@ export function WorkbenchLayout({
           {sidebar}
         </Allotment.Pane>
         <Allotment.Pane
-          minSize={terminal ? 160 : layout ? minimumLayoutSize(layout).width : 160}
+          minSize={!terminal && layout ? minimumLayoutSize(layout).width : 160}
           priority={LayoutPriority.High}
         >
           {children}

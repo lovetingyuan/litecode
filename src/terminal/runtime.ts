@@ -266,11 +266,17 @@ async function requestClose(ids: string[], tab: boolean) {
       const unknown = results.some(
         (result, index) => current(targets[index]) && result === "unknown",
       );
-      const message = unknown
-        ? "Could not check for running processes. Closing will terminate the shell and any child processes."
-        : tab
-          ? "Processes are still running in this tab. Closing will terminate the shells and their child processes."
-          : "Processes are still running in this terminal. Closing will terminate the shell and its child processes.";
+      let message;
+      if (unknown) {
+        message =
+          "Could not check for running processes. Closing will terminate the shell and any child processes.";
+      } else if (tab) {
+        message =
+          "Processes are still running in this tab. Closing will terminate the shells and their child processes.";
+      } else {
+        message =
+          "Processes are still running in this terminal. Closing will terminate the shell and its child processes.";
+      }
       const controller = new AbortController();
       const unsubscribe = useTerminal.subscribe(() => {
         if (!targets.some(current)) {
@@ -629,9 +635,10 @@ function createRuntime(id: string): Runtime {
       const links: ILink[] = [];
       const urls = Array.from(line.matchAll(/https?:\/\/\S+/g));
       const pattern =
+        // eslint-disable-next-line sonarjs/super-linear-regex, sonarjs/regex-complexity -- Input is one terminal row bounded by terminal.cols; preserve existing path and line/column matching.
         /(?:[a-zA-Z]:[\\/]|\.\.?[\\/]|[\w.@-]+[\\/])[^\s<>"|]+|[\w.@-]+\.[a-zA-Z\d]+(?::\d+(?::\d+)?)?/g;
       for (const match of line.matchAll(pattern)) {
-        const text = match[0].replace(/[),;]+$/, "");
+        const text = match[0].replace(/(?<![),;])[),;]+$/, "");
         if (/https?:/i.test(text) || !text) {
           continue;
         }
@@ -743,7 +750,7 @@ export async function pasteTerminal(id = activePane(), text?: string) {
   text ??= desktop ? ((await readText()) ?? "") : await navigator.clipboard.readText();
   const warning = get("enableMultiLinePasteWarning");
   if (
-    /\r|\n/.test(text) &&
+    /[\r\n]/.test(text) &&
     (warning === "always" || (warning === "auto" && !r.terminal.modes.bracketedPasteMode))
   ) {
     if (
@@ -836,11 +843,11 @@ async function openFileLink(id: string, text: string) {
   if (!pane) {
     return;
   }
-  const match = text.match(/^(.*?)(?::(\d+))?(?::(\d+))?$/)!;
+  const match = /^(.*?)(?::(\d+))?(?::(\d+))?$/.exec(text)!;
   const file = match[1];
   const path = /^[a-z]:[\\/]|^[/\\]/i.test(file)
     ? file
-    : `${pane.cwd.replace(/[\\/]+$/, "")}/${file}`;
+    : `${pane.cwd.replace(/(?<![\\/])[\\/]+$/, "")}/${file}`;
   const granted = await call<string>("explicit_open", { path });
   const { openPath } = await import("../editor/documents");
   await openPath(granted, {

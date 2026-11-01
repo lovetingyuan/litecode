@@ -178,62 +178,11 @@ export async function cancelGitOperation(repository: string): Promise<boolean> {
   return requestId ? call<boolean>("git_cancel", { requestId }) : false;
 }
 
-export async function runGitOperation(repository: string, request: GitOperation): Promise<boolean> {
-  if (useApp.getState().gitBusy[repository]) {
-    return false;
+function confirmGitOperation(request: GitOperation): Promise<boolean> | null {
+  if (!["discard", "deleteBranch", "abort"].includes(request.kind)) {
+    return null;
   }
-  const context = gitContext(repository);
-  const branchOperation = ["switch", "createBranch", "deleteBranch"].includes(request.kind);
-  const validBranchContext = () => {
-    const state = useApp.getState();
-    const selected = selectedRepository();
-    return (
-      state.gitState.session === context.session &&
-      selected?.path === repository &&
-      !selected.operation
-    );
-  };
-  if (branchOperation && !validBranchContext()) {
-    return false;
-  }
-  let started = false;
-  const busy = request.kind === "pull" && request.rebase ? "pullRebase" : request.kind;
-  setApp((s) => ({ gitBusy: { ...s.gitBusy, [repository]: busy } }));
-  try {
-    const changesWorktree = ["pull", "switch", "createBranch", "continue", "abort"].includes(
-      request.kind,
-    );
-    const affected =
-      request.kind === "stage"
-        ? request.paths.map((path) => normalize(join(repository, path)))
-        : [];
-    const dirty = Object.values(useApp.getState().docs).filter(
-      (d) =>
-        !d.gitDiff &&
-        d.dirty &&
-        d.path &&
-        (changesWorktree
-          ? normalize(d.path).startsWith(normalize(repository) + "/")
-          : affected.includes(normalize(d.path))),
-    );
-    if (dirty.length) {
-      if (
-        (await ask(
-          "Save files before Git operation?",
-          "Save the affected files before continuing.",
-          ["Save and Continue", "Cancel"],
-          { items: dirty.map((d) => d.path!) },
-        )) !== "Save and Continue"
-      ) {
-        return false;
-      }
-      for (const doc of dirty) {
-        await save(doc.id);
-        if (useApp.getState().docs[doc.id]?.dirty) {
-          return false;
-        }
-      }
-    }
+  return (async () => {
     if (request.kind === "discard") {
       if (
         (await ask(
@@ -266,6 +215,96 @@ export async function runGitOperation(repository: string, request: GitOperation)
     ) {
       return false;
     }
+
+    return true;
+  })();
+}
+
+async function saveBeforeGitOperation(dirty: Doc[], request: GitOperation) {
+  if (
+    (await ask(
+      "Save files before Git operation?",
+      "Save the affected files before continuing.",
+      ["Save and Continue", "Cancel"],
+      { items: dirty.map((d) => d.path!) },
+    )) !== "Save and Continue"
+  ) {
+    return false;
+  }
+  for (const doc of dirty) {
+    await save(doc.id);
+    if (useApp.getState().docs[doc.id]?.dirty) {
+      return false;
+    }
+  }
+  const confirmation = confirmGitOperation(request);
+  if (confirmation) {
+    return await confirmation;
+  }
+  return true;
+}
+
+function prepareGitOperation(repository: string, request: GitOperation): Promise<boolean> | null {
+  const changesWorktree = ["pull", "switch", "createBranch", "continue", "abort"].includes(
+    request.kind,
+  );
+  const affected =
+    request.kind === "stage" ? request.paths.map((path) => normalize(join(repository, path))) : [];
+  const dirty = Object.values(useApp.getState().docs).filter(
+    (d) =>
+      !d.gitDiff &&
+      d.dirty &&
+      d.path &&
+      (changesWorktree
+        ? normalize(d.path).startsWith(normalize(repository) + "/")
+        : affected.includes(normalize(d.path))),
+  );
+
+  if (dirty.length) {
+    return saveBeforeGitOperation(dirty, request);
+  }
+  return confirmGitOperation(request);
+}
+
+function markDiscardedDocuments(
+  repository: string,
+  request: Extract<GitOperation, { kind: "discard" }>,
+  versions: Map<string, number>,
+) {
+  const paths = new Set(request.files.map((f) => normalize(join(repository, f.path))));
+  for (const doc of Object.values(useApp.getState().docs)) {
+    if (doc.path && paths.has(normalize(doc.path)) && versions.get(doc.id) === doc.version) {
+      patchDoc(doc.id, { dirty: false, conflict: false });
+    }
+  }
+}
+
+export async function runGitOperation(repository: string, request: GitOperation): Promise<boolean> {
+  if (useApp.getState().gitBusy[repository]) {
+    return false;
+  }
+  const context = gitContext(repository);
+  const branchOperation = ["switch", "createBranch", "deleteBranch"].includes(request.kind);
+  const validBranchContext = () => {
+    const state = useApp.getState();
+    const selected = selectedRepository();
+    return (
+      state.gitState.session === context.session &&
+      selected?.path === repository &&
+      !selected.operation
+    );
+  };
+  if (branchOperation && !validBranchContext()) {
+    return false;
+  }
+  let started = false;
+  const busy = request.kind === "pull" && request.rebase ? "pullRebase" : request.kind;
+  setApp((s) => ({ gitBusy: { ...s.gitBusy, [repository]: busy } }));
+  try {
+    const preparation = prepareGitOperation(repository, request);
+    if (preparation && !(await preparation)) {
+      return false;
+    }
     if (
       useApp.getState().root !== context.expectedRoot ||
       (branchOperation && !validBranchContext())
@@ -280,12 +319,7 @@ export async function runGitOperation(repository: string, request: GitOperation)
     activeGitOperations.set(repository, requestId);
     await trustedCall<string>("git_operate", { ...context, requestId, request });
     if (request.kind === "discard") {
-      const paths = new Set(request.files.map((f) => normalize(join(repository, f.path))));
-      for (const doc of Object.values(useApp.getState().docs)) {
-        if (doc.path && paths.has(normalize(doc.path)) && versions.get(doc.id) === doc.version) {
-          patchDoc(doc.id, { dirty: false, conflict: false });
-        }
-      }
+      markDiscardedDocuments(repository, request, versions);
     }
     return true;
   } catch (error) {

@@ -51,7 +51,7 @@ export function WelcomePage() {
           {recent.length ? (
             <ul className="welcome-recents list-none p-0 m-0">
               {recent.slice(0, 5).map((path) => {
-                const displayPath = visiblePath(path).replace(/[\\/]+$/, "");
+                const displayPath = visiblePath(path).replace(/(?<![\\/])[\\/]+$/, "");
                 const parent = displayPath.slice(
                   0,
                   Math.max(displayPath.lastIndexOf("/"), displayPath.lastIndexOf("\\")) + 1,

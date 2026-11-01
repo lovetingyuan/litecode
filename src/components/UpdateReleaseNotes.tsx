@@ -4,10 +4,10 @@ import remarkGfm from "remark-gfm";
 export default function UpdateReleaseNotes({
   notes,
   openLink,
-}: {
+}: Readonly<{
   notes: string | null;
   openLink: (url: string) => void;
-}) {
+}>) {
   return (
     <Markdown
       remarkPlugins={[remarkGfm]}

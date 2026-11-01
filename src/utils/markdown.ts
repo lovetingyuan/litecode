@@ -22,11 +22,10 @@ function fileUrl(path: string) {
       index === 0 && /^[a-z]:$/i.test(segment) ? segment : encodeURIComponent(segment),
     )
     .join("/");
-  return new URL(
-    normalized.startsWith("//")
-      ? `file:${encoded}`
-      : `file://${normalized.startsWith("/") ? "" : "/"}${encoded}`,
-  );
+  if (normalized.startsWith("//")) {
+    return new URL(`file:${encoded}`);
+  }
+  return new URL(`file://${normalized.startsWith("/") ? "" : "/"}${encoded}`);
 }
 
 export function resolveMarkdownUrl(
@@ -53,9 +52,12 @@ export function resolveMarkdownUrl(
     if (!absolute && !/^file:/i.test(href) && !documentPath) {
       return;
     }
-    const url = absolute
-      ? fileUrl(href)
-      : new URL(href.replace(/\\/g, "/"), documentPath ? fileUrl(documentPath) : undefined);
+    let url;
+    if (absolute) {
+      url = fileUrl(href);
+    } else {
+      url = new URL(href.replace(/\\/g, "/"), documentPath ? fileUrl(documentPath) : undefined);
+    }
     if (url.protocol !== "file:") {
       return;
     }

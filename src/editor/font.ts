@@ -11,6 +11,7 @@ export function renderedFontFamily(fontFamily: string) {
     /[,"']/.test(fontFamily) || !/[+ ]/.test(fontFamily) ? fontFamily : `"${fontFamily}"`;
   const stack = fontFamily === defaultFontFamily ? family : `${family}, ${defaultFontFamily}`;
   // Split CSS font names without splitting commas inside quoted names.
+  // eslint-disable-next-line sonarjs/regex-complexity -- Keep CSS quoted-font and escape syntax in one tokenizer; the alternatives describe distinct quote forms.
   const names = stack.match(/(?:[^,"']|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')+/g) ?? [];
   return names
     .map((name) => name.trim())
@@ -36,14 +37,17 @@ export function previewFontStyle(
   settings: Record<string, unknown>,
 ): CSSProperties & { "--code-font-family": string; "--code-font-features": string } {
   const { fontFamily, fontLigatures } = editorFontOptions(settings);
+  // VS Code also accepts the strings "true", "false" and "" as boolean aliases.
+  let features: string;
+  if (fontLigatures === true || fontLigatures === "true") {
+    features = '"liga" on, "calt" on';
+  } else if (fontLigatures === false || fontLigatures === "false" || fontLigatures === "") {
+    features = '"liga" off, "calt" off';
+  } else {
+    features = fontLigatures;
+  }
   return {
     "--code-font-family": fontFamily,
-    // VS Code also accepts the strings "true", "false" and "" as boolean aliases.
-    "--code-font-features":
-      fontLigatures === true || fontLigatures === "true"
-        ? '"liga" on, "calt" on'
-        : fontLigatures === false || fontLigatures === "false" || fontLigatures === ""
-          ? '"liga" off, "calt" off'
-          : fontLigatures,
+    "--code-font-features": features,
   };
 }

@@ -8,6 +8,20 @@ let running: {
   force: boolean;
   promise: Promise<void>;
 } | null = null;
+function applyGitSnapshot(cache: DirectoryCache, gitState: GitSnapshot) {
+  if (
+    !cache.disposed &&
+    gitState.root &&
+    directoryPath(gitState.root).toLowerCase() === directoryPath(cache.root).toLowerCase() &&
+    (cache.session === null || cache.session === gitState.session)
+  ) {
+    if (gitState.warnings.length) {
+      notify(gitState.warnings.join("\n"));
+    } else {
+      setApp({ gitState });
+    }
+  }
+}
 export function refreshGit(cache: DirectoryCache | null, force = false): Promise<void> {
   if (!cache) {
     return Promise.resolve();
@@ -31,19 +45,7 @@ export function refreshGit(cache: DirectoryCache | null, force = false): Promise
             session: cache.session,
             ...(force ? { force } : {}),
           });
-          if (
-            !cache.disposed &&
-            gitState.root &&
-            directoryPath(gitState.root).toLowerCase() ===
-              directoryPath(cache.root).toLowerCase() &&
-            (cache.session === null || cache.session === gitState.session)
-          ) {
-            if (gitState.warnings.length) {
-              notify(gitState.warnings.join("\n"));
-            } else {
-              setApp({ gitState });
-            }
-          }
+          applyGitSnapshot(cache, gitState);
         } catch (error) {
           if (!cache.disposed) {
             notify(errorMessage(error));

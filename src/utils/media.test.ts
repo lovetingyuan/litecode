@@ -60,10 +60,13 @@ describe("Media preview behavior", () => {
   it("steps through zoom levels and clamps wheel zoom", () => {
     expect(stepScale(1, 1)).toBe(1.5);
     expect(stepScale(1.5, -1)).toBe(1);
+    // eslint-disable-next-line sonarjs/no-floating-point-equality -- These scale limits are exact predefined steps; approximate assertions would weaken the boundary test.
     expect(stepScale(0.137, 1)).toBe(0.2);
     expect(stepScale(20, 1)).toBe(20);
+    // eslint-disable-next-line sonarjs/no-floating-point-equality -- These scale limits are exact predefined steps; approximate assertions would weaken the boundary test.
     expect(stepScale(0.1, -1)).toBe(0.1);
     expect(clampScale(25)).toBe(20);
+    // eslint-disable-next-line sonarjs/no-floating-point-equality -- These scale limits are exact predefined steps; approximate assertions would weaken the boundary test.
     expect(clampScale(0.01)).toBe(0.1);
   });
   it("defaults legacy documents to text and SVGs to image with group-local overrides", () => {

@@ -70,6 +70,7 @@ describe("remoteWebUrl", () => {
     "C:/repos/repo.git",
     "C:repo.git",
     "\\\\server\\repo.git",
+    // eslint-disable-next-line sonarjs/publicly-writable-directories -- Fixture only: local filesystem addresses must be rejected without accessing disk.
     "/tmp/repo.git",
     "../repo.git",
     "file:///tmp/repo.git",
@@ -81,6 +82,7 @@ describe("remoteWebUrl", () => {
     "https://github.com/",
     "ssh://git@host/",
     "https:github.com/owner/repo",
+    // eslint-disable-next-line sonarjs/no-clear-text-protocols -- Fixture only: verify that unsupported FTP addresses are rejected.
     "ftp://host/repo.git",
   ])("rejects unsupported or invalid address %s", (address) => {
     expect(remoteWebUrl(address)).toBeNull();
@@ -117,6 +119,7 @@ describe("preferredRemoteUrl", () => {
   it("skips a preferred remote with no web address", () => {
     expect(
       preferredRemoteUrl({
+        // eslint-disable-next-line sonarjs/publicly-writable-directories -- Fixture only: local filesystem addresses must be rejected without accessing disk.
         remotes: [origin, remote("local", "/tmp/repo")],
         upstream: "local/main",
       }),
@@ -131,6 +134,7 @@ describe("preferredRemoteUrl", () => {
     ).toBe("https://github.com/me/repo");
     expect(
       preferredRemoteUrl({
+        // eslint-disable-next-line sonarjs/publicly-writable-directories -- Fixture only: local filesystem addresses must be rejected without accessing disk.
         remotes: [remote("origin", "/tmp/repo", upstream.fetch)],
         upstream: null,
       }),

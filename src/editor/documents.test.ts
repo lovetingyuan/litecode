@@ -1209,13 +1209,13 @@ describe("Workspace switches", () => {
           if (command === stage) {
             throw new Error("Open failed");
           }
-          return (
-            command === "open_workspace"
-              ? true
-              : command === "configuration"
-                ? configuration
-                : undefined
-          ) as never;
+          if (command === "open_workspace") {
+            return true as never;
+          } else if (command === "configuration") {
+            return configuration as never;
+          } else {
+            return undefined as never;
+          }
         });
       }
       await expect(openFolder(false, "C:/next")).rejects.toThrow("Open failed");
@@ -1288,14 +1288,15 @@ describe("Workspace switches", () => {
     const { id } = setup(true);
     const pending = deferred<boolean>();
     vi.mocked(ask).mockResolvedValueOnce("Don't Save");
-    vi.mocked(call).mockImplementation(
-      async (command) =>
-        (command === "open_workspace"
-          ? pending.promise
-          : command === "configuration"
-            ? configuration
-            : undefined) as never,
-    );
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "open_workspace") {
+        return pending.promise as never;
+      } else if (command === "configuration") {
+        return configuration as never;
+      } else {
+        return undefined as never;
+      }
+    });
     const before = useApp.getState();
     const opening = openFolder(false, "C:/next");
     await vi.waitFor(() => expect(commandCalls("open_workspace")).toHaveLength(1));
@@ -1473,14 +1474,15 @@ describe("Workspace switches", () => {
       setup();
       setApp({ root, settings: { "editor.fontSize": 14, "editor.lineHeight": 20 } });
       const settings = { "editor.fontSize": 18, "editor.lineHeight": 30 };
-      vi.mocked(call).mockImplementation(
-        async (command) =>
-          (command === "open_workspace"
-            ? true
-            : command === "configuration"
-              ? { settings, keybindings: null }
-              : undefined) as never,
-      );
+      vi.mocked(call).mockImplementation(async (command) => {
+        if (command === "open_workspace") {
+          return true as never;
+        } else if (command === "configuration") {
+          return { settings, keybindings: null } as never;
+        } else {
+          return undefined as never;
+        }
+      });
       vi.mocked(refreshTree).mockImplementationOnce(async () => {
         expect(useApp.getState()).toMatchObject({ root: "C:/next", settings, keybindings: [] });
         expect(stopLanguages).toHaveBeenCalledOnce();
@@ -1782,13 +1784,15 @@ describe("Media documents", () => {
     },
   );
   it("preserves the SVG buffer, dirty flag and independent group modes through backup", async () => {
-    vi.mocked(call).mockImplementation(async (command) =>
-      command === "inspect_file"
-        ? ({ kind: "svg", size: 20, stamp: "one" } as never)
-        : command === "read_document"
-          ? ({ text: "<svg/>", encoding: "utf8", eol: "LF", revision: "svg" } as never)
-          : (undefined as never),
-    );
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "inspect_file") {
+        return { kind: "svg", size: 20, stamp: "one" } as never;
+      } else if (command === "read_document") {
+        return { text: "<svg/>", encoding: "utf8", eol: "LF", revision: "svg" } as never;
+      } else {
+        return undefined as never;
+      }
+    });
     const buffer = new Buffer("<svg/>");
     vi.mocked(monaco.editor.createModel).mockReturnValueOnce(
       buffer as unknown as Monaco.editor.ITextModel,

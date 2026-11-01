@@ -37,6 +37,37 @@ const visibleQuickPath = (path: string) =>
     .replace(/\\/g, "/")
     .replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
 
+function quickFileSiblings(
+  paths: string[],
+  relative: (path: string) => string,
+  workspace: boolean,
+  base: string | null,
+  expression: IExpression,
+) {
+  const siblings = new Set<string>();
+  if (!Object.values(expression).some((rule) => typeof rule === "object")) {
+    return siblings;
+  }
+  {
+    for (const path of paths) {
+      let value = visibleQuickPath(path);
+      while (value) {
+        siblings.add(value);
+        siblings.add(relative(value));
+        if (workspace && base) {
+          siblings.add(base + value);
+        }
+        const slash = value.lastIndexOf("/");
+        if (slash < 0) {
+          break;
+        }
+        value = value.slice(0, slash);
+      }
+    }
+  }
+  return siblings;
+}
+
 export function filterQuickFiles(
   paths: string[],
   excludes: IExpression,
@@ -58,24 +89,7 @@ export function filterQuickFiles(
       : path.startsWith(base);
     return within ? path.slice(base.length) : path;
   };
-  const siblings = new Set<string>();
-  if (Object.values(expression).some((rule) => typeof rule === "object")) {
-    for (const path of paths) {
-      let value = visibleQuickPath(path);
-      while (value) {
-        siblings.add(value);
-        siblings.add(relative(value));
-        if (workspace && base) {
-          siblings.add(base + value);
-        }
-        const slash = value.lastIndexOf("/");
-        if (slash < 0) {
-          break;
-        }
-        value = value.slice(0, slash);
-      }
-    }
-  }
+  const siblings = quickFileSiblings(paths, relative, workspace, base, expression);
   const excluded = (path: string) => {
     const slash = path.lastIndexOf("/");
     return !!match(path, path.slice(slash + 1), (name) =>

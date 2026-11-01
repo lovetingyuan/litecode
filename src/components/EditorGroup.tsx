@@ -42,7 +42,7 @@ import { FileIcon, Icon, IconButton } from "./ui";
 export { FileIcon } from "./ui";
 import { createSearchEditor } from "../search/search";
 import { EditorTabMenu } from "./EditorTabMenu";
-import type { Group, Query, SearchMatch } from "../types/types";
+import type { Doc, Group, Query, SearchMatch } from "../types/types";
 import { isGitConflicted, isGitIgnored } from "../utils/gitStatus";
 import { isMarkdownView, isTextView } from "../utils/media";
 import { MediaPreview } from "./MediaPreview";
@@ -55,7 +55,7 @@ const MarkdownPreview = lazy(() =>
   import("./MarkdownPreview").then((module) => ({ default: module.MarkdownPreview })),
 );
 
-export function EditorGroup({ group }: { group: Group }) {
+export function EditorGroup({ group }: Readonly<{ group: Group }>) {
   const docs = useApp((s) => s.docs);
   const activeGroup = useApp((s) => s.activeGroup);
   const settings = useApp((s) => s.settings);
@@ -162,7 +162,7 @@ export function EditorGroup({ group }: { group: Group }) {
           return;
         }
         const line = m.getLineContent(event.target.position.lineNumber);
-        const match = line.match(/^\s+(\d+):(\d+):/);
+        const match = /^\s+(\d+):(\d+):/.exec(line);
         if (!match) {
           return;
         }
@@ -248,6 +248,25 @@ export function EditorGroup({ group }: { group: Group }) {
       }
     }
   }
+  function renderTabCloseButton(tab: Doc, id: string, sticky: boolean) {
+    return (
+      <button
+        className={`tab-close w-5 h-5 p-[2px] flex items-center justify-center invisible ${editorStyles["tab-close"]} ${tab.dirty ? "dirty" : ""} ${sticky ? "tab-unpin" : ""}`}
+        title={`${sticky ? "Unpin" : "Close"} ${tab.name}`}
+        aria-label={`${sticky ? "Unpin" : "Close"} ${tab.name}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (sticky) {
+            setSticky(id, group.id, false);
+          } else {
+            void closeDocument(id, group.id).catch((e) => notify(errorMessage(e)));
+          }
+        }}
+      >
+        <Icon name={(sticky && "pinned") || (tab.dirty && "primitive-dot") || "close"} />
+      </button>
+    );
+  }
   return (
     <section
       data-group-id={group.id}
@@ -294,6 +313,7 @@ export function EditorGroup({ group }: { group: Group }) {
       <div
         className={`tabs-toolbar relative h-[35px] min-h-[35px] justify-between border-b border-b-panel ${group.tabs.length === 0 ? "hidden" : "flex"} ${editorStyles["tabs-toolbar"]}`}
         onDoubleClick={(event) => {
+          // eslint-disable-next-line sonarjs/different-types-comparison -- Compare shared runtime object identities; structural typings do not make these references distinct.
           if (event.target !== event.currentTarget && event.target !== tabs.current) {
             return;
           }
@@ -382,21 +402,7 @@ export function EditorGroup({ group }: { group: Group }) {
                       !
                     </span>
                   )}
-                  <button
-                    className={`tab-close w-5 h-5 p-[2px] flex items-center justify-center invisible ${editorStyles["tab-close"]} ${tab.dirty ? "dirty" : ""} ${sticky ? "tab-unpin" : ""}`}
-                    title={`${sticky ? "Unpin" : "Close"} ${tab.name}`}
-                    aria-label={`${sticky ? "Unpin" : "Close"} ${tab.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (sticky) {
-                        setSticky(id, group.id, false);
-                      } else {
-                        void closeDocument(id, group.id).catch((e) => notify(errorMessage(e)));
-                      }
-                    }}
-                  >
-                    <Icon name={sticky ? "pinned" : tab.dirty ? "primitive-dot" : "close"} />
-                  </button>
+                  {renderTabCloseButton(tab, id, sticky)}
                 </div>
               </EditorTabMenu>
             );
@@ -544,10 +550,10 @@ function syncCursor(editor: monaco.editor.IStandaloneCodeEditor, groupId: string
 export function EditorTabsScrollbar({
   viewportRef,
   tabIds,
-}: {
+}: Readonly<{
   viewportRef: RefObject<HTMLDivElement | null>;
   tabIds: string[];
-}) {
+}>) {
   const track = useRef<HTMLDivElement>(null);
   const thumb = useRef<HTMLDivElement>(null);
   const dragOffset = useRef<number | null>(null);
@@ -581,12 +587,14 @@ export function EditorTabsScrollbar({
         return;
       }
       event.preventDefault();
-      const unit =
-        event.deltaMode === WheelEvent.DOM_DELTA_LINE
-          ? element.clientHeight
-          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-            ? element.clientWidth
-            : 1;
+      let unit;
+      if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+        unit = element.clientHeight;
+      } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+        unit = element.clientWidth;
+      } else {
+        unit = 1;
+      }
       element.scrollLeft += event.deltaY * unit;
     };
     element.addEventListener("scroll", update, { passive: true });
@@ -655,7 +663,7 @@ export function EditorTabsScrollbar({
   );
 }
 
-function SearchEditorBar({ id, query }: { id: string; query: Query }) {
+function SearchEditorBar({ id, query }: Readonly<{ id: string; query: Query }>) {
   const input = useRef<HTMLInputElement>(null);
   const current = useRef<string | null>(null);
   useEffect(

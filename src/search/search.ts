@@ -213,6 +213,42 @@ export {
   recoverInterruptedReplacements,
 } from "./replacements";
 
+function appendSearchContext(lines: string[], hits: SearchMatch[], context: number, text: string) {
+  const source = text.split(/\r?\n/);
+  const included = new Set<number>();
+  for (const hit of hits) {
+    for (
+      let n = Math.max(1, hit.line - context);
+      n <= Math.min(source.length, hit.endLine + context);
+      n++
+    ) {
+      included.add(n);
+    }
+  }
+  let previous = 0;
+  for (const n of [...included].sort((a, b) => a - b)) {
+    if (previous && n > previous + 1) {
+      lines.push("  …");
+    }
+    const hit = hits.find((h) => h.line === n);
+    lines.push(hit ? `  ${n}:${hit.column}: ${source[n - 1]}` : `  ${n}: ${source[n - 1]}`);
+    previous = n;
+  }
+}
+
+function searchContextDocument(path: string, hits: SearchMatch[]) {
+  const doc = hits[0].documentId
+    ? useApp.getState().docs[hits[0].documentId]
+    : Object.values(useApp.getState().docs).find(
+        (d) => d.path && normalize(d.path) === normalize(path),
+      );
+  if (doc && !isTextDocument(doc)) {
+    throw new Error("This file is no longer a text document.");
+  }
+
+  return doc;
+}
+
 export async function createSearchEditor(
   query = searchSession()!.query,
   matches = searchSession()!.results,
@@ -227,7 +263,8 @@ export async function createSearchEditor(
   for (const match of matches) {
     let hits = files.get(match.path);
     if (!hits) {
-      files.set(match.path, (hits = []));
+      hits = [];
+      files.set(match.path, hits);
     }
     hits.push(match);
   }
@@ -241,37 +278,11 @@ export async function createSearchEditor(
       continue;
     }
     try {
-      const doc = hits[0].documentId
-        ? useApp.getState().docs[hits[0].documentId]
-        : Object.values(useApp.getState().docs).find(
-            (d) => d.path && normalize(d.path) === normalize(path),
-          );
-      if (doc && !isTextDocument(doc)) {
-        throw new Error("This file is no longer a text document.");
-      }
+      const doc = searchContextDocument(path, hits);
       const text = doc
         ? models.get(doc.id)!.getValue()
         : (await call<DiskDocument>("read_document", { path })).text;
-      const source = text.split(/\r?\n/);
-      const included = new Set<number>();
-      for (const hit of hits) {
-        for (
-          let n = Math.max(1, hit.line - context);
-          n <= Math.min(source.length, hit.endLine + context);
-          n++
-        ) {
-          included.add(n);
-        }
-      }
-      let previous = 0;
-      for (const n of [...included].sort((a, b) => a - b)) {
-        if (previous && n > previous + 1) {
-          lines.push("  …");
-        }
-        const hit = hits.find((h) => h.line === n);
-        lines.push(hit ? `  ${n}:${hit.column}: ${source[n - 1]}` : `  ${n}: ${source[n - 1]}`);
-        previous = n;
-      }
+      appendSearchContext(lines, hits, context, text);
     } catch (e) {
       lines.push(`  # Context unavailable: ${errorMessage(e)}`);
     }

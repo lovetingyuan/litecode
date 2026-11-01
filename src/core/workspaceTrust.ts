@@ -1,3 +1,4 @@
+import type { TrustRetry } from "../types/workspaceTrust";
 import { call } from "./bridge";
 import { ask } from "../components/dialog";
 import { useApp } from "../store/store";
@@ -7,6 +8,7 @@ const restricted = new Set<string>();
 const prompts = new Map<string, { controller: AbortController; pending: Promise<boolean> }>();
 
 export function rememberWorkspaceTrust(root: string, isRestricted: boolean) {
+  // eslint-disable-next-line sonarjs/no-selector-parameter -- This state setter must handle both entering and leaving restricted mode.
   if (isRestricted) {
     restricted.add(root);
   } else {
@@ -124,6 +126,38 @@ function requestFormatterTrust(root: string | null, directory: string, path: unk
   return pending;
 }
 
+function trustRetry(
+  error: unknown,
+  command: string,
+  root: string | null,
+  attempted: Set<string>,
+): TrustRetry {
+  const { code, trustPath } = (error ?? {}) as { code?: string; trustPath?: string };
+  if (useApp.getState().root !== root) {
+    throw error;
+  }
+  if (
+    command === "format_document" &&
+    code === "formatterTrust" &&
+    typeof trustPath === "string" &&
+    trustPath
+  ) {
+    if (attempted.has(trustPath)) {
+      throw error;
+    }
+    attempted.add(trustPath);
+    return { kind: "formatter", path: trustPath };
+  } else if (code === "workspaceTrust" && root && !attempted.has("workspace")) {
+    if (useApp.getState().openingWorkspace != null) {
+      throw error;
+    }
+    attempted.add("workspace");
+    return { kind: "workspace", root };
+  } else {
+    throw error;
+  }
+}
+
 export async function trustedCall<T>(
   command: string,
   args?: Record<string, unknown> | (() => Record<string, unknown>),
@@ -136,32 +170,12 @@ export async function trustedCall<T>(
     try {
       return await call<T>(command, currentArgs);
     } catch (error) {
-      const { code, trustPath } = (error ?? {}) as { code?: string; trustPath?: string };
-      if (useApp.getState().root !== root) {
-        throw error;
-      }
-      if (
-        command === "format_document" &&
-        code === "formatterTrust" &&
-        typeof trustPath === "string" &&
-        trustPath
-      ) {
-        if (attempted.has(trustPath)) {
-          throw error;
-        }
-        attempted.add(trustPath);
-        if (!(await requestFormatterTrust(root, trustPath, currentArgs?.path))) {
-          throw error;
-        }
-      } else if (code === "workspaceTrust" && root && !attempted.has("workspace")) {
-        if (useApp.getState().openingWorkspace != null) {
-          throw error;
-        }
-        attempted.add("workspace");
-        if (!(await requestTrust(root))) {
-          throw error;
-        }
-      } else {
+      const retry = trustRetry(error, command, root, attempted);
+      const trusted =
+        retry.kind === "formatter"
+          ? await requestFormatterTrust(root, retry.path, currentArgs?.path)
+          : await requestTrust(retry.root);
+      if (!trusted) {
         throw error;
       }
       if (useApp.getState().root !== root) {

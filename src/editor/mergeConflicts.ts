@@ -1,32 +1,85 @@
-export type ConflictSpan = { start: number; end: number };
-type ConflictRegion = { header: ConflictSpan; content: ConflictSpan; name: string };
-export type InlineMergeConflict = {
-  range: ConflictSpan;
-  current: ConflictRegion;
-  incoming: ConflictRegion;
-  ancestors: ConflictRegion[];
-};
-export type ConflictChoice = "current" | "incoming" | "both";
+import type {
+  ConflictSpan,
+  ConflictChoice,
+  InlineMergeConflict,
+  PendingConflict,
+} from "../types/mergeConflicts";
+export type { ConflictSpan, ConflictChoice, InlineMergeConflict } from "../types/mergeConflicts";
+
+function conflictLineEnd(text: string, offset: number, newline: number) {
+  let end;
+  if (newline < 0) {
+    end = text.length;
+  } else if (newline > offset && text[newline - 1] === "\r") {
+    end = newline - 1;
+  } else {
+    end = newline;
+  }
+
+  return end;
+}
+
+function appendConflictAncestor(
+  pending: PendingConflict,
+  name: string,
+  header: ConflictSpan,
+  next: number,
+  offset: number,
+) {
+  if (pending.incomingStart !== undefined) {
+    return undefined;
+  } else {
+    const previous = pending.ancestors[pending.ancestors.length - 1] ?? pending.current;
+    previous.content.end = offset;
+    pending.ancestors.push({
+      header,
+      content: { start: next, end: next },
+      name,
+    });
+  }
+  return pending;
+}
+
+function beginIncomingConflict(pending: PendingConflict, next: number, offset: number) {
+  if (pending.incomingStart !== undefined) {
+    return undefined;
+  } else {
+    (pending.ancestors[pending.ancestors.length - 1] ?? pending.current).content.end = offset;
+    pending.incomingStart = next;
+  }
+  return pending;
+}
+
+function appendCompletedConflict(
+  conflicts: InlineMergeConflict[],
+  pending: PendingConflict,
+  header: ConflictSpan,
+  next: number,
+  offset: number,
+  footer: RegExpExecArray,
+) {
+  if (pending.incomingStart !== undefined) {
+    conflicts.push({
+      range: { start: pending.current.header.start, end: next },
+      current: pending.current,
+      ancestors: pending.ancestors,
+      incoming: {
+        header,
+        content: { start: pending.incomingStart, end: offset },
+        name: footer[1] ?? "",
+      },
+    });
+  }
+}
 
 export function parseMergeConflicts(text: string): InlineMergeConflict[] {
   const conflicts: InlineMergeConflict[] = [];
-  let pending:
-    | {
-        current: ConflictRegion;
-        ancestors: ConflictRegion[];
-        incomingStart?: number;
-      }
-    | undefined;
+  let pending: PendingConflict | undefined;
   let offset = 0;
   while (offset < text.length) {
     const newline = text.indexOf("\n", offset);
     const next = newline < 0 ? text.length : newline + 1;
-    const end =
-      newline < 0
-        ? text.length
-        : newline > offset && text[newline - 1] === "\r"
-          ? newline - 1
-          : newline;
+    const end = conflictLineEnd(text, offset, newline);
     const line = text.slice(offset, end);
     const header = { start: offset, end };
     const start = /^<<<<<<<(?: (.*))?$/.exec(line);
@@ -41,37 +94,11 @@ export function parseMergeConflicts(text: string): InlineMergeConflict[] {
         ancestors: [],
       };
     } else if (pending && ancestor) {
-      if (pending.incomingStart !== undefined) {
-        pending = undefined;
-      } else {
-        const previous = pending.ancestors[pending.ancestors.length - 1] ?? pending.current;
-        previous.content.end = offset;
-        pending.ancestors.push({
-          header,
-          content: { start: next, end: next },
-          name: ancestor[1] ?? "",
-        });
-      }
+      pending = appendConflictAncestor(pending, ancestor[1] ?? "", header, next, offset);
     } else if (pending && line === "=======") {
-      if (pending.incomingStart !== undefined) {
-        pending = undefined;
-      } else {
-        (pending.ancestors[pending.ancestors.length - 1] ?? pending.current).content.end = offset;
-        pending.incomingStart = next;
-      }
+      pending = beginIncomingConflict(pending, next, offset);
     } else if (pending && footer) {
-      if (pending.incomingStart !== undefined) {
-        conflicts.push({
-          range: { start: pending.current.header.start, end: next },
-          current: pending.current,
-          ancestors: pending.ancestors,
-          incoming: {
-            header,
-            content: { start: pending.incomingStart, end: offset },
-            name: footer[1] ?? "",
-          },
-        });
-      }
+      appendCompletedConflict(conflicts, pending, header, next, offset, footer);
       pending = undefined;
     }
     offset = next;

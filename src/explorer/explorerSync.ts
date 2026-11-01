@@ -1,4 +1,14 @@
 import type { FileTree, FileTreeBatchOperation, FileTreeMutationEvent } from "@pierre/trees";
+function removeCachedDirectory(children: Map<string, Set<string>>, path: string) {
+  if (path.endsWith("/")) {
+    for (const cached of children.keys()) {
+      if (cached === path.slice(0, -1) || cached.startsWith(path)) {
+        children.delete(cached);
+      }
+    }
+  }
+}
+
 /** Reconcile a single directory; unrelated loaded subtrees are never compared. */
 export function createDirectorySync(model: FileTree) {
   const children = new Map<string, Set<string>>();
@@ -38,13 +48,7 @@ export function createDirectorySync(model: FileTree) {
         if (model.getItem(path)) {
           operations.push({ type: "remove", path, recursive: path.endsWith("/") });
         }
-        if (path.endsWith("/")) {
-          for (const cached of children.keys()) {
-            if (cached === path.slice(0, -1) || cached.startsWith(path)) {
-              children.delete(cached);
-            }
-          }
-        }
+        removeCachedDirectory(children, path);
       }
       for (const path of next) {
         if (!model.getItem(path)) {

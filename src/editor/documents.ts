@@ -122,7 +122,7 @@ function isMoving(path: string) {
   return documentMove?.paths.some((source) => withinPath(path, source)) ?? false;
 }
 function withinPath(path: string, parent: string) {
-  const base = normalize(parent).replace(/\/+$/, "");
+  const base = normalize(parent).replace(/(?<!\/)\/+$/, "");
   return normalize(path) === base || normalize(path).startsWith(base + "/");
 }
 
@@ -143,8 +143,12 @@ function movedDocumentPath(path: string, moves: FileMove[]) {
   if (!move) {
     return null;
   }
-  const source = visiblePath(move.from).replace(/\\/g, "/").replace(/\/+$/, "");
-  const destination = visiblePath(move.to).replace(/\\/g, "/").replace(/\/+$/, "");
+  const source = visiblePath(move.from)
+    .replace(/\\/g, "/")
+    .replace(/(?<!\/)\/+$/, "");
+  const destination = visiblePath(move.to)
+    .replace(/\\/g, "/")
+    .replace(/(?<!\/)\/+$/, "");
   return destination + visiblePath(path).replace(/\\/g, "/").slice(source.length);
 }
 
@@ -204,6 +208,7 @@ export const editor = () => {
   const s = useApp.getState();
   const group = s.groups.find((g) => g.id === s.activeGroup);
   const doc = group?.active ? s.docs[group.active] : undefined;
+  // eslint-disable-next-line sonarjs/no-empty-collection -- EditorGroup and GitDiffEditor populate these exported maps in other modules.
   return doc && !isTextView(doc, group) && !doc.gitDiff ? undefined : editors.get(s.activeGroup);
 };
 export const model = (id = activeDoc()?.id): monaco.editor.ITextModel | undefined => {
@@ -231,6 +236,7 @@ export function focusDocument(groupId = useApp.getState().activeGroup) {
   const group = s.groups.find((g) => g.id === groupId);
   const doc = group?.active ? s.docs[group.active] : undefined;
   if (!doc || isTextView(doc, group) || doc.gitDiff) {
+    // eslint-disable-next-line sonarjs/no-empty-collection -- EditorGroup and GitDiffEditor populate these exported maps in other modules.
     editors.get(groupId)?.focus();
   } else if (typeof document !== "undefined") {
     const preview = document.querySelector<HTMLElement>(
@@ -260,10 +266,12 @@ export function saveEditorView(
 function saveEditorViews() {
   const s = useApp.getState();
   const groups = s.groups.map((g) => {
+    // eslint-disable-next-line sonarjs/no-empty-collection -- EditorGroup and GitDiffEditor populate these exported maps in other modules.
     const diff = diffEditors.get(g.id);
     if (g.active && s.docs[g.active]?.gitDiff && diff) {
       return { ...g, views: { ...g.views, [g.active]: diff.editor.saveViewState() } };
     }
+    // eslint-disable-next-line sonarjs/no-empty-collection -- EditorGroup and GitDiffEditor populate these exported maps in other modules.
     const e = editors.get(g.id);
     if (g.active && e && s.docs[g.active] && isTextView(s.docs[g.active], g)) {
       return { ...g, views: { ...g.views, [g.active]: e.saveViewState() } };
@@ -298,6 +306,23 @@ export function session(): Session {
   };
 }
 
+async function drainDocumentOperation() {
+  if (documentMove) {
+    const result = await documentMove.done;
+    if (result.error !== undefined) {
+      throw result.error;
+    }
+  } else {
+    await Promise.allSettled(saveQueues.values());
+  }
+}
+
+function checkMoveFailures(firstMove: number) {
+  if (lastMoveFailure && lastMoveFailure.sequence > firstMove) {
+    throw lastMoveFailure.error;
+  }
+}
+
 export async function checkpoint(options: { waitForMoves?: boolean } = {}) {
   if (!desktop) {
     return;
@@ -308,18 +333,9 @@ export async function checkpoint(options: { waitForMoves?: boolean } = {}) {
       // Never put a barrier-waiting job inside checkpointQueue: a move drains
       // that queue before changing disk paths.
       while (documentMove || saveQueues.size) {
-        if (documentMove) {
-          const result = await documentMove.done;
-          if (result.error !== undefined) {
-            throw result.error;
-          }
-        } else {
-          await Promise.allSettled(saveQueues.values());
-        }
+        await drainDocumentOperation();
       }
-      if (lastMoveFailure && lastMoveFailure.sequence > firstMove) {
-        throw lastMoveFailure.error;
-      }
+      checkMoveFailures(firstMove);
     } else if (documentMove) {
       return;
     }
@@ -373,11 +389,12 @@ function queueDocumentSnapshot(automatic: boolean) {
 }
 
 export function closeWindowWithRecovery(destroy: () => Promise<void>) {
-  return (windowClose ??= checkpoint({ waitForMoves: true })
+  windowClose ??= checkpoint({ waitForMoves: true })
     .then(destroy)
     .finally(() => {
       windowClose = undefined;
-    }));
+    });
+  return windowClose;
 }
 export function scheduleBackup() {
   sessionBackupDue = Date.now() + 400;
@@ -543,94 +560,82 @@ export async function openPath(path: string, options: OpenPathOptions = {}): Pro
   }
 }
 
-async function openDocumentPath(
-  path: string,
-  options: OpenPathOptions,
-  sequence: number,
-  current: () => boolean,
-): Promise<string> {
-  const existing = Object.values(useApp.getState().docs).find(
-    (d) => d.path && normalize(d.path) === normalize(path),
-  );
-  let id = existing?.id;
-  if (!id) {
-    const fileInfo = await call<FileInfo>("inspect_file", { path });
+async function readOpeningDocument(path: string, options: OpenPathOptions, current: () => boolean) {
+  const fileInfo = await call<FileInfo>("inspect_file", { path });
+  if (!current()) {
+    throw new Error("The workspace changed before the file opened.");
+  }
+  let kind = fileInfo.kind;
+  let disk: DiskDocument | undefined;
+  try {
+    if (kind === "text" || kind === "svg") {
+      disk = await call<DiskDocument>("read_document", { path, force: options.force ?? false });
+    }
+  } catch (e) {
     if (!current()) {
       throw new Error("The workspace changed before the file opened.");
     }
-    let kind = fileInfo.kind;
-    let disk: DiskDocument | undefined;
-    try {
-      if (kind === "text" || kind === "svg") {
-        disk = await call<DiskDocument>("read_document", { path, force: options.force ?? false });
-      }
-    } catch (e) {
+    if (
+      (e as { code?: string }).code === "largeFile" &&
+      (await ask("Open large file?", errorMessage(e), ["Open Anyway", "Cancel"])) === "Open Anyway"
+    ) {
       if (!current()) {
         throw new Error("The workspace changed before the file opened.");
       }
-      if (
-        (e as { code?: string }).code === "largeFile" &&
-        (await ask("Open large file?", errorMessage(e), ["Open Anyway", "Cancel"])) ===
-          "Open Anyway"
-      ) {
-        if (!current()) {
-          throw new Error("The workspace changed before the file opened.");
-        }
-        return openPath(path, { ...options, force: true });
-      }
-      if (["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
-        kind = "binary";
-      } else {
-        throw e;
-      }
+      return { retry: await openPath(path, { ...options, force: true }) };
     }
-    // The read may have started before a disk move. Never attach its stale bytes
-    // to a URI now owned by a moved document, even if the move already finished.
-    if (!current()) {
-      throw new Error("The workspace changed before the file opened.");
-    }
-    if (sequence !== moveSequence) {
-      return openPath(path, options);
-    }
-    const duplicate = Object.values(useApp.getState().docs).find(
-      (d) => d.path && normalize(d.path) === normalize(path),
-    );
-    if (duplicate) {
-      id = duplicate.id;
+    if (["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
+      kind = "binary";
     } else {
-      id = `document:${crypto.randomUUID()}`;
-      const language = languageFor(path);
-      const doc: Doc = {
-        id,
-        path,
-        name: basename(path),
-        language,
-        kind,
-        fileInfo: { ...fileInfo, kind },
-        encoding: disk?.encoding ?? "utf8",
-        eol: disk?.eol ?? "LF",
-        dirty: false,
-        version: 1,
-        revision: disk?.revision ?? null,
-        large: options.force,
-      };
-      if (disk) {
-        attachDocument(doc, disk.text);
-      } else {
-        attachPreviewDocument(doc);
-      }
-      if (disk && path.endsWith(".code-search")) {
-        try {
-          const query = JSON.parse(disk.text.split("\n")[0].replace(/^# Query: /, ""));
-          patchDoc(id, { searchQuery: query });
-        } catch {
-          notify(
-            "This Search Editor file has an invalid query header. Its text is still available for editing.",
-          );
-        }
-      }
+      throw e;
     }
   }
+
+  return { fileInfo, kind, disk, retry: undefined };
+}
+
+function createOpenedDocument(
+  path: string,
+  options: OpenPathOptions,
+  fileInfo: FileInfo,
+  kind: FileInfo["kind"],
+  disk: DiskDocument | undefined,
+) {
+  const id = `document:${crypto.randomUUID()}`;
+  const language = languageFor(path);
+  const doc: Doc = {
+    id,
+    path,
+    name: basename(path),
+    language,
+    kind,
+    fileInfo: { ...fileInfo, kind },
+    encoding: disk?.encoding ?? "utf8",
+    eol: disk?.eol ?? "LF",
+    dirty: false,
+    version: 1,
+    revision: disk?.revision ?? null,
+    large: options.force,
+  };
+  if (disk) {
+    attachDocument(doc, disk.text);
+  } else {
+    attachPreviewDocument(doc);
+  }
+  if (disk && path.endsWith(".code-search")) {
+    try {
+      const query = JSON.parse(disk.text.split("\n")[0].replace(/^# Query: /, ""));
+      patchDoc(id, { searchQuery: query });
+    } catch {
+      notify(
+        "This Search Editor file has an invalid query header. Its text is still available for editing.",
+      );
+    }
+  }
+  return id;
+}
+
+function organizeOpenedSettings(id: string, path: string) {
   const state = useApp.getState();
   if (
     (state.dataDir && normalize(path) === normalize(join(state.dataDir, "settings.json"))) ||
@@ -650,6 +655,42 @@ async function openDocumentPath(
       }
     }
   }
+}
+
+async function openDocumentPath(
+  path: string,
+  options: OpenPathOptions,
+  sequence: number,
+  current: () => boolean,
+): Promise<string> {
+  const existing = Object.values(useApp.getState().docs).find(
+    (d) => d.path && normalize(d.path) === normalize(path),
+  );
+  let id = existing?.id;
+  if (!id) {
+    const opened = await readOpeningDocument(path, options, current);
+    if (opened.retry !== undefined) {
+      return opened.retry;
+    }
+    const { fileInfo, kind, disk } = opened;
+    // The read may have started before a disk move. Never attach its stale bytes
+    // to a URI now owned by a moved document, even if the move already finished.
+    if (!current()) {
+      throw new Error("The workspace changed before the file opened.");
+    }
+    if (sequence !== moveSequence) {
+      return openPath(path, options);
+    }
+    const duplicate = Object.values(useApp.getState().docs).find(
+      (d) => d.path && normalize(d.path) === normalize(path),
+    );
+    if (duplicate) {
+      id = duplicate.id;
+    } else {
+      id = createOpenedDocument(path, options, fileInfo, kind, disk);
+    }
+  }
+  organizeOpenedSettings(id, path);
   if (options.reveal !== false) {
     showDocument(id, options);
   }
@@ -756,11 +797,23 @@ export function showDocument(
       if (!tabs.includes(id)) {
         tabs.push(id);
       }
+      let preview;
+      if (pinned) {
+        if (g.preview === id) {
+          preview = null;
+        } else {
+          preview = g.preview;
+        }
+      } else if (existing) {
+        preview = g.preview;
+      } else {
+        preview = id;
+      }
       return {
         ...g,
         tabs,
         active: options.background ? g.active : id,
-        preview: pinned ? (g.preview === id ? null : g.preview) : existing ? g.preview : id,
+        preview: preview,
       };
     }),
     activeGroup: options.background ? s.activeGroup : groupId,
@@ -790,6 +843,7 @@ export function showDocument(
   if (!options.background) {
     addHistory({ id, line: options.line ?? 1, column: options.column ?? 1 });
     requestAnimationFrame(() => {
+      // eslint-disable-next-line sonarjs/no-empty-collection -- EditorGroup and GitDiffEditor populate these exported maps in other modules.
       const e = editors.get(groupId);
       if (e && options.line) {
         e.setPosition({ lineNumber: options.line, column: options.column ?? 1 });
@@ -812,7 +866,14 @@ export async function autoSave(reason: AutoSaveMode, id?: string) {
   if (current !== mode) {
     return;
   }
-  const ids = reason === "onWindowChange" ? Object.keys(useApp.getState().docs) : id ? [id] : [];
+  let ids: string[];
+  if (reason === "onWindowChange") {
+    ids = Object.keys(useApp.getState().docs);
+  } else if (id) {
+    ids = [id];
+  } else {
+    ids = [];
+  }
   for (const documentId of ids) {
     try {
       await saveDocument(documentId, false, mode);
@@ -855,6 +916,167 @@ async function queueDocumentOperation(id: string, operation: () => Promise<void>
   }
 }
 
+function reloadSavedDocument(
+  id: string,
+  m: monaco.editor.ITextModel,
+  disk: DiskDocument,
+  fileInfo: Doc["fileInfo"],
+) {
+  m.pushStackElement();
+  m.pushEditOperations([], [{ range: m.getFullModelRange(), text: disk.text }], () => null);
+  if (m.getEOL() !== (disk.eol === "CRLF" ? "\r\n" : "\n")) {
+    m.pushEOL(
+      disk.eol === "CRLF"
+        ? monaco.editor.EndOfLineSequence.CRLF
+        : monaco.editor.EndOfLineSequence.LF,
+    );
+  }
+  m.pushStackElement();
+  savedVersions.set(id, m.getAlternativeVersionId());
+  savedEncodings.set(id, disk.encoding);
+  patchDoc(id, {
+    dirty: false,
+    revision: disk.revision,
+    encoding: disk.encoding,
+    eol: disk.eol,
+    fileInfo,
+    conflict: false,
+    deleted: false,
+  });
+  scheduleBackup();
+}
+
+async function selectSaveDestination(id: string) {
+  let path: string | null;
+  let revision: string | null;
+  path = await call<string | null>("pick_path", { kind: "save" });
+  if (!path) {
+    return;
+  }
+  if (
+    Object.values(useApp.getState().docs).some(
+      (other) => other.id !== id && other.path && normalize(other.path) === normalize(path!),
+    )
+  ) {
+    throw new Error(
+      "This destination is already open in another editor. Close that editor before using Save As.",
+    );
+  }
+  try {
+    const disk = await call<DiskDocument>("read_document", { path, force: true });
+    if ((await ask("Replace existing file?", path, ["Replace", "Cancel"])) !== "Replace") {
+      return;
+    }
+    revision = disk.revision;
+  } catch (e) {
+    if ((e as { code?: string }).code !== "notFound") {
+      throw e;
+    }
+    revision = null;
+  }
+  return { path, revision };
+}
+
+async function persistDocument(
+  id: string,
+  doc: Doc,
+  m: monaco.editor.ITextModel,
+  path: string,
+  revision: Doc["revision"],
+  saveAs: boolean,
+  autoSaveMode: AutoSaveMode | undefined,
+  resolution: Parameters<typeof saveDocument>[3],
+) {
+  const version = doc.version;
+  const alternativeVersion = m.getAlternativeVersionId();
+  const savingModel = m;
+  const epoch = documentEpoch;
+  try {
+    const newRevision = await saveWithElevation(
+      { id, version, path, text: m.getValue(), encoding: doc.encoding, revision },
+      {
+        automatic: !!autoSaveMode,
+        isCurrent: () => {
+          const current = useApp.getState().docs[id];
+          return (
+            documentEpoch === epoch &&
+            models.get(id) === savingModel &&
+            current?.path === doc.path &&
+            current?.version === version &&
+            current?.encoding === doc.encoding &&
+            current?.revision === doc.revision &&
+            savingModel.getAlternativeVersionId() === alternativeVersion
+          );
+        },
+      },
+    );
+    savedVersions.set(id, alternativeVersion);
+    savedEncodings.set(id, doc.encoding);
+    patchDoc(id, {
+      path,
+      name: basename(path),
+      revision: newRevision,
+      dirty:
+        alternativeVersion !== m.getAlternativeVersionId() ||
+        useApp.getState().docs[id]?.encoding !== doc.encoding,
+      conflict: false,
+      deleted: false,
+    });
+    if (doc.kind === "svg") {
+      const fileInfo = await call<FileInfo>("inspect_file", { path });
+      patchDoc(id, { fileInfo });
+    }
+    if (saveAs || !doc.path) {
+      rebindDocument(id, path);
+      m = models.get(id)!;
+    }
+    const s = useApp.getState();
+    const shortcuts = normalize(path) === normalize(join(s.dataDir, "keybindings.json"));
+    if (
+      shortcuts ||
+      normalize(path) === normalize(join(s.dataDir, "settings.json")) ||
+      (s.root && normalize(path) === normalize(join(s.root, ".litecode/settings.json")))
+    ) {
+      try {
+        parseConfiguration(m.getValue(), shortcuts);
+        const config = await call<{
+          settings: Record<string, unknown>;
+          keybindings: import("../types/types").Keybinding[] | null;
+        }>("configuration");
+        setApp({ settings: config.settings, keybindings: config.keybindings ?? [] });
+      } catch (e) {
+        notify(`Configuration was saved but not activated: ${errorMessage(e)}`);
+      }
+    }
+    await checkpoint();
+  } catch (e) {
+    if ((e as { code?: string }).code === "conflict") {
+      patchDoc(id, { conflict: true });
+      if (!autoSaveMode && !resolution) {
+        await compareDisk(id);
+      }
+    }
+    throw e;
+  }
+}
+
+function checkConflictSnapshot(context: ConflictContext, disk: DiskDocument) {
+  checkConflictContext(context);
+  if (disk.revision !== context.revision) {
+    throw changedConflict();
+  }
+}
+
+function skipAutomaticSave(doc: Doc, autoSaveMode: AutoSaveMode | undefined) {
+  return (
+    autoSaveMode &&
+    (useApp.getState().settings["files.autoSave"] !== autoSaveMode ||
+      !doc.path ||
+      !doc.dirty ||
+      doc.conflict)
+  );
+}
+
 async function saveDocument(
   id: string | undefined,
   saveAs: boolean,
@@ -873,13 +1095,7 @@ async function saveDocument(
     if (!doc || !m || !isTextDocument(doc)) {
       return;
     }
-    if (
-      autoSaveMode &&
-      (useApp.getState().settings["files.autoSave"] !== autoSaveMode ||
-        !doc.path ||
-        !doc.dirty ||
-        doc.conflict)
-    ) {
+    if (skipAutomaticSave(doc, autoSaveMode)) {
       return;
     }
     let path = doc.path;
@@ -895,63 +1111,20 @@ async function saveDocument(
         doc.kind === "svg"
           ? await call<FileInfo>("inspect_file", { path: context.path })
           : doc.fileInfo;
-      checkConflictContext(context);
-      if (disk.revision !== context.revision) {
-        throw changedConflict();
-      }
+      checkConflictSnapshot(context, disk);
       if (action === "reload") {
-        m.pushStackElement();
-        m.pushEditOperations([], [{ range: m.getFullModelRange(), text: disk.text }], () => null);
-        if (m.getEOL() !== (disk.eol === "CRLF" ? "\r\n" : "\n")) {
-          m.pushEOL(
-            disk.eol === "CRLF"
-              ? monaco.editor.EndOfLineSequence.CRLF
-              : monaco.editor.EndOfLineSequence.LF,
-          );
-        }
-        m.pushStackElement();
-        savedVersions.set(id, m.getAlternativeVersionId());
-        savedEncodings.set(id, disk.encoding);
-        patchDoc(id, {
-          dirty: false,
-          revision: disk.revision,
-          encoding: disk.encoding,
-          eol: disk.eol,
-          fileInfo,
-          conflict: false,
-          deleted: false,
-        });
-        scheduleBackup();
+        reloadSavedDocument(id, m, disk, fileInfo);
         return;
       }
       revision = context.revision;
     }
     if (!path || saveAs) {
-      path = await call<string | null>("pick_path", { kind: "save" });
-      if (!path) {
+      const destination = await selectSaveDestination(id);
+      if (!destination) {
         return;
       }
-      if (
-        Object.values(useApp.getState().docs).some(
-          (other) => other.id !== id && other.path && normalize(other.path) === normalize(path!),
-        )
-      ) {
-        throw new Error(
-          "This destination is already open in another editor. Close that editor before using Save As.",
-        );
-      }
-      try {
-        const disk = await call<DiskDocument>("read_document", { path, force: true });
-        if ((await ask("Replace existing file?", path, ["Replace", "Cancel"])) !== "Replace") {
-          return;
-        }
-        revision = disk.revision;
-      } catch (e) {
-        if ((e as { code?: string }).code !== "notFound") {
-          throw e;
-        }
-        revision = null;
-      }
+      path = destination.path;
+      revision = destination.revision;
     }
     if (
       !resolution &&
@@ -965,77 +1138,7 @@ async function saveDocument(
       }
       doc = useApp.getState().docs[id];
     }
-    const version = doc.version;
-    const alternativeVersion = m.getAlternativeVersionId();
-    const savingModel = m;
-    const epoch = documentEpoch;
-    try {
-      const newRevision = await saveWithElevation(
-        { id, version, path, text: m.getValue(), encoding: doc.encoding, revision },
-        {
-          automatic: !!autoSaveMode,
-          isCurrent: () => {
-            const current = useApp.getState().docs[id];
-            return (
-              documentEpoch === epoch &&
-              models.get(id) === savingModel &&
-              current?.path === doc.path &&
-              current?.version === version &&
-              current?.encoding === doc.encoding &&
-              current?.revision === doc.revision &&
-              savingModel.getAlternativeVersionId() === alternativeVersion
-            );
-          },
-        },
-      );
-      savedVersions.set(id, alternativeVersion);
-      savedEncodings.set(id, doc.encoding);
-      patchDoc(id, {
-        path,
-        name: basename(path),
-        revision: newRevision,
-        dirty:
-          alternativeVersion !== m.getAlternativeVersionId() ||
-          useApp.getState().docs[id]?.encoding !== doc.encoding,
-        conflict: false,
-        deleted: false,
-      });
-      if (doc.kind === "svg") {
-        const fileInfo = await call<FileInfo>("inspect_file", { path });
-        patchDoc(id, { fileInfo });
-      }
-      if (saveAs || !doc.path) {
-        rebindDocument(id, path);
-        m = models.get(id)!;
-      }
-      const s = useApp.getState();
-      const shortcuts = normalize(path) === normalize(join(s.dataDir, "keybindings.json"));
-      if (
-        shortcuts ||
-        normalize(path) === normalize(join(s.dataDir, "settings.json")) ||
-        (s.root && normalize(path) === normalize(join(s.root, ".litecode/settings.json")))
-      ) {
-        try {
-          parseConfiguration(m.getValue(), shortcuts);
-          const config = await call<{
-            settings: Record<string, unknown>;
-            keybindings: import("../types/types").Keybinding[] | null;
-          }>("configuration");
-          setApp({ settings: config.settings, keybindings: config.keybindings ?? [] });
-        } catch (e) {
-          notify(`Configuration was saved but not activated: ${errorMessage(e)}`);
-        }
-      }
-      await checkpoint();
-    } catch (e) {
-      if ((e as { code?: string }).code === "conflict") {
-        patchDoc(id, { conflict: true });
-        if (!autoSaveMode && !resolution) {
-          await compareDisk(id);
-        }
-      }
-      throw e;
-    }
+    await persistDocument(id, doc, m, path, revision, saveAs, autoSaveMode, resolution);
   });
 }
 
@@ -1268,6 +1371,7 @@ function detachModel(id: string) {
   const m = models.get(id);
   if (m) {
     // Cancel the diff view model before releasing its shared source to the worker.
+    // eslint-disable-next-line sonarjs/no-empty-collection -- EditorGroup and GitDiffEditor populate these exported maps in other modules.
     for (const { editor, viewModel } of diffEditors.values()) {
       const pair = editor.getModel();
       if (pair?.original === m || pair?.modified === m) {
@@ -1275,6 +1379,7 @@ function detachModel(id: string) {
         viewModel.dispose();
       }
     }
+    // eslint-disable-next-line sonarjs/no-empty-collection -- EditorGroup and GitDiffEditor populate these exported maps in other modules.
     for (const e of editors.values()) {
       if (e.getModel() === m) {
         e.setModel(null);
@@ -1352,6 +1457,14 @@ export function moveTab(id: string, from: string, to: string, before?: string) {
           pinned.splice(target, 0, id);
         }
       }
+      let active;
+      if (g.id === to) {
+        active = id;
+      } else if (g.active === id) {
+        active = tabs[0] ?? null;
+      } else {
+        active = g.active;
+      }
       return normalizeGroup({
         ...g,
         tabs,
@@ -1362,7 +1475,7 @@ export function moveTab(id: string, from: string, to: string, before?: string) {
               mediaViews: { ...g.mediaViews, [id]: { ...source.mediaViews?.[id] } },
             }
           : {}),
-        active: g.id === to ? id : g.active === id ? (tabs[0] ?? null) : g.active,
+        active: active,
         preview: g.preview === id ? null : g.preview,
       });
     });
@@ -1444,152 +1557,178 @@ export async function navigate(direction: number) {
   setApp({ history: s.history, historyIndex: index });
 }
 
+async function refreshPreviewDocument(
+  doc: Doc,
+  current: Doc,
+  info: FileInfo,
+  isCurrent: () => boolean,
+) {
+  if (info.kind === "text" || info.kind === "svg") {
+    try {
+      const disk = await call<DiskDocument>("read_document", { path: doc.path, force: true });
+      if (!isCurrent()) {
+        return;
+      }
+      attachDocument(
+        {
+          ...current,
+          kind: info.kind,
+          fileInfo: info,
+          encoding: disk.encoding,
+          eol: disk.eol,
+          revision: disk.revision,
+          deleted: false,
+          conflict: false,
+        },
+        disk.text,
+      );
+    } catch (e) {
+      if (!isCurrent()) {
+        return;
+      }
+      if (!["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
+        throw e;
+      }
+      patchDoc(doc.id, {
+        kind: "binary",
+        fileInfo: { ...info, kind: "binary" },
+        deleted: false,
+        conflict: false,
+        imageSize: undefined,
+      });
+    }
+  } else {
+    patchDoc(doc.id, { kind: info.kind, fileInfo: info, deleted: false, conflict: false });
+  }
+}
+
+async function refreshTextDocument(
+  doc: Doc,
+  current: Doc,
+  info: FileInfo,
+  isCurrent: () => boolean,
+) {
+  if (info.kind !== "text" && info.kind !== "svg") {
+    if (current.dirty) {
+      patchDoc(doc.id, { conflict: true, deleted: false });
+      return;
+    }
+    detachModel(doc.id);
+    patchDoc(doc.id, {
+      kind: info.kind,
+      fileInfo: info,
+      deleted: false,
+      conflict: false,
+      imageSize: undefined,
+    });
+    return;
+  }
+  const disk = await call<DiskDocument>("read_document", {
+    path: doc.path,
+    force: true,
+    encoding: doc.encoding,
+  });
+  const latest = useApp.getState().docs[doc.id];
+  if (!latest || !isCurrent()) {
+    return;
+  }
+  if (disk.revision === latest.revision) {
+    patchDoc(doc.id, {
+      kind: info.kind,
+      fileInfo: info,
+      deleted: false,
+      ...(latest.deleted ? { conflict: false } : {}),
+    });
+    return;
+  }
+  if (latest.dirty) {
+    patchDoc(doc.id, { conflict: true, deleted: false });
+    return;
+  }
+  const m = models.get(doc.id);
+  if (!m) {
+    return;
+  }
+  m.setValue(disk.text);
+  savedVersions.set(doc.id, m.getAlternativeVersionId());
+  savedEncodings.set(doc.id, disk.encoding);
+  patchDoc(doc.id, {
+    revision: disk.revision,
+    kind: info.kind,
+    fileInfo: info,
+    dirty: false,
+    conflict: false,
+    deleted: false,
+    encoding: disk.encoding,
+    eol: disk.eol,
+  });
+}
+
+function handleRefreshError(doc: Doc, e: unknown, isCurrent: () => boolean) {
+  const latest = useApp.getState().docs[doc.id];
+  if (!latest || !isCurrent()) {
+    return;
+  }
+  if ((e as { code?: string }).code === "notFound") {
+    patchDoc(doc.id, { deleted: true, conflict: isTextDocument(latest) });
+  } else if (["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
+    if (latest.dirty) {
+      patchDoc(doc.id, { conflict: true, deleted: false });
+    } else {
+      detachModel(doc.id);
+      patchDoc(doc.id, { kind: "binary", imageSize: undefined });
+    }
+  } else {
+    notify(`Could not refresh ${doc.name}: ${errorMessage(e)}`);
+  }
+}
+
+async function refreshDocument(id: string, affected: string[] | undefined) {
+  await saveQueues.get(id)?.catch(() => {});
+  const doc = useApp.getState().docs[id];
+  if (!doc) {
+    return;
+  }
+  if (
+    doc.path &&
+    affected &&
+    !affected.some(
+      (path) => normalize(doc.path!) === path || normalize(doc.path!).startsWith(path + "/"),
+    )
+  ) {
+    return;
+  }
+  if (!doc.path || isMoving(doc.path)) {
+    return;
+  }
+  const request = Symbol();
+  refreshRequests.set(id, request);
+  const isCurrent = () =>
+    refreshRequests.get(id) === request &&
+    useApp.getState().docs[id] === doc &&
+    !saveQueues.has(id) &&
+    !!doc.path &&
+    !isMoving(doc.path);
+  try {
+    const info = await call<FileInfo>("inspect_file", { path: doc.path });
+    const current = useApp.getState().docs[doc.id];
+    if (!current || !isCurrent()) {
+      return;
+    }
+    if (!isTextDocument(doc)) {
+      await refreshPreviewDocument(doc, current, info, isCurrent);
+      return;
+    }
+    await refreshTextDocument(doc, current, info, isCurrent);
+  } catch (e) {
+    handleRefreshError(doc, e, isCurrent);
+  }
+}
+
 export async function refreshDocuments(changedPaths?: readonly string[]) {
   const affected = changedPaths?.map((path) => normalize(path).replace(/\/$/, ""));
   for (const id of Object.keys(useApp.getState().docs)) {
-    await saveQueues.get(id)?.catch(() => {});
-    const doc = useApp.getState().docs[id];
-    if (!doc) {
-      continue;
-    }
-    if (
-      doc.path &&
-      affected &&
-      !affected.some(
-        (path) => normalize(doc.path!) === path || normalize(doc.path!).startsWith(path + "/"),
-      )
-    ) {
-      continue;
-    }
-    if (!doc.path || isMoving(doc.path)) {
-      continue;
-    }
-    const request = Symbol();
-    refreshRequests.set(id, request);
-    const isCurrent = () =>
-      refreshRequests.get(id) === request &&
-      useApp.getState().docs[id] === doc &&
-      !saveQueues.has(id) &&
-      !!doc.path &&
-      !isMoving(doc.path);
-    try {
-      const info = await call<FileInfo>("inspect_file", { path: doc.path });
-      const current = useApp.getState().docs[doc.id];
-      if (!current || !isCurrent()) {
-        continue;
-      }
-      if (!isTextDocument(doc)) {
-        if (info.kind === "text" || info.kind === "svg") {
-          try {
-            const disk = await call<DiskDocument>("read_document", { path: doc.path, force: true });
-            if (!isCurrent()) {
-              continue;
-            }
-            attachDocument(
-              {
-                ...current,
-                kind: info.kind,
-                fileInfo: info,
-                encoding: disk.encoding,
-                eol: disk.eol,
-                revision: disk.revision,
-                deleted: false,
-                conflict: false,
-              },
-              disk.text,
-            );
-          } catch (e) {
-            if (!isCurrent()) {
-              continue;
-            }
-            if (!["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
-              throw e;
-            }
-            patchDoc(doc.id, {
-              kind: "binary",
-              fileInfo: { ...info, kind: "binary" },
-              deleted: false,
-              conflict: false,
-              imageSize: undefined,
-            });
-          }
-        } else {
-          patchDoc(doc.id, { kind: info.kind, fileInfo: info, deleted: false, conflict: false });
-        }
-        continue;
-      }
-      if (info.kind !== "text" && info.kind !== "svg") {
-        if (current.dirty) {
-          patchDoc(doc.id, { conflict: true, deleted: false });
-          continue;
-        }
-        detachModel(doc.id);
-        patchDoc(doc.id, {
-          kind: info.kind,
-          fileInfo: info,
-          deleted: false,
-          conflict: false,
-          imageSize: undefined,
-        });
-        continue;
-      }
-      const disk = await call<DiskDocument>("read_document", {
-        path: doc.path,
-        force: true,
-        encoding: doc.encoding,
-      });
-      const latest = useApp.getState().docs[doc.id];
-      if (!latest || !isCurrent()) {
-        continue;
-      }
-      if (disk.revision === latest.revision) {
-        patchDoc(doc.id, {
-          kind: info.kind,
-          fileInfo: info,
-          deleted: false,
-          ...(latest.deleted ? { conflict: false } : {}),
-        });
-        continue;
-      }
-      if (latest.dirty) {
-        patchDoc(doc.id, { conflict: true, deleted: false });
-        continue;
-      }
-      const m = models.get(doc.id);
-      if (!m) {
-        continue;
-      }
-      m.setValue(disk.text);
-      savedVersions.set(doc.id, m.getAlternativeVersionId());
-      savedEncodings.set(doc.id, disk.encoding);
-      patchDoc(doc.id, {
-        revision: disk.revision,
-        kind: info.kind,
-        fileInfo: info,
-        dirty: false,
-        conflict: false,
-        deleted: false,
-        encoding: disk.encoding,
-        eol: disk.eol,
-      });
-    } catch (e) {
-      const latest = useApp.getState().docs[doc.id];
-      if (!latest || !isCurrent()) {
-        continue;
-      }
-      if ((e as { code?: string }).code === "notFound") {
-        patchDoc(doc.id, { deleted: true, conflict: isTextDocument(latest) });
-      } else if (["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
-        if (latest.dirty) {
-          patchDoc(doc.id, { conflict: true, deleted: false });
-        } else {
-          detachModel(doc.id);
-          patchDoc(doc.id, { kind: "binary", imageSize: undefined });
-        }
-      } else {
-        notify(`Could not refresh ${doc.name}: ${errorMessage(e)}`);
-      }
-    }
+    await refreshDocument(id, affected);
   }
 }
 
@@ -1703,6 +1842,7 @@ function rebindDocument(id: string, path: string) {
     }));
     return;
   }
+  // eslint-disable-next-line sonarjs/no-empty-collection -- EditorGroup and GitDiffEditor populate these exported maps in other modules.
   const views = [...editors.values()]
     .filter((e) => e.getModel() === old)
     .map((e) => ({ e, view: e.saveViewState() }));

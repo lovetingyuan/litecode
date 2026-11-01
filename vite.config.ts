@@ -10,6 +10,7 @@ import "./tools/patch-trees-scroll.mjs";
 const host = process.env.TAURI_DEV_HOST;
 let gitHash = "unknown";
 try {
+  // eslint-disable-next-line sonarjs/no-os-command-from-path -- Resolve the developer's Git from PATH to support all existing build environments.
   gitHash = execFileSync("git", ["rev-parse", "--short=7", "HEAD"], {
     cwd: new URL(".", import.meta.url),
     encoding: "utf8",

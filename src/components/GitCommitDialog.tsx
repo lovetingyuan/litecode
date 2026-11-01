@@ -12,10 +12,10 @@ import type { GitRepository } from "../types/types";
 export function GitCommitDialog({
   repository,
   workspace,
-}: {
+}: Readonly<{
   repository: GitRepository;
   workspace: string;
-}) {
+}>) {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const working = useRef(false);
@@ -117,11 +117,12 @@ export function GitCommitDialog({
                 }
               }}
             />
-            {grouped.conflicts.length ? (
+            {!!grouped.conflicts.length && (
               <p className="git-commit-hint">Resolve and stage conflicts before committing.</p>
-            ) : !grouped.staged.length ? (
+            )}
+            {!grouped.conflicts.length && !grouped.staged.length && (
               <p className="git-commit-hint">Stage changes before committing.</p>
-            ) : null}
+            )}
             <div
               className={`modal-actions flex justify-end gap-2 mt-6 ${workbenchStyles["modal-actions"]}`}
             >

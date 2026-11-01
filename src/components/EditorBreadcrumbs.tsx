@@ -19,7 +19,7 @@ import { FileIcon, Icon } from "./ui";
 import scrollbarCSS from "../styles/sidebar-scrollbar.css?raw";
 import { gitConflictDecoration } from "../utils/gitStatus";
 
-export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
+export function EditorBreadcrumbs({ doc, group }: Readonly<{ doc: Doc; group: Group }>) {
   const root = useApp((state) => state.root);
   const epoch = useApp((state) => state.workspaceEpoch);
   const activeGroup = useApp((state) => state.activeGroup);
@@ -139,11 +139,11 @@ function BreadcrumbPicker({
   target,
   groupId,
   close,
-}: {
+}: Readonly<{
   target: string;
   groupId: string;
   close: () => void;
-}) {
+}>) {
   const git = useApp((state) => state.gitState);
   const fileVersion = useApp((state) => state.fileIndexVersion);
   const cache = workspaceDirectories();

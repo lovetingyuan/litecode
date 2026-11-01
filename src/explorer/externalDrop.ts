@@ -25,42 +25,56 @@ type CopyServices = {
   copy: (index: number, plan: ExternalCopyPlan) => Promise<{ from: string; to: string }>;
 };
 
+function dropErrorMessage(error: unknown) {
+  return typeof error === "object" && error && "message" in error
+    ? String(error.message)
+    : String(error);
+}
+
+function cancelledDropChoice(signal: AbortSignal, choice: string | null) {
+  return signal.aborted || !choice || choice === "Cancel";
+}
+
 export async function copyDroppedItems(
   items: DropItem[],
   services: CopyServices,
   signal: AbortSignal,
 ) {
   const report: CopyReport = { copied: [], failed: [] };
-  for (const [index, item] of items.entries()) {
-    if (signal.aborted) {
-      break;
-    }
+  async function processItem(index: number, item: DropItem) {
     try {
       const plan = await services.plan(index);
       if (signal.aborted) {
-        break;
+        return false;
       }
+      let choice: string | null = "Copy";
       if (plan.existing !== null) {
-        const choice = await services.confirm(item, plan);
-        if (signal.aborted || !choice || choice === "Cancel") {
-          break;
+        choice = await services.confirm(item, plan);
+        if (cancelledDropChoice(signal, choice)) {
+          return false;
         }
-        if (choice === "Skip") {
-          continue;
-        }
+      }
+      if (choice === "Skip") {
+        return true;
       }
       if (signal.aborted) {
-        break;
+        return false;
       }
       report.copied.push(await services.copy(index, plan));
     } catch (error) {
       report.failed.push({
         path: item.path,
-        message:
-          typeof error === "object" && error && "message" in error
-            ? String(error.message)
-            : String(error),
+        message: dropErrorMessage(error),
       });
+    }
+    return true;
+  }
+  for (const [index, item] of items.entries()) {
+    if (signal.aborted) {
+      break;
+    }
+    if (!(await processItem(index, item))) {
+      break;
     }
   }
   return report;
@@ -90,10 +104,7 @@ export async function openDroppedItems(
     } catch (error) {
       failed.push({
         path: item.path,
-        message:
-          typeof error === "object" && error && "message" in error
-            ? String(error.message)
-            : String(error),
+        message: dropErrorMessage(error),
       });
     }
   }

@@ -28,7 +28,7 @@ describe("Inline merge conflicts", () => {
   it("resolves only the selected block and retains indentation and whitespace", () => {
     const text = block + "middle\n" + block.replace("当前", "\t  value  ");
     expect(resolve(text, "current", 1)).toBe(block + "middle\n\t  value  \n");
-    expect(parseMergeConflicts(resolve(text, "incoming")).length).toBe(1);
+    expect(parseMergeConflicts(resolve(text, "incoming"))).toHaveLength(1);
   });
 
   it.each(["", "\n", "\r\n"])(
