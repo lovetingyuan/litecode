@@ -493,6 +493,8 @@ pub async fn open_workspace(
             state.terminals.close_window(window.label());
             drop(windows);
             workspace::watch(window.app_handle(), window.label(), root)?;
+            let snapshot = state.http_previews.close_window(window.label());
+            let _ = window.emit("html-preview-changed", snapshot);
             Ok(true)
         }
     })

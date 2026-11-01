@@ -2,8 +2,12 @@ import workbenchStyles from "../styles/workbench.module.css";
 import mediaPreviewStyles from "./MediaPreview.module.css";
 import { Menu } from "@base-ui/react/menu";
 import { patchMediaView } from "../editor/documents";
+import { previewHtml, useHtmlPreviews } from "../core/htmlPreview";
+import { errorMessage } from "../core/bridge";
+import { notify } from "../store/store";
 import {
   formatFileSize,
+  isHtmlDocument,
   isImageView,
   isMarkdownDocument,
   isMarkdownView,
@@ -62,6 +66,8 @@ export function MediaStatus({ doc, group }: { doc: Doc; group: Group }) {
 }
 
 export function EditorViewMenu({ doc, group }: { doc: Doc; group: Group }) {
+  const html = isHtmlDocument(doc);
+  const starting = useHtmlPreviews((state) => state.starting.includes(doc.id));
   const markdown = isMarkdownDocument(doc);
   const mode = markdown
     ? isMarkdownView(doc, group)
@@ -70,19 +76,28 @@ export function EditorViewMenu({ doc, group }: { doc: Doc; group: Group }) {
     : isTextView(doc, group)
       ? "text"
       : "image";
-  const options: { mode: NonNullable<MediaView["mode"]>; label: string }[] = markdown
+  const options: { mode: NonNullable<MediaView["mode"]> | "html"; label: string }[] = html
     ? [
-        { mode: "text", label: "Text Editor" },
-        { mode: "markdown", label: "Markdown Preview" },
+        { mode: "text", label: "Edit" },
+        { mode: "html", label: "HTML Preview" },
       ]
-    : [
-        { mode: "image", label: "Image Preview" },
-        { mode: "text", label: "Text Editor" },
-      ];
-  const type = markdown ? "Markdown" : "SVG";
+    : markdown
+      ? [
+          { mode: "text", label: "Text Editor" },
+          { mode: "markdown", label: "Markdown Preview" },
+        ]
+      : [
+          { mode: "image", label: "Image Preview" },
+          { mode: "text", label: "Text Editor" },
+        ];
+  const type = html ? "HTML" : markdown ? "Markdown" : "SVG";
   return (
     <Menu.Root>
-      <Menu.Trigger className="editor-view-trigger" aria-label={`Select ${type} editor`}>
+      <Menu.Trigger
+        className="editor-view-trigger"
+        aria-label={`Select ${type} editor`}
+        disabled={html && starting}
+      >
         {options.find((option) => option.mode === mode)?.label}
         <Icon name="chevron-down" />
       </Menu.Trigger>
@@ -95,7 +110,14 @@ export function EditorViewMenu({ doc, group }: { doc: Doc; group: Group }) {
             {options.map((option) => (
               <Menu.Item
                 key={option.mode}
-                onClick={() => patchMediaView(group.id, doc.id, { mode: option.mode })}
+                disabled={html && starting}
+                onClick={() => {
+                  if (option.mode === "html") {
+                    void previewHtml(doc.id).catch((error) => notify(errorMessage(error)));
+                  } else {
+                    patchMediaView(group.id, doc.id, { mode: option.mode });
+                  }
+                }}
               >
                 <Icon name={option.mode === mode ? "check" : "blank"} />
                 <span>{option.label}</span>

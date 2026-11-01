@@ -11,7 +11,7 @@ import { errorMessage } from "../core/bridge";
 import { join, normalize, openPath, pathTitle } from "../editor/documents";
 import { workspaceDirectories } from "../explorer/workspaceTree";
 import { attachBreadcrumbTree, breadcrumbSegments } from "../explorer/breadcrumbTree";
-import { isMarkdownDocument } from "../utils/media";
+import { isHtmlDocument, isMarkdownDocument } from "../utils/media";
 import { settingValue } from "../utils/settings";
 import type { Doc, Group } from "../types/types";
 import { EditorViewMenu } from "./MediaStatus";
@@ -30,7 +30,7 @@ export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
     setSelected(null);
   }, [doc.id, doc.path, root, epoch, activeGroup, enabled]);
   const segments = breadcrumbSegments(doc.path ?? undefined, doc.name, root);
-  if (!enabled && doc.kind !== "svg" && !isMarkdownDocument(doc)) {
+  if (!enabled && doc.kind !== "svg" && !isMarkdownDocument(doc) && !isHtmlDocument(doc)) {
     return null;
   }
   return (
@@ -128,7 +128,7 @@ export function EditorBreadcrumbs({ doc, group }: { doc: Doc; group: Group }) {
           })}
         </nav>
       )}
-      {(doc.kind === "svg" || isMarkdownDocument(doc)) && (
+      {(doc.kind === "svg" || isMarkdownDocument(doc) || isHtmlDocument(doc)) && (
         <EditorViewMenu doc={doc} group={group} />
       )}
     </div>

@@ -4,6 +4,10 @@ export const isTextDocument = (doc: Doc) =>
   !doc.gitDiff && (!doc.kind || doc.kind === "text" || doc.kind === "svg");
 export const isMarkdownDocument = (doc: Doc) =>
   isTextDocument(doc) && doc.kind !== "svg" && doc.language === "markdown";
+export const isHtmlDocument = (doc: Doc) =>
+  isTextDocument(doc) &&
+  doc.kind !== "svg" &&
+  (doc.path ? /\.html?$/i.test(doc.path) : doc.language === "html");
 export const isMarkdownView = (doc: Doc, group?: Group) =>
   isMarkdownDocument(doc) && group?.mediaViews?.[doc.id]?.mode === "markdown";
 export const isTextView = (doc: Doc, group?: Group) =>

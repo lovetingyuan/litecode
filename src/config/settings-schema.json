@@ -2,6 +2,13 @@
   "type": "object",
   "additionalProperties": true,
   "properties": {
+    "html.preview.port": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535,
+      "default": 0,
+      "description": "Preferred port for HTML preview. 0 selects an available port automatically. Unavailable ports fall back to an available port. Applies to new services."
+    },
     "terminal.integrated.fontFamily": {
       "type": "string",
       "default": "",
@@ -558,7 +565,7 @@
     "breadcrumbs.enabled": {
       "type": "boolean",
       "default": true,
-      "description": "是否显示编辑器路径面包屑。Markdown/SVG 的视图切换入口始终保留。"
+      "description": "Whether to show file breadcrumbs. Markdown, SVG and HTML view menus remain available when disabled."
     },
     "diffEditor.renderSideBySide": {
       "type": "boolean",

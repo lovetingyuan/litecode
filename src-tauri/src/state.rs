@@ -116,6 +116,7 @@ pub struct AppState {
     pub searches: Mutex<HashMap<String, Arc<SearchTask>>>,
     pub servers: Mutex<HashMap<String, crate::lsp::Server>>,
     pub terminals: crate::terminal::Service,
+    pub http_previews: crate::http_preview::Service,
     pub startup_warnings: Mutex<Vec<String>>,
     pub data_dir: PathBuf,
 }

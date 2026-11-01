@@ -1,9 +1,9 @@
 use crate::sync::MutexExt;
 mod commands;
 mod configuration;
-mod error;
 #[cfg(windows)]
 mod elevated_save;
+mod error;
 mod external_drop;
 mod file_clipboard;
 mod file_creation;
@@ -14,6 +14,7 @@ mod files;
 mod folder_picker;
 mod formatter_trust;
 mod git;
+mod http_preview;
 #[cfg(windows)]
 mod instance;
 mod launch;
@@ -32,7 +33,7 @@ mod transactions;
 mod updates;
 mod workspace;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 fn data_directory(
     app: &tauri::AppHandle,
@@ -175,10 +176,15 @@ pub fn run() {
                     }
                 });
                 state.windows.lock_recover().remove(window.label());
+                let snapshot = state.http_previews.close_window(window.label());
+                let _ = window.emit("html-preview-changed", snapshot);
                 state.terminals.close_window(window.label());
             }
         })
         .invoke_handler(tauri::generate_handler![
+            http_preview::html_preview_start,
+            http_preview::html_preview_list,
+            http_preview::html_preview_stop,
             updates::get_update_state,
             updates::check_update,
             updates::install_update,

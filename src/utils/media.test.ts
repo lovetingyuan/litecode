@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampScale,
   formatFileSize,
+  isHtmlDocument,
   isMarkdownDocument,
   isMarkdownView,
   isTextDocument,
@@ -11,6 +12,26 @@ import {
 import type { Doc, Group } from "../types/types";
 
 describe("Media preview behavior", () => {
+  it("offers external HTML preview without changing its text editor view", () => {
+    const doc: Doc = {
+      id: "html",
+      path: "C:/site/INDEX.HTM",
+      name: "INDEX.HTM",
+      language: "html",
+      version: 1,
+      revision: "one",
+      encoding: "utf8",
+      eol: "LF",
+      dirty: false,
+    };
+    expect(isHtmlDocument(doc)).toBe(true);
+    expect(isTextView(doc)).toBe(true);
+    expect(isHtmlDocument({ ...doc, path: "C:/site/page.html" })).toBe(true);
+    expect(isHtmlDocument({ ...doc, path: null })).toBe(true);
+    expect(isHtmlDocument({ ...doc, path: "C:/site/page.txt" })).toBe(false);
+    expect(isHtmlDocument({ ...doc, kind: "binary" })).toBe(false);
+    expect(isHtmlDocument({ ...doc, path: null, language: "markdown" })).toBe(false);
+  });
   it("keeps Markdown text models with preview modes independent for each group", () => {
     const doc = { id: "readme", kind: "text", language: "markdown" } as Doc;
     const group = { mediaViews: { readme: { mode: "markdown" } } } as unknown as Group;

@@ -44,6 +44,9 @@ trash = "5"
 globset = "0.4"
 regex = "1"
 url = "2"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tower-http = { version = "0.6", features = ["fs"] }
+percent-encoding = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 zip = { version = "9.0.4", default-features = false, features = ["deflate"] }
 pcre2 = "0.2"

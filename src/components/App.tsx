@@ -42,6 +42,7 @@ import { initializeLanguages } from "../editor/languages";
 import { rememberWorkspaceTrust } from "../core/workspaceTrust";
 import { isTextView } from "../utils/media";
 import { MediaStatus } from "./MediaStatus";
+import { HttpServiceStatus } from "./HttpServiceStatus";
 import { GitLineStatus } from "./GitLineStatus";
 import { useExternalDrop } from "../hooks/useExternalDrop";
 import { recoverInterruptedReplacements } from "../search/replacements";
@@ -697,6 +698,7 @@ export default function App() {
               <Icon name="warning" />
               {diagnostics.warnings}
             </button>
+            <HttpServiceStatus />
           </div>
           <div
             className={`status-right flex items-stretch min-w-0 ${workbenchStyles["status-right"]}`}
