@@ -9,7 +9,10 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tauri::{Manager, State, WebviewWindow, ipc::Channel};
 use tokio::{
@@ -21,6 +24,15 @@ pub struct Server {
     pub pid: u32,
     pub sender: mpsc::Sender<Value>,
     pub pending: Arc<Mutex<HashMap<u64, OwnedSemaphorePermit>>>,
+    pub stopping: AtomicBool,
+}
+
+fn server_active(app: &tauri::AppHandle, key: &str, pid: u32) -> bool {
+    app.state::<AppState>()
+        .servers
+        .lock_recover()
+        .get(key)
+        .is_some_and(|server| server.pid == pid && !server.stopping.load(Ordering::Acquire))
 }
 
 #[derive(Clone, Serialize)]
@@ -138,6 +150,7 @@ pub async fn lsp_start(
                 pid,
                 sender,
                 pending: pending.clone(),
+                stopping: AtomicBool::new(false),
             },
         );
         drop(disk);
@@ -157,16 +170,34 @@ pub async fn lsp_start(
     .await?;
     let app = window.app_handle().clone();
     tauri::async_runtime::spawn(async move {
+        let writer_app = app.clone();
+        let writer_key = key.clone();
+        let owner = window.label().to_owned();
+        let writer_owner = owner.clone();
         let writer = tokio::spawn(async move {
-            while let Some(message) = receiver.recv().await {
-                let bytes = serde_json::to_vec(&message)?;
-                stdin
-                    .write_all(format!("Content-Length: {}\r\n\r\n", bytes.len()).as_bytes())
-                    .await?;
-                stdin.write_all(&bytes).await?;
-                stdin.flush().await?;
+            let result = async {
+                while let Some(message) = receiver.recv().await {
+                    let bytes = serde_json::to_vec(&message)?;
+                    stdin
+                        .write_all(format!("Content-Length: {}\r\n\r\n", bytes.len()).as_bytes())
+                        .await?;
+                    stdin.write_all(&bytes).await?;
+                    stdin.flush().await?;
+                }
+                std::io::Result::Ok(())
             }
-            std::io::Result::Ok(())
+            .await;
+            if let Err(error) = &result
+                && server_active(&writer_app, &writer_key, pid)
+            {
+                crate::logging::error(
+                    "language_writer_failed",
+                    Some(&writer_owner),
+                    "lsp",
+                    &error.to_string(),
+                );
+            }
+            result
         });
         let event_channel = on_event.clone();
         let log = tokio::spawn(async move {
@@ -215,9 +246,24 @@ pub async fn lsp_start(
             }
             Result::Ok(())
         });
+        let active = || server_active(&app, &key, pid);
         tokio::select! {
-            result = &mut output => { if let Ok(Err(e)) = result { let _ = on_event.send(ServerEvent { sequence: 0, kind: "error".into(), message: Value::String(e.message) }); } }
-            _ = child.wait() => {}
+            result = &mut output => {
+                    match result {
+                        Ok(Err(error)) => {
+                            if active() { crate::logging::error("language_reader_failed", Some(&owner), &error.code, &error.message); }
+                            let _ = on_event.send(ServerEvent { sequence: 0, kind: "error".into(), message: Value::String(error.message) });
+                        }
+                        Err(error) if active() => crate::logging::error("language_reader_task_failed", Some(&owner), "task", &error.to_string()),
+                        Ok(Ok(())) if active() => crate::logging::error("language_server_exited", Some(&owner), "lsp", &format!("Language service {key} closed its output unexpectedly")),
+                        _ => {},
+                    }
+            }
+            status = child.wait() => {
+                if active() {
+                    crate::logging::error("language_server_exited", Some(&owner), "lsp", &format!("Language service {key} exited unexpectedly: {status:?}"));
+                }
+            }
         }
         kill_tree(pid);
         let _ = child.kill().await;
@@ -269,7 +315,12 @@ pub async fn lsp_send(
         .servers
         .lock_recover()
         .get(&key)
-        .map(|s| s.sender.clone())
+        .map(|s| {
+            if matches!(message["method"].as_str(), Some("shutdown" | "exit")) {
+                s.stopping.store(true, Ordering::Release);
+            }
+            s.sender.clone()
+        })
         .ok_or_else(|| AppError::new("lspStopped", "Language service is not running"))?;
     sender
         .send(message)

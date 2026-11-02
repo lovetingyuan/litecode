@@ -1,5 +1,7 @@
 import { startupMark, waitForStartupPaint } from "./core/startup";
+import { installErrorLogging, logError } from "./core/logging";
 
+installErrorLogging();
 startupMark("entry-evaluated");
 
 document.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -15,7 +17,7 @@ async function start() {
 
 void start().catch((error: unknown) => {
   startupMark("failed");
-  console.error("Could not start LiteCode", error);
+  logError("startup_failed", error);
   const loading = document.querySelector(".startup-loading");
   if (loading) {
     loading.classList.add("startup-failed");

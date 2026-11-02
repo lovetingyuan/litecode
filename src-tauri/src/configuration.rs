@@ -14,6 +14,7 @@ pub fn read_json(path: &Path, warnings: &mut Vec<String>) -> Value {
                 serde_json::from_slice(&bytes).map_err(|e| e.to_string())
             };
             parsed.unwrap_or_else(|e| {
+                crate::logging::warning("configuration_parse_failed", None, &format!("Could not parse {}. Parser output omitted.", path.display()));
                 let backup = path.with_extension(format!("corrupt-{}.json", &files::hash(&bytes)[..12]));
                 let preserved = files::atomic_write(&backup, &bytes).is_ok();
                 warnings.push(format!(
@@ -25,6 +26,11 @@ pub fn read_json(path: &Path, warnings: &mut Vec<String>) -> Value {
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Null,
         Err(e) => {
+            crate::logging::warning(
+                "configuration_read_failed",
+                None,
+                &format!("{}: {e}", path.display()),
+            );
             warnings.push(format!("{}: {e}", path.display()));
             Value::Null
         }

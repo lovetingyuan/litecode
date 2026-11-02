@@ -3,7 +3,7 @@ import updateDialogStyles from "./UpdateDialog.module.css";
 import { Dialog } from "@base-ui/react/dialog";
 import { lazy, Suspense } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { checkForUpdates, installUpdate, updateLocked, useUpdates } from "../core/updates";
+import { installUpdate, updateLocked, useUpdates } from "../core/updates";
 import { errorMessage } from "../core/bridge";
 import { actionButtonClass, Icon } from "./ui";
 
@@ -28,6 +28,9 @@ export function UpdateButton() {
 export function UpdateDialog() {
   const s = useUpdates();
   const busy = s.phase === "checking" || s.phase === "downloading" || updateLocked(s.phase);
+  const releaseUrl = `https://github.com/lovetingyuan/litecode/releases/tag/v${s.version}`;
+  const openLink = (url: string) =>
+    void openUrl(url).catch((error) => useUpdates.setState({ error: errorMessage(error) }));
   let status;
   if (s.phase === "checking") {
     status = "Checking for updates…";
@@ -40,12 +43,24 @@ export function UpdateDialog() {
   } else if (s.phase === "installing") {
     status = "Installing update… LiteCode will reopen automatically.";
   } else if (s.version) {
-    status = `LiteCode ${s.version} is available.`;
+    status = (
+      <>
+        LiteCode{" "}
+        <a
+          href={releaseUrl}
+          onClick={(event) => {
+            event.preventDefault();
+            openLink(releaseUrl);
+          }}
+        >
+          <strong className="text-focus">{s.version}</strong>
+        </a>{" "}
+        is available.
+      </>
+    );
   } else {
     status = "Check for a new version of LiteCode.";
   }
-  const openLink = (url: string) =>
-    void openUrl(url).catch((error) => useUpdates.setState({ error: errorMessage(error) }));
   return (
     <>
       <Dialog.Root open={s.open} onOpenChange={(open) => useUpdates.setState({ open })}>
@@ -55,12 +70,15 @@ export function UpdateDialog() {
             className={`modal-panel fixed top-[50%] left-[50%] bg-widget border border-strong rounded-[6px] w-120 max-w-[90vw] p-6 z-[151] ${workbenchStyles["modal-panel"]} update-panel w-140 max-h-[85vh] overflow-y-auto ${updateDialogStyles["update-panel"]}`}
           >
             <Dialog.Title>LiteCode Updates</Dialog.Title>
-            <Dialog.Description>
-              {s.currentVersion ? `Current version: ${s.currentVersion}` : "Application updates"}
+            <Dialog.Description className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <span>
+                {s.currentVersion ? `Current version: ${s.currentVersion}` : "Application updates"}
+              </span>
+              {s.version && <Icon name="arrow-right" className="text-muted self-center" />}
+              <span role="status" aria-live="polite">
+                {status}
+              </span>
             </Dialog.Description>
-            <p role="status" aria-live="polite">
-              {status}
-            </p>
             {s.error && (
               <p role="alert" className="update-error text-git-deleted">
                 {s.error}
@@ -90,31 +108,13 @@ export function UpdateDialog() {
               ) : (
                 <p>Downloading the installer…</p>
               ))}
-            {s.version && (
-              <p>
-                {s.portable
-                  ? "Portable edition: download the portable ZIP from GitHub and keep your data directory."
-                  : "LiteCode will save recovery data for all windows, close, install the update, and reopen. Running terminal tasks will stop."}
-              </p>
-            )}
             <div className="flex justify-end flex-wrap gap-2 mt-5">
-              <button
-                className={actionButtonClass}
-                disabled={busy}
-                onClick={() => void checkForUpdates()}
-              >
-                Check Again
-              </button>
               {s.version && (
                 <button
                   className={`${actionButtonClass} primary bg-focus text-foreground-strong rounded-[2px] py-[5px] px-[14px] ${workbenchStyles["primary"]}`}
                   disabled={busy}
                   onClick={() =>
-                    s.portable
-                      ? openLink(
-                          `https://github.com/lovetingyuan/litecode/releases/tag/v${s.version}`,
-                        )
-                      : void installUpdate()
+                    s.portable ? openLink(releaseUrl) : void installUpdate()
                   }
                 >
                   {s.portable ? "Open Release Downloads" : "Download and Install"}

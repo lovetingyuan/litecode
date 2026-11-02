@@ -1,5 +1,6 @@
 import { invoke, isTauri, Channel, convertFileSrc } from "@tauri-apps/api/core";
 import type { Bootstrap, SearchBatch } from "../types/types";
+import { logCommandError } from "./logging";
 
 export const desktop = isTauri();
 export const mediaSource = (path: string) => convertFileSrc(path, "media");
@@ -10,7 +11,12 @@ export async function call<T>(command: string, args?: Record<string, unknown>): 
       message: "This operation needs the LiteCode desktop app. Run npm run tauri dev.",
     };
   }
-  return invoke<T>(command, args);
+  try {
+    return await invoke<T>(command, args);
+  } catch (error) {
+    logCommandError(command, error, typeof args?.path === "string" ? args.path : undefined);
+    throw error;
+  }
 }
 export const channel = (fn: (batch: SearchBatch) => void) => {
   const c = new Channel<SearchBatch>();

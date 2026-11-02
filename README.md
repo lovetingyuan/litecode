@@ -1,5 +1,9 @@
 # ![LiteCode logo](src-tauri/icons/32x32.png) LiteCode
 
+A lightweight, open-source VS Code alternative for Windows, built with Tauri.
+
+**Website:** [litecode.tingyuan.in](https://litecode.tingyuan.in/en/) · **Download:** [GitHub Releases](https://github.com/lovetingyuan/litecode/releases)
+
 ![LiteCode feature demo](docs/images/demo.gif)
 
 [Watch the feature demo (MP4)](docs/images/demo.mp4)
@@ -44,5 +48,13 @@ Run `npm ci` first. Desktop development requires Node.js 24+, Rust, and the Wind
 HTML and Markdown support document formatting and `editor.formatOnSave` through bundled Oxfmt. A compatible Node.js installation is required; Prettier and Language Tools do not need to be installed separately unless selected by project configuration. Markdown formatting collapses extra blank lines between paragraphs while preserving necessary spacing and literal code-block content.
 
 Debug builds use the `dev` subdirectory of the normal application data directory, so the development app and installed release can run together with separate settings and recovery sessions. Each data directory retains its own single-instance protection. An existing `data` directory beside the executable still takes precedence for portable mode.
+
+## Error logs
+
+Use **Help → Open Logs Folder**, or run **Open Logs Folder** from the command palette, to open the current profile's `logs` directory. Errors are saved locally as JSON Lines in `litecode.log`. Each file rotates at 2 MiB, retaining four archives (approximately 10 MiB total). Installed Windows builds use `%APPDATA%/com.tingyuan.litecode/logs`; development builds add `dev` before `logs`, and portable builds use `data/logs` beside the executable.
+
+Logs cover critical frontend and native failures, including startup, files, backups and recovery, search and replacement, Git, terminals, language services, previews, and updates. Records include timestamps, version, process and operation identifiers, window, error category, and available details or stack traces. Repeated failures are limited to one record per category/message every 30 seconds; the next occurrence includes a suppressed count. Cancellation, trust prompts, normal shutdown, and editor diagnostics are excluded.
+
+Logs can contain local paths. URL credentials and named tokens are redacted; document contents, search/replacement text, terminal input/output, commit messages, environment values, and complete IPC arguments are not collected. Parser and external tool output are omitted where they could contain source text. Records are capped at 16 KiB. Logs are never uploaded automatically. If file logging cannot initialize, the application continues with stderr logging and a startup warning. Errors before initialization use stderr; forced process termination cannot always be recorded. Startup performance profiling through `LITECODE_STARTUP_LOG` remains separate.
 
 Specialized checks run directly: `node tools/verify-languages.mjs` after packaging language tools, `node tools/verify-vue.mjs` with the debug app built and Vite running, and `node tools/verify-updates-desktop.mjs` after `npm run build`. See [language verification](docs/verification/LANGUAGE_CAPABILITIES.md) and [update verification](docs/releases.md#verification).

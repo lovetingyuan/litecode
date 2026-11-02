@@ -47,7 +47,7 @@ export function SearchView() {
   }, []);
   return (
     <section
-      className={`view flex flex-col h-full min-h-0 overflow-hidden search-view text-[15px] bg-widget text-foreground ${searchStyles["search-view"]}`}
+      className={`view flex flex-col h-full min-h-0 overflow-hidden search-view text-[15px] bg-sidebar text-foreground ${searchStyles["search-view"]}`}
       aria-label="Search"
       style={{ "--search-result-height": `${resultHeight}px` } as CSSProperties}
     >

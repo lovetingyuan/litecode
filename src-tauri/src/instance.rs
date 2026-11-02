@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 use tauri::{
-    Manager, RunEvent, WindowEvent,
+    Manager, RunEvent,
     plugin::{Builder, TauriPlugin},
 };
 use tokio::{
@@ -27,14 +27,15 @@ const MAX_PATH_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, PartialEq)]
 enum Request {
-    Activate,
+    /// Launch without a path: open a new empty window, like VS Code.
+    NewWindow,
     Open(PathBuf),
 }
 
 fn arguments(args: impl IntoIterator<Item = OsString>) -> std::io::Result<Request> {
     let mut args = args.into_iter();
     if args.next().as_deref() != Some(std::ffi::OsStr::new("--open-path")) {
-        return Ok(Request::Activate);
+        return Ok(Request::NewWindow);
     }
     let path = args
         .next()
@@ -55,7 +56,7 @@ async fn write_request(
     request: &Request,
 ) -> std::io::Result<()> {
     match request {
-        Request::Activate => writer.write_all(REQUEST).await,
+        Request::NewWindow => writer.write_all(REQUEST).await,
         Request::Open(path) => {
             let bytes: Vec<u8> = path
                 .as_os_str()
@@ -76,7 +77,7 @@ async fn read_request(reader: &mut (impl AsyncRead + Unpin)) -> std::io::Result<
     let mut header = [0; 4];
     reader.read_exact(&mut header).await?;
     if &header == REQUEST {
-        return Ok(Request::Activate);
+        return Ok(Request::NewWindow);
     }
     if &header != OPEN_REQUEST {
         return Err(std::io::Error::other("Invalid open request"));
@@ -102,7 +103,6 @@ async fn read_request(reader: &mut (impl AsyncRead + Unpin)) -> std::io::Result<
 
 pub struct Instance {
     pub data_dir: PathBuf,
-    focused: Mutex<Option<String>>,
     ready: AtomicBool,
     pending: Mutex<VecDeque<Request>>,
     draining: AtomicBool,
@@ -134,7 +134,6 @@ async fn claim(name: &str, request: &Request) -> std::io::Result<Option<NamedPip
         Err(error) => return Err(error),
     }
     let deadline = tokio::time::Instant::now() + TIMEOUT;
-    let mut retried = false;
     loop {
         match ClientOptions::new().open(name) {
             Ok(mut client) => {
@@ -169,45 +168,55 @@ async fn claim(name: &str, request: &Request) -> std::io::Result<Option<NamedPip
                     )
                 })?;
                 drop(client);
-                if response.is_err() && !retried {
-                    if let Ok(server) = bind(name, true) {
-                        return Ok(Some(server));
+                match response {
+                    Ok(none) => return Ok(none),
+                    // The previous instance is exiting: it accepted the connection but closed
+                    // the pipe before acknowledging. Wait for it to release the lock.
+                    Err(error) if is_transient(&error) => {
+                        if let Some(server) = wait_and_rebind(name, deadline, error).await? {
+                            return Ok(Some(server));
+                        }
                     }
+                    Err(error) => return Err(error),
                 }
-                return response;
             }
-            Err(error) => {
-                if error.kind() == std::io::ErrorKind::NotFound && !retried {
-                    retried = true;
-                    if let Ok(server) = bind(name, true) {
-                        return Ok(Some(server));
-                    }
-                } else if error.raw_os_error() != Some(231)
-                    && error.kind() != std::io::ErrorKind::NotFound
-                {
-                    return Err(error);
+            // NotFound: the last pipe handle was just released. 231: all instances are busy.
+            Err(error) if is_transient(&error) || error.raw_os_error() == Some(231) => {
+                if let Some(server) = wait_and_rebind(name, deadline, error).await? {
+                    return Ok(Some(server));
                 }
-                if tokio::time::Instant::now() >= deadline {
-                    return Err(error);
-                }
-                tokio::time::sleep(Duration::from_millis(50)).await;
             }
+            Err(error) => return Err(error),
         }
     }
 }
 
-fn activate(app: &tauri::AppHandle) -> std::io::Result<()> {
-    let instance = app.state::<Instance>();
-    let focused = instance.focused.lock_recover().clone();
-    let window = focused
-        .and_then(|label| app.get_webview_window(&label))
-        .or_else(|| app.get_webview_window("main"))
-        .or_else(|| app.webview_windows().into_values().next())
-        .ok_or_else(|| std::io::Error::other("The running instance has no editor window"))?;
-    window.show().map_err(std::io::Error::other)?;
-    window.unminimize().map_err(std::io::Error::other)?;
-    window.set_focus().map_err(std::io::Error::other)?;
-    Ok(())
+fn is_transient(error: &std::io::Error) -> bool {
+    use std::io::ErrorKind;
+    matches!(
+        error.kind(),
+        ErrorKind::NotFound
+            | ErrorKind::UnexpectedEof
+            | ErrorKind::BrokenPipe
+            | ErrorKind::ConnectionReset
+            | ErrorKind::ConnectionAborted
+    ) || error.raw_os_error() == Some(232) // ERROR_NO_DATA: pipe is being closed
+}
+
+/// Tries to take over the lock; otherwise sleeps briefly so the caller can reconnect.
+async fn wait_and_rebind(
+    name: &str,
+    deadline: tokio::time::Instant,
+    error: std::io::Error,
+) -> std::io::Result<Option<NamedPipeServer>> {
+    if let Ok(server) = bind(name, true) {
+        return Ok(Some(server));
+    }
+    if tokio::time::Instant::now() >= deadline {
+        return Err(error);
+    }
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    Ok(None)
 }
 
 fn show_error(message: &str) {
@@ -250,12 +259,19 @@ fn drain(app: &tauri::AppHandle) {
                 request
             };
             let result = match request {
-                Request::Activate => activate(&app).map_err(|error| error.to_string()),
+                Request::NewWindow => crate::commands::create_empty_window(
+                    &app,
+                    &app.state::<crate::state::AppState>(),
+                    None,
+                )
+                .map(|_| ())
+                .map_err(|error| format!("Could not open a new window: {}", error.message)),
                 Request::Open(path) => crate::launch::open(&app, &path).map_err(|error| {
                     format!("Could not open {}: {}", path.display(), error.message)
                 }),
             };
             if let Err(error) = result {
+                crate::logging::error("instance_open_failed", None, "instance", &error);
                 show_error(&error);
             }
         }
@@ -268,7 +284,12 @@ async fn serve(app: tauri::AppHandle, name: String, mut server: NamedPipeServer)
         let next = match bind(&name, false) {
             Ok(next) => next,
             Err(error) => {
-                eprintln!("Could not maintain the instance listener: {error}");
+                crate::logging::error(
+                    "instance_listener_failed",
+                    None,
+                    "instance",
+                    &error.to_string(),
+                );
                 app.exit(1);
                 // Keep the lock until Tauri has finished exiting.
                 std::future::pending::<()>().await;
@@ -308,13 +329,13 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
             })();
             match result {
                 Ok((data_dir, name, Some(server), request)) => {
+                    crate::logging::init(app, &data_dir);
                     let mut pending = VecDeque::new();
                     if matches!(request, Request::Open(_)) {
                         pending.push_back(request);
                     }
                     app.manage(Instance {
                         data_dir,
-                        focused: Mutex::new(None),
                         ready: AtomicBool::new(false),
                         pending: Mutex::new(pending),
                         draining: AtomicBool::new(false),
@@ -326,6 +347,12 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
                     std::process::exit(0);
                 }
                 Err(error) => {
+                    crate::logging::error(
+                        "instance_start_failed",
+                        None,
+                        "instance",
+                        &error.to_string(),
+                    );
                     show_error(&format!(
                         "LiteCode could not start or forward the open request.\n\n{error}"
                     ));
@@ -338,19 +365,9 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
             let Some(instance) = app.try_state::<Instance>() else {
                 return;
             };
-            match event {
-                RunEvent::Ready => {
-                    instance.ready.store(true, Ordering::Release);
-                    drain(app);
-                }
-                RunEvent::WindowEvent {
-                    label,
-                    event: WindowEvent::Focused(true),
-                    ..
-                } => {
-                    *instance.focused.lock_recover() = Some(label.clone());
-                }
-                _ => (),
+            if let RunEvent::Ready = event {
+                instance.ready.store(true, Ordering::Release);
+                drain(app);
             }
         })
         .build()
@@ -368,7 +385,7 @@ mod tests {
 
     #[test]
     fn command_line_preserves_paths_and_rejects_missing_or_extra_arguments() {
-        assert_eq!(arguments([]).unwrap(), Request::Activate);
+        assert_eq!(arguments([]).unwrap(), Request::NewWindow);
         for path in [
             r"C:\项目 with spaces\a.txt",
             r"C:\.",
@@ -392,7 +409,7 @@ mod tests {
     #[tokio::test]
     async fn request_frames_preserve_order_and_windows_paths() {
         let requests = [
-            Request::Activate,
+            Request::NewWindow,
             Request::Open(PathBuf::from(r"C:\项目 with spaces\a🙂.txt")),
             Request::Open(PathBuf::from(r"C:\")),
             Request::Open(PathBuf::from(r"\\server\share\项目")),
@@ -434,7 +451,7 @@ mod tests {
     async fn single_instance_forwards_consecutive_open_requests_without_releasing_the_lock() {
         let directory = temp_directory();
         let name = pipe_name(directory.path()).unwrap();
-        let mut server = claim(&name, &Request::Activate).await.unwrap().unwrap();
+        let mut server = claim(&name, &Request::NewWindow).await.unwrap().unwrap();
         for path in [
             r"C:\项目 with spaces\a.txt",
             r"C:\项目 with spaces",
@@ -463,15 +480,15 @@ mod tests {
         let one = temp_directory();
         let two = temp_directory();
         let name = pipe_name(one.path()).unwrap();
-        let mut first = claim(&name, &Request::Activate).await.unwrap().unwrap();
+        let mut first = claim(&name, &Request::NewWindow).await.unwrap().unwrap();
         assert!(bind(&name, true).is_err());
-        let independent = claim(&pipe_name(two.path()).unwrap(), &Request::Activate)
+        let independent = claim(&pipe_name(two.path()).unwrap(), &Request::NewWindow)
             .await
             .unwrap()
             .unwrap();
         let client = tokio::spawn({
             let name = name.clone();
-            async move { claim(&name, &Request::Activate).await.unwrap().is_none() }
+            async move { claim(&name, &Request::NewWindow).await.unwrap().is_none() }
         });
         first.connect().await.unwrap();
         let next = bind(&name, false).unwrap();
@@ -483,7 +500,7 @@ mod tests {
         drop(first);
         assert!(bind(&name, true).is_err());
         drop(next);
-        assert!(claim(&name, &Request::Activate).await.unwrap().is_some());
+        assert!(claim(&name, &Request::NewWindow).await.unwrap().is_some());
         drop(independent);
     }
 }

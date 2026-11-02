@@ -179,6 +179,7 @@ pub fn checkpoint(state: &AppState, label: &str) -> Result<()> {
             Ok(())
         };
         if let Err(error) = cleanup() {
+            crate::logging::warning("recovery_cleanup_failed", Some(label), &error.message);
             state.startup_warnings.lock_recover().push(format!(
                 "Could not clean obsolete recovery data: {}",
                 error.message
@@ -189,6 +190,27 @@ pub fn checkpoint(state: &AppState, label: &str) -> Result<()> {
 }
 
 pub fn load(state: &AppState, label: &str, warnings: &mut Vec<String>) -> LoadedSession {
+    let before = warnings.len();
+    let loaded = load_session(state, label, warnings);
+    if warnings.len() > before {
+        // Existing UI warnings can quote corrupt JSON values. Persist only safe session metadata.
+        crate::logging::warning(
+            "session_recovery_degraded",
+            Some(label),
+            &format!(
+                "Session recovery reported {} warnings at {}. Recovery data was preserved where possible.",
+                warnings.len() - before,
+                state
+                    .data_dir
+                    .join(format!("session-{label}.json"))
+                    .display()
+            ),
+        );
+    }
+    loaded
+}
+
+fn load_session(state: &AppState, label: &str, warnings: &mut Vec<String>) -> LoadedSession {
     let mut loaded = LoadedSession::default();
     let directory = match directory(state, label) {
         Ok(directory) => directory,

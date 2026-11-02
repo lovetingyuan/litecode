@@ -544,6 +544,7 @@ pub async fn terminal_create(
         drop(pair.slave);
         let write_flow = flow.clone();
         let write_events = on_event.clone();
+        let write_owner = session.owner.clone();
         std::thread::spawn(move || {
             for bytes in rx {
                 if write_flow.closed.load(Ordering::Acquire) {
@@ -551,6 +552,12 @@ pub async fn terminal_create(
                 }
                 if let Err(error) = writer.write_all(&bytes).and_then(|_| writer.flush()) {
                     if !write_flow.closed.load(Ordering::Acquire) {
+                        crate::logging::error(
+                            "terminal_write_failed",
+                            Some(&write_owner),
+                            "terminal",
+                            &error.to_string(),
+                        );
                         let _ = write_events.send(Event {
                             kind: "error".into(),
                             exit_code: None,
@@ -616,6 +623,7 @@ pub async fn terminal_create(
     std::thread::spawn(move || {
         let mut buffer = [0; 16 * 1024];
         let mut error = None;
+        let mut pipe_closed = false;
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) => break,
@@ -632,6 +640,8 @@ pub async fn terminal_create(
                     }
                 }
                 Err(e) => {
+                    pipe_closed = (cfg!(windows) && matches!(e.raw_os_error(), Some(109 | 232)))
+                        || e.kind() == std::io::ErrorKind::UnexpectedEof;
                     error = Some(e.to_string());
                     break;
                 }
@@ -643,6 +653,26 @@ pub async fn terminal_create(
         let status = status_rx
             .recv()
             .unwrap_or_else(|_| Err(std::io::Error::other("Shell waiter stopped")));
+        if !flow.closed.load(Ordering::Acquire) {
+            if let Err(error) = &status {
+                crate::logging::error(
+                    "terminal_wait_failed",
+                    Some(&session.owner),
+                    "terminal",
+                    &error.to_string(),
+                );
+            }
+            if let Some(error) = &error
+                && !pipe_closed
+            {
+                crate::logging::error(
+                    "terminal_read_failed",
+                    Some(&session.owner),
+                    "terminal",
+                    error,
+                );
+            }
+        }
         if flow.drained() {
             let _ = events.send(Event {
                 kind: "exit".into(),

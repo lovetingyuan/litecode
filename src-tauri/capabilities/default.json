@@ -5,6 +5,7 @@
   "windows": ["main", "editor-*"],
   "permissions": [
     "core:default",
+    "log:allow-log",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",

@@ -8,6 +8,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { bootstrap, call, desktop, errorMessage } from "../core/bridge";
+import { logError } from "../core/logging";
 import { initializeEditor, monaco } from "../editor/monaco";
 import { useApp, setApp, notify, patchSearch, primarySearchId } from "../store/store";
 import {
@@ -216,7 +217,10 @@ export default function App() {
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
   useEffect(() => {
     startupMark("react-mounted");
-    void start().catch((e) => setFatal(errorMessage(e)));
+    void start().catch((e) => {
+      logError("workbench_startup_failed", e);
+      setFatal(errorMessage(e));
+    });
     return installKeys();
   }, []);
   useEffect(() => {
@@ -241,7 +245,7 @@ export default function App() {
           cleanup = stop;
         }
       })
-      .catch((error) => console.error("Could not initialize updates", errorMessage(error)));
+      .catch((error) => logError("update_initialization_failed", error));
     return () => {
       disposed = true;
       cleanup?.();
@@ -631,15 +635,6 @@ export default function App() {
               </button>
               <button
                 disabled={!s.ready}
-                className={s.view === "terminal" ? "active" : ""}
-                aria-label="Terminal (Ctrl+`)"
-                title="Terminal (Ctrl+`)"
-                onClick={() => void execute("workbench.action.terminal.toggleTerminal")}
-              >
-                <Icon name="terminal" />
-              </button>
-              <button
-                disabled={!s.ready}
                 className={s.view === "editor" && s.sidebar === "git" ? "active" : ""}
                 aria-label="Source Control (Ctrl+Shift+G)"
                 title="Source Control (Ctrl+Shift+G)"
@@ -651,6 +646,15 @@ export default function App() {
                 }
               >
                 <Icon name="source-control" />
+              </button>
+              <button
+                disabled={!s.ready}
+                className={s.view === "terminal" ? "active" : ""}
+                aria-label="Terminal (Ctrl+`)"
+                title="Terminal (Ctrl+`)"
+                onClick={() => void execute("workbench.action.terminal.toggleTerminal")}
+              >
+                <Icon name="terminal" />
               </button>
             </div>
             <button

@@ -1,5 +1,6 @@
 use crate::error::{AppError, Result};
 use crate::sync::MutexExt;
+use chrono::{Local, NaiveDate};
 use serde::Serialize;
 use std::{
     collections::HashSet,
@@ -12,6 +13,32 @@ use std::{
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio::sync::Notify;
+
+const CHECK_INTERVAL: Duration = Duration::from_secs(60);
+const RETRY_DELAY: Duration = Duration::from_secs(30 * 60);
+
+#[derive(Default)]
+struct CheckSchedule {
+    last_success: Option<NaiveDate>,
+    last_attempt: Option<(NaiveDate, Instant)>,
+}
+
+impl CheckSchedule {
+    fn should_check(&self, background: bool, today: NaiveDate, now: Instant) -> bool {
+        !background
+            || (self.last_success != Some(today)
+                && !self.last_attempt.is_some_and(|(date, attempted)| {
+                    date == today && now.saturating_duration_since(attempted) < RETRY_DELAY
+                }))
+    }
+
+    fn complete(&mut self, today: NaiveDate, now: Instant, success: bool) {
+        self.last_attempt = Some((today, now));
+        if success {
+            self.last_success = Some(today);
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,12 +95,13 @@ struct Inner {
     snapshot: Snapshot,
     update: Option<Update>,
     barrier: Option<Barrier>,
+    schedule: CheckSchedule,
 }
 pub struct Updates {
     pub window_gate: Mutex<()>,
     inner: Mutex<Inner>,
     operation: tokio::sync::Mutex<()>,
-    started: AtomicBool,
+    scheduler_started: AtomicBool,
     notify: Notify,
 }
 
@@ -99,11 +127,27 @@ impl Updates {
                 },
                 update: None,
                 barrier: None,
+                schedule: CheckSchedule::default(),
             }),
             operation: Default::default(),
-            started: AtomicBool::new(false),
+            scheduler_started: AtomicBool::new(false),
             notify: Notify::new(),
         }
+    }
+    fn start_scheduler(&self, app: &AppHandle) {
+        if self.scheduler_started.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            loop {
+                // Re-read the local date after each tick, including after sleep
+                // or timezone changes; never replay missed historical checks.
+                tokio::time::sleep(CHECK_INTERVAL).await;
+                let state = app.state::<Updates>();
+                let _ = run_check(&app, &state, true).await;
+            }
+        });
     }
     fn snapshot(&self) -> Snapshot {
         self.inner.lock_recover().snapshot.clone()
@@ -138,6 +182,7 @@ impl Updates {
         }
     }
     fn fail(&self, app: &AppHandle, error: &AppError) {
+        crate::logging::error("update_failed", None, &error.code, &error.message);
         self.inner.lock_recover().barrier = None;
         self.publish(app, |s| {
             s.phase = Phase::Error;
@@ -200,18 +245,28 @@ pub async fn check_update(
     state: State<'_, Updates>,
     background: bool,
 ) -> Result<Snapshot> {
-    if background && state.started.swap(true, Ordering::AcqRel) {
-        return Ok(state.snapshot());
-    }
-    state.started.store(true, Ordering::Release);
+    state.start_scheduler(&app);
+    run_check(&app, &state, background).await
+}
+
+async fn run_check(app: &AppHandle, state: &Updates, background: bool) -> Result<Snapshot> {
     let _operation = match state.operation.try_lock() {
         Ok(guard) => guard,
+        // A skipped background check stays due until the operation completes.
+        Err(_) if background => return Ok(state.snapshot()),
         Err(_) => {
             let _wait = state.operation.lock().await;
             return Ok(state.snapshot());
         }
     };
-    state.publish(&app, |s| {
+    if !state.inner.lock_recover().schedule.should_check(
+        background,
+        Local::now().date_naive(),
+        Instant::now(),
+    ) {
+        return Ok(state.snapshot());
+    }
+    state.publish(app, |s| {
         s.phase = Phase::Checking;
         s.error = None;
     });
@@ -267,7 +322,7 @@ pub async fn check_update(
         let version = inner.update.as_ref().map(|u| u.version.clone());
         let notes = inner.update.as_ref().and_then(|u| u.body.clone());
         drop(inner);
-        Ok(state.publish(&app, |s| {
+        Ok(state.publish(app, |s| {
             s.phase = if version.is_some() {
                 Phase::Available
             } else {
@@ -280,8 +335,13 @@ pub async fn check_update(
         }))
     }
     .await;
+    state.inner.lock_recover().schedule.complete(
+        Local::now().date_naive(),
+        Instant::now(),
+        result.is_ok(),
+    );
     if let Err(error) = &result {
-        state.fail(&app, error);
+        state.fail(app, error);
     }
     result
 }
@@ -376,6 +436,79 @@ pub async fn install_update(app: AppHandle, state: State<'_, Updates>) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn startup_checks_and_success_suppresses_the_rest_of_the_local_day() {
+        let mut schedule = CheckSchedule::default();
+        let today = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
+        let now = Instant::now();
+        assert!(schedule.should_check(true, today, now));
+        schedule.complete(today, now, true);
+        assert!(!schedule.should_check(true, today, now + Duration::from_secs(23 * 3600)));
+        // Restarting the process gets a fresh schedule, even on the same day.
+        assert!(CheckSchedule::default().should_check(true, today, now));
+    }
+
+    #[test]
+    fn a_new_local_day_or_resume_after_multiple_days_is_due_immediately() {
+        let mut schedule = CheckSchedule::default();
+        let today = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
+        let now = Instant::now();
+        schedule.complete(today, now, true);
+        assert!(schedule.should_check(true, today.succ_opt().unwrap(), now));
+        let resumed = NaiveDate::from_ymd_opt(2026, 11, 6).unwrap();
+        assert!(schedule.should_check(true, resumed, now));
+    }
+
+    #[test]
+    fn failed_checks_retry_after_thirty_minutes_and_stop_after_success() {
+        let mut schedule = CheckSchedule::default();
+        let today = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
+        let now = Instant::now();
+        schedule.complete(today, now, false);
+        assert!(!schedule.should_check(true, today, now + RETRY_DELAY - Duration::from_secs(1)));
+        assert!(schedule.should_check(true, today, now + RETRY_DELAY));
+        schedule.complete(today, now + RETRY_DELAY, false);
+        assert!(!schedule.should_check(true, today, now + RETRY_DELAY));
+        schedule.complete(today, now + RETRY_DELAY * 2, true);
+        assert!(!schedule.should_check(true, today, now + RETRY_DELAY * 3));
+    }
+
+    #[test]
+    fn midnight_does_not_wait_for_yesterdays_retry_delay() {
+        let mut schedule = CheckSchedule::default();
+        let today = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
+        let now = Instant::now();
+        schedule.complete(today, now, false);
+        assert!(schedule.should_check(true, today.succ_opt().unwrap(), now));
+    }
+
+    #[test]
+    fn manual_checks_bypass_limits_and_their_results_update_the_schedule() {
+        let mut schedule = CheckSchedule::default();
+        let today = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
+        let now = Instant::now();
+        schedule.complete(today, now, false);
+        assert!(schedule.should_check(false, today, now));
+        schedule.complete(today, now, true);
+        assert!(schedule.should_check(false, today, now));
+        assert!(!schedule.should_check(true, today, now));
+        // A later manual failure does not erase today's successful check.
+        schedule.complete(today, now, false);
+        assert!(!schedule.should_check(true, today, now + RETRY_DELAY));
+    }
+
+    #[test]
+    fn a_check_finishing_after_midnight_counts_for_its_completion_day() {
+        let mut schedule = CheckSchedule::default();
+        let yesterday = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
+        let today = yesterday.succ_opt().unwrap();
+        let now = Instant::now();
+        assert!(schedule.should_check(true, yesterday, now));
+        schedule.complete(today, now + Duration::from_secs(10), true);
+        assert!(!schedule.should_check(true, today, now + Duration::from_secs(60)));
+    }
+
     fn barrier() -> Barrier {
         Barrier {
             id: 7,

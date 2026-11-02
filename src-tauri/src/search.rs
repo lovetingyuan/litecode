@@ -270,6 +270,20 @@ async fn send_batch(
         }
         tokio::time::sleep(Duration::from_millis(15)).await;
     }
+    if !batch.errors.is_empty() && !task.cancelled.load(Ordering::Acquire) {
+        // ripgrep diagnostics may echo the search pattern or source lines.
+        crate::logging::error(
+            "search_batch_failed",
+            None,
+            "search",
+            &format!(
+                "Search {} reported {} errors in batch {}. Search diagnostics omitted.",
+                batch.request_id,
+                batch.errors.len(),
+                batch.sequence
+            ),
+        );
+    }
     if channel.send(batch.clone()).is_err() {
         return false;
     }

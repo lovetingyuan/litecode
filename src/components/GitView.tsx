@@ -517,7 +517,7 @@ export function GitView() {
                   </div>
                 ))}
                 <div
-                  className={`git-section-heading flex shrink-0 items-center min-h-7 bg-widget ${gitStyles["git-section-heading"]}`}
+                  className={`git-section-heading flex shrink-0 items-center min-h-7 bg-sidebar ${gitStyles["git-section-heading"]}`}
                 >
                   <h3>Branches</h3>
                   <IconButton
@@ -619,7 +619,7 @@ export function GitView() {
   }
   return (
     <section
-      className={`view flex flex-col h-full min-h-0 overflow-hidden search-view text-[15px] bg-widget text-foreground ${searchStyles["search-view"]} git-view min-h-0 overflow-hidden ${gitStyles["git-view"]}`}
+      className={`view flex flex-col h-full min-h-0 overflow-hidden search-view text-[15px] bg-sidebar text-foreground ${searchStyles["search-view"]} git-view min-h-0 overflow-hidden ${gitStyles["git-view"]}`}
       aria-label="Source Control"
     >
       <div
@@ -837,7 +837,7 @@ function GitChangeSection({
       aria-label={title}
     >
       <div
-        className={`git-section-heading flex shrink-0 items-center min-h-7 bg-widget ${gitStyles["git-section-heading"]}`}
+        className={`git-section-heading flex shrink-0 items-center min-h-7 bg-sidebar ${gitStyles["git-section-heading"]}`}
       >
         <button
           className={`git-section-toggle flex items-center gap-[5px] flex-1 min-w-0 text-left h-7 text-[12px] font-semibold ${gitStyles["git-section-toggle"]}`}

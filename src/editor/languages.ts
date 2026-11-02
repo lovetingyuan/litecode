@@ -16,6 +16,7 @@ import {
 } from "@codingame/monaco-vscode-files-service-override";
 import { createModelReference } from "@codingame/monaco-vscode-api/monaco";
 import { call, desktop, errorMessage } from "../core/bridge";
+import { logError } from "../core/logging";
 import { useApp, setApp, notify } from "../store/store";
 import { monaco } from "./monaco";
 import { models, openPath, normalize, visiblePath, checkpoint } from "./documents";
@@ -391,6 +392,10 @@ async function startLanguage(
               response = result?.body ?? null;
             } catch (e) {
               if (epoch === languageEpoch) {
+                logError("vue_typescript_request_failed", {
+                  code: "lspProtocol",
+                  message: "Vue TypeScript request failed",
+                });
                 notify(`Vue TypeScript: ${errorMessage(e)}`);
               }
             } finally {
@@ -430,6 +435,13 @@ async function startLanguage(
       }
     } catch (e) {
       if (epoch === languageEpoch) {
+        logError("language_initialization_failed", e, {
+          command: serverId,
+          omitDetails: !(
+            e instanceof Error &&
+            e.message === "Language server initialization timed out after 30 seconds"
+          ),
+        });
         failures.add(serverId);
         failureDetails.set(serverId, `${errorMessage(e)}\n${logs.join("\n")}`);
         if ((e as { code?: string })?.code === "workspaceTrust") {
@@ -546,6 +558,7 @@ async function applyWorkspaceEdit(
     await checkpoint();
     return { applied: true };
   } catch (e) {
+    logError("workspace_edit_failed", e);
     return { applied: false, failureReason: errorMessage(e) };
   }
 }

@@ -18,6 +18,7 @@ mod http_preview;
 #[cfg(windows)]
 mod instance;
 mod launch;
+mod logging;
 mod lsp;
 mod media;
 mod quick_files;
@@ -78,8 +79,10 @@ pub fn run() {
     if let Some(code) = elevated_save::run_helper() {
         std::process::exit(code);
     }
+    logging::install_panic_hook();
     startup::mark("process-started", std::time::Instant::now());
-    let builder = media::register(tauri::Builder::default());
+    let builder = media::register(tauri::Builder::default())
+        .plugin(tauri_plugin_log::Builder::new().skip_logger().build());
     #[cfg(windows)]
     let builder = builder.plugin(instance::init());
     builder
@@ -96,6 +99,8 @@ pub fn run() {
             #[cfg(not(windows))]
             let data_dir = data_directory(app.handle())?;
             std::fs::create_dir_all(&data_dir)?;
+            #[cfg(not(windows))]
+            logging::init(app.handle(), &data_dir);
             app.manage(state::AppState {
                 data_dir,
                 ..Default::default()
@@ -104,7 +109,13 @@ pub fn run() {
                 external_drop::install(&window)?;
             }
             let state = app.state::<state::AppState>();
+            if let Some(status) = app.try_state::<logging::LogStatus>()
+                && let Some(warning) = &status.0
+            {
+                state.startup_warnings.lock_recover().push(warning.clone());
+            }
             let mut labels = state.recovery_windows().unwrap_or_else(|error| {
+                logging::warning("recovery_inspection_failed", None, &error.message);
                 state.startup_warnings.lock_recover().push(format!(
                     "Could not inspect recovery sessions: {}",
                     error.message
@@ -130,15 +141,23 @@ pub fn run() {
                         }
                     }
                 }
-                Err(error) => state.startup_warnings.lock_recover().push(format!(
-                    "Could not inspect replacement recovery: {}. Backups were preserved.",
-                    error.message
-                )),
+                Err(error) => {
+                    logging::warning(
+                        "replacement_recovery_inspection_failed",
+                        None,
+                        &error.message,
+                    );
+                    state.startup_warnings.lock_recover().push(format!(
+                        "Could not inspect replacement recovery: {}. Backups were preserved.",
+                        error.message
+                    ));
+                }
             }
             labels.sort();
             labels.dedup();
             for label in labels {
                 if let Err(error) = commands::create_editor_window(app.handle(), &state, &label) {
+                    logging::warning("window_restore_failed", Some(&label), &error.message);
                     state
                         .startup_warnings
                         .lock_recover()
@@ -166,7 +185,15 @@ pub fn run() {
                 // Final synchronous flush must finish before the last window exits.
                 // Do not wait for the disk gate on the UI thread: a task holding
                 // it may be waiting for this thread to create a window.
-                let _ = state.checkpoint(window.label());
+                if let Err(error) = state.checkpoint(window.label()) {
+                    logging::error(
+                        "close_checkpoint_failed",
+                        Some(window.label()),
+                        &error.code,
+                        &error.message,
+                    );
+                }
+                log::logger().flush();
                 state.servers.lock_recover().retain(|key, server| {
                     if key.starts_with(&format!("{}/", window.label())) {
                         lsp::kill_tree(server.pid);
@@ -182,6 +209,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            logging::open_logs_directory,
             http_preview::html_preview_start,
             http_preview::html_preview_list,
             http_preview::html_preview_stop,
@@ -260,5 +288,9 @@ pub fn run() {
             transactions::recover_replacement,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|error| {
+            logging::error("application_failed", None, "tauri", &error.to_string());
+            log::logger().flush();
+            panic!("error while running tauri application: {error}");
+        });
 }

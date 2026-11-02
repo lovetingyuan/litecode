@@ -1,4 +1,5 @@
 import { call, desktop, errorMessage } from "./bridge";
+import { logError } from "./logging";
 import { activeDoc, useApp, setApp, notify, primarySearchId } from "../store/store";
 import {
   checkpoint,
@@ -926,6 +927,12 @@ export const commands: Command[] = [
         noticeLink: "https://github.com/lovetingyuan/litecode",
       }),
   },
+  {
+    id: "litecode.openLogsFolder",
+    label: "Open Logs Folder",
+    menu: "Help",
+    run: () => call<void>("open_logs_directory"),
+  },
 ];
 export async function execute(id: string, context?: EditorContext) {
   if (useApp.getState().openingWorkspace !== null) {
@@ -940,6 +947,7 @@ export async function execute(id: string, context?: EditorContext) {
     await command.run(context);
     scheduleBackup();
   } catch (e) {
+    logError("workbench_command_failed", e, { command: id });
     notify(errorMessage(e));
   }
 }

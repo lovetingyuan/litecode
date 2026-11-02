@@ -33,7 +33,9 @@ The initial key has been generated on the development machine. Other machines ne
 
 ## Application updates
 
-Use **Help → Check for Updates…** or the command palette. Startup checks run once per process without opening a dialog; an available update adds a button at the upper right. Installed editions download and verify the update, checkpoint all editor windows, then run the NSIS updater and reopen. Terminal tasks stop during installation. Unsaved text is restored from recovery records rather than written over the original files.
+Use **Help → Check for Updates…** or the command palette. Each application launch checks silently, with all editor windows sharing one process-wide schedule. While the app remains open, it checks once per local calendar day and retries failed checks every 30 minutes until one succeeds. The schedule is evaluated every 60 seconds, so a check missed across midnight or while the computer sleeps runs within 60 seconds of normal execution resuming. It does not wake the computer or replay checks for previous days. Automatic checks wait while an update is downloading or installing; manual checks bypass the daily and retry limits. An available update adds a button at the upper right without opening a dialog.
+
+Installed editions download and verify the update, checkpoint all editor windows, then run the NSIS updater and reopen. Terminal tasks stop during installation. Unsaved text is restored from recovery records rather than written over the original files.
 
 A window that cannot checkpoint, closes during preparation, or fails to respond within 30 seconds prevents installation. Download or signature errors leave the current version running and allow retry. Portable editions display the release and link to its downloads; replace the portable program/resources manually while keeping the adjacent `data` directory.
 

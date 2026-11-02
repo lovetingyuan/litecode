@@ -12,7 +12,9 @@
   height: 100%;
   padding: 0;
 }
-.terminal-surface .xterm-viewport {
+/* xterm.css (lazy-loaded after this file) paints `.xterm .xterm-viewport` #000, which shows as a
+ * black strip below the last full row. Extra specificity keeps the override independent of load order. */
+.terminal-surface .xterm .xterm-viewport {
   background: transparent;
   overflow: hidden;
 }

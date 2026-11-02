@@ -1078,7 +1078,16 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
 
   async function copyExplorerPaths(paths: string[], root: string, kind: string) {
     const text = paths
-      .map((p) => (kind === "fullPath" ? join(root, p).replace(/\//g, "\\") : p))
+      .map((p) => {
+        if (kind === "fullPath") {
+          return join(root, p).replace(/\//g, "\\");
+        }
+        if (kind !== "fileName") {
+          return p;
+        }
+        // Directory paths in the tree end with "/", strip it before taking the last segment.
+        return basename(p.endsWith("/") ? p.slice(0, -1) : p);
+      })
       .join("\r\n");
     if (desktop) {
       await (await import("@tauri-apps/plugin-clipboard-manager")).writeText(text);
@@ -1118,7 +1127,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
         await rememberExplorerPaths(paths, root, kind);
         return;
       }
-      if (kind === "fullPath" || kind === "relativePath") {
+      if (kind === "fileName" || kind === "fullPath" || kind === "relativePath") {
         await copyExplorerPaths(paths, root, kind);
         return;
       }
@@ -1399,6 +1408,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
                 ["cut", "Cut"],
                 ["copy", "Copy"],
                 ["paste", "Paste"],
+                ["fileName", "Copy Name"],
                 ["fullPath", "Copy Path"],
                 ["relativePath", "Copy Relative Path"],
                 ["rename", "Rename…"],
@@ -1407,7 +1417,8 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
                 <Menu.Item
                   key={kind}
                   disabled={
-                    !context?.path && ["cut", "copy", "rename", "delete", "reveal"].includes(kind)
+                    !context?.path &&
+                    ["cut", "copy", "fileName", "rename", "delete", "reveal"].includes(kind)
                   }
                   onClick={() => void action(kind, context?.path ?? "")}
                 >

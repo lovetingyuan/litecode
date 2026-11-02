@@ -175,7 +175,12 @@ impl Service {
             }
             .await;
             if let Err(error) = result {
-                eprintln!("HTML preview server failed: {error}");
+                crate::logging::error(
+                    "html_preview_failed",
+                    Some(&label),
+                    "preview",
+                    &error.to_string(),
+                );
             }
             let (removed, snapshot) = service.remove(&label, Some(id));
             if !removed.is_empty() {

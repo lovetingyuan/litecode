@@ -126,7 +126,7 @@ pub fn install(window: &WebviewWindow) -> tauri::Result<()> {
         }));
         let mut token = 0;
         if let Err(error) = core.add_WebMessageReceived(&handler, &mut token) {
-            eprintln!("Could not install external file drop bridge: {error}");
+            crate::logging::error("external_drop_bridge_failed", None, "drop", &error.to_string());
         }
     })
 }
