@@ -32,7 +32,7 @@ export type DiffRequest = {
 type FileKind = "text" | "image" | "svg" | "video" | "audio" | "binary";
 export type FileInfo = { kind: FileKind; size: number; stamp: string };
 export type MediaView = {
-  mode?: "text" | "image" | "markdown";
+  mode?: "text" | "image" | "markdown" | "package";
   scale?: number | "fit";
   scrollLeft?: number;
   scrollTop?: number;

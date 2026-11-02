@@ -50,7 +50,14 @@ import { trustedCall } from "../core/workspaceTrust";
 import { ask } from "../components/dialog";
 import { useApp } from "../store/store";
 import { addSplit, addTab, patchPane, useTerminal } from "./state";
-import { closePane, closeTab, mountPane, resetTerminals, restartPane } from "./runtime";
+import {
+  closePane,
+  closeTab,
+  mountPane,
+  resetTerminals,
+  restartPane,
+  runTerminalCommand,
+} from "./runtime";
 
 const host = () => ({
   append: vi.fn(),
@@ -107,6 +114,33 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+describe("package terminal commands", () => {
+  it("starts a fresh trusted terminal in the package directory before sending one escaped command", async () => {
+    useApp.setState({ ready: true, root: "C:/project", openingWorkspace: null });
+    await runTerminalCommand("C:/project", "npm", ["run", "--", "build & serve"]);
+    const createArgs = vi.mocked(trustedCall).mock.calls[0][1];
+    expect(typeof createArgs === "function" ? createArgs() : createArgs).toMatchObject({
+      cwd: "C:/project",
+      expectedRoot: "C:/project",
+    });
+    expect(call).toHaveBeenCalledWith("terminal_write", {
+      id: "session-1",
+      data: Array.from(new TextEncoder().encode('"npm" "run" "--" "build & serve"\r')),
+    });
+    expect(useApp.getState().view).toBe("terminal");
+  });
+  it("does not send a command when workspace trust rejects terminal creation", async () => {
+    useApp.setState({ ready: true, root: "C:/project", openingWorkspace: null });
+    vi.mocked(trustedCall).mockRejectedValueOnce(new Error("Restricted Mode"));
+    await expect(runTerminalCommand("C:/project", "npm", ["run", "build"])).rejects.toThrow(
+      "Restricted Mode",
+    );
+    expect(vi.mocked(call).mock.calls.some(([command]) => command === "terminal_write")).toBe(
+      false,
+    );
+  });
+});
 
 describe("terminal close requests", () => {
   it("waits for a starting shell before checking its child processes", async () => {

@@ -44,7 +44,7 @@ import { createSearchEditor } from "../search/search";
 import { EditorTabMenu } from "./EditorTabMenu";
 import type { Doc, Group, Query, SearchMatch } from "../types/types";
 import { isGitConflicted, isGitIgnored } from "../utils/gitStatus";
-import { isMarkdownView, isTextView } from "../utils/media";
+import { isMarkdownView, isPackageView, isTextView } from "../utils/media";
 import { MediaPreview } from "./MediaPreview";
 import { EditorBreadcrumbs } from "./EditorBreadcrumbs";
 import { GitDiffEditor } from "./GitDiffEditor";
@@ -54,12 +54,16 @@ import { explorerDragFiles, explorerDragType } from "../explorer/explorerDrag";
 const MarkdownPreview = lazy(() =>
   import("./MarkdownPreview").then((module) => ({ default: module.MarkdownPreview })),
 );
+const PackageManager = lazy(() =>
+  import("./PackageManager").then((module) => ({ default: module.PackageManager })),
+);
 
 export function EditorGroup({ group }: Readonly<{ group: Group }>) {
   const docs = useApp((s) => s.docs);
   const activeGroup = useApp((s) => s.activeGroup);
   const settings = useApp((s) => s.settings);
   const root = useApp((s) => s.root);
+  const workspaceEpoch = useApp((s) => s.workspaceEpoch);
   const treeRoot = useApp((s) => s.treeRoot);
   const git = useApp((s) => s.gitState.git);
   const multipleGroups = useApp((s) => s.groups.length > 1);
@@ -504,9 +508,24 @@ export function EditorGroup({ group }: Readonly<{ group: Group }>) {
         </Suspense>
       )}
       {doc?.gitDiff && <GitDiffEditor key={doc.id} doc={doc} group={group} />}
-      {doc && !doc.gitDiff && !textView && !isMarkdownView(doc, group) && (
-        <MediaPreview key={`${doc.id}:${doc.path}`} doc={doc} group={group} />
+      {doc && isPackageView(doc, group) && (
+        <Suspense
+          fallback={
+            <div role="status" className="p-6 text-muted">
+              Loading package.json…
+            </div>
+          }
+        >
+          <PackageManager key={`${root}:${workspaceEpoch}:${doc.id}:${doc.path}`} doc={doc} />
+        </Suspense>
       )}
+      {doc &&
+        !doc.gitDiff &&
+        !textView &&
+        !isMarkdownView(doc, group) &&
+        !isPackageView(doc, group) && (
+          <MediaPreview key={`${doc.id}:${doc.path}`} doc={doc} group={group} />
+        )}
       {!doc && (
         <div
           className={`empty-editor absolute inset-[35px_0_0] flex flex-col items-center justify-center pointer-events-none gap-10 ${editorStyles["empty-editor"]}`}

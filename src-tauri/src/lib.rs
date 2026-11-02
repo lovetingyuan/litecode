@@ -21,6 +21,7 @@ mod launch;
 mod logging;
 mod lsp;
 mod media;
+mod packages;
 mod quick_files;
 mod recovery;
 mod replacement;
@@ -263,6 +264,8 @@ pub fn run() {
             lsp::lsp_ack,
             lsp::lsp_stop,
             terminal::terminal_profiles,
+            packages::package_snapshot,
+            packages::package_registry,
             terminal::terminal_create,
             terminal::terminal_write,
             terminal::terminal_resize,

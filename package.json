@@ -2,6 +2,7 @@
   "name": "litecode",
   "version": "0.1.3",
   "private": true,
+  "description": "A super light version of VSCode.",
   "type": "module",
   "scripts": {
     "postinstall": "node tools/patch-trees-scroll.mjs",

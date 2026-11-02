@@ -26,6 +26,7 @@ import {
 } from "./state";
 import { plainTerminalText, reportedDirectory, terminalOptions, terminalSetting } from "./settings";
 import { quoteDroppedPaths } from "./drop";
+import { terminalCommand } from "./command";
 
 type Created = {
   id: string;
@@ -107,6 +108,35 @@ export function newTerminal(profile?: string) {
   void refreshProfiles().catch(report);
   return id;
 }
+export async function runTerminalCommand(cwd: string, program: string, args: string[]) {
+  const { root, workspaceEpoch } = useApp.getState();
+  if (!useApp.getState().ready || useApp.getState().openingWorkspace !== null) {
+    throw new Error("Wait for the workspace to finish opening.");
+  }
+  const id = addTab();
+  patchPane(id, { cwd });
+  const runtime = createRuntime(id);
+  runtime.starting = startPane(id, runtime);
+  setApp({ view: "terminal" });
+  await runtime.starting;
+  if (
+    runtime.disposed ||
+    useApp.getState().root !== root ||
+    useApp.getState().workspaceEpoch !== workspaceEpoch
+  ) {
+    throw new Error("The terminal closed or the workspace changed before the command ran.");
+  }
+  if (!runtime.sessionId || useTerminal.getState().panes[id]?.status !== "running") {
+    throw new Error(useTerminal.getState().panes[id]?.error ?? "Could not start the terminal.");
+  }
+  const command = terminalCommand(program, args, runtime.shellKind ?? "");
+  await call("terminal_write", {
+    id: runtime.sessionId,
+    data: Array.from(new TextEncoder().encode(`${command}\r`)),
+  });
+  focusTerminal(id);
+}
+
 export async function splitTerminal(direction: SplitDirection = "right", source = activePane()) {
   const runtime = source && runtimes.get(source);
   if (!source || !runtime) {
@@ -120,11 +150,6 @@ export async function splitTerminal(direction: SplitDirection = "right", source 
     useTerminal.getState().panes[source]?.status !== "running"
   ) {
     return;
-  }
-  if (!useTerminal.getState().panes[source]?.reportedCwd && get("splitCwd") === "inherited") {
-    notify(
-      "Shell has not reported its current directory. The split will use its last known directory.",
-    );
   }
   const id = addSplit(source, direction);
   if (id) {

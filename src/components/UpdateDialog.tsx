@@ -113,9 +113,7 @@ export function UpdateDialog() {
                 <button
                   className={`${actionButtonClass} primary bg-focus text-foreground-strong rounded-[2px] py-[5px] px-[14px] ${workbenchStyles["primary"]}`}
                   disabled={busy}
-                  onClick={() =>
-                    s.portable ? openLink(releaseUrl) : void installUpdate()
-                  }
+                  onClick={() => (s.portable ? openLink(releaseUrl) : void installUpdate())}
                 >
                   {s.portable ? "Open Release Downloads" : "Download and Install"}
                 </button>

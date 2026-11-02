@@ -10,9 +10,14 @@ export const isHtmlDocument = (doc: Doc) =>
   (doc.path ? /\.html?$/i.test(doc.path) : doc.language === "html");
 export const isMarkdownView = (doc: Doc, group?: Group) =>
   isMarkdownDocument(doc) && group?.mediaViews?.[doc.id]?.mode === "markdown";
+export const isPackageView = (doc: Doc, group?: Group) =>
+  isTextDocument(doc) &&
+  /(?:^|[\\/])package\.json$/.test(doc.path ?? "") &&
+  group?.mediaViews?.[doc.id]?.mode === "package";
 export const isTextView = (doc: Doc, group?: Group) =>
   isTextDocument(doc) &&
   !isMarkdownView(doc, group) &&
+  !isPackageView(doc, group) &&
   (doc.kind !== "svg" || group?.mediaViews?.[doc.id]?.mode === "text");
 export const isImageView = (doc: Doc, group?: Group) =>
   doc.kind === "image" || (doc.kind === "svg" && !isTextView(doc, group));

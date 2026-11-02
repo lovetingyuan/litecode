@@ -240,7 +240,7 @@ export function focusDocument(groupId = useApp.getState().activeGroup) {
     editors.get(groupId)?.focus();
   } else if (typeof document !== "undefined") {
     const preview = document.querySelector<HTMLElement>(
-      `[data-group-id="${CSS.escape(groupId)}"] :is(.media-preview, .markdown-preview)`,
+      `[data-group-id="${CSS.escape(groupId)}"] :is(.media-preview, .markdown-preview, .package-manager)`,
     );
     (preview?.querySelector<HTMLElement>(".image-viewport") ?? preview)?.focus({
       preventScroll: true,

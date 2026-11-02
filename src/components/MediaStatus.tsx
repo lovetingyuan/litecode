@@ -4,13 +4,15 @@ import { Menu } from "@base-ui/react/menu";
 import { patchMediaView } from "../editor/documents";
 import { previewHtml, useHtmlPreviews } from "../core/htmlPreview";
 import { errorMessage } from "../core/bridge";
-import { notify } from "../store/store";
+import { notify, useApp } from "../store/store";
+import { isWorkspacePackageDocument } from "../packages/document";
 import {
   formatFileSize,
   isHtmlDocument,
   isImageView,
   isMarkdownDocument,
   isMarkdownView,
+  isPackageView,
   isTextView,
 } from "../utils/media";
 import { Icon } from "./ui";
@@ -66,23 +68,28 @@ export function MediaStatus({ doc, group }: Readonly<{ doc: Doc; group: Group }>
 }
 
 export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group }>) {
+  const root = useApp((state) => state.root);
+  const packageDocument = isWorkspacePackageDocument(doc, root);
   const html = isHtmlDocument(doc);
   const starting = useHtmlPreviews((state) => state.starting.includes(doc.id));
   const markdown = isMarkdownDocument(doc);
   let mode;
-  if (markdown) {
-    if (isMarkdownView(doc, group)) {
-      mode = "markdown";
-    } else {
-      mode = "text";
-    }
+  if (packageDocument) {
+    mode = isPackageView(doc, group) ? "package" : "text";
+  } else if (markdown) {
+    mode = isMarkdownView(doc, group) ? "markdown" : "text";
   } else if (isTextView(doc, group)) {
     mode = "text";
   } else {
     mode = "image";
   }
   let options: { mode: NonNullable<MediaView["mode"]> | "html"; label: string }[];
-  if (html) {
+  if (packageDocument) {
+    options = [
+      { mode: "text", label: "Edit" },
+      { mode: "package", label: "Manage" },
+    ];
+  } else if (html) {
     options = [
       { mode: "text", label: "Edit" },
       { mode: "html", label: "HTML Preview" },
@@ -98,13 +105,13 @@ export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group
       { mode: "text", label: "Text Editor" },
     ];
   }
-  let type;
-  if (html) {
+  let type = "SVG";
+  if (packageDocument) {
+    type = "package.json";
+  } else if (html) {
     type = "HTML";
   } else if (markdown) {
     type = "Markdown";
-  } else {
-    type = "SVG";
   }
   return (
     <Menu.Root>
