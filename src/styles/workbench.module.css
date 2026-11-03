@@ -257,6 +257,35 @@
 .statusbar :global(.codicon[class*="codicon-"]) {
   font-size: 14px;
 }
+.http-service-label {
+  position: relative;
+  overflow: hidden;
+}
+.http-service-label-size {
+  visibility: hidden;
+}
+.http-service-marquee {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: max-content;
+  animation: http-service-scroll 2s linear infinite;
+}
+.http-service-marquee > span {
+  padding-right: 24px;
+}
+@keyframes http-service-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .http-service-marquee {
+    /* Keep the requested running indicator visible while reducing its motion speed. */
+    animation-duration: 6s;
+  }
+}
 .status-right > :global(.git-line-status) {
   min-width: 0;
   flex-shrink: 1;
@@ -359,7 +388,8 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.modal-panel input {
+/* Full-width spacing is for text fields; checkboxes keep their compact layout. */
+.modal-panel input:not([type="checkbox"]) {
   width: 100%;
   margin: 8px 0;
 }

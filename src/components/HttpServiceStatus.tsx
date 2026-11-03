@@ -37,10 +37,16 @@ export function HttpServiceStatus() {
       <Popover.Trigger
         className={`status-item ${workbenchStyles["status-item"]}`}
         title="Manage HTML preview HTTP services"
-        aria-label="HTTP Services"
+        aria-label={`HTTP Services: ${label}`}
       >
         <Icon name="radio-tower" />
-        {label}
+        <span className={workbenchStyles["http-service-label"]} aria-hidden="true">
+          <span className={workbenchStyles["http-service-label-size"]}>{label}</span>
+          <span className={workbenchStyles["http-service-marquee"]}>
+            <span>{label}</span>
+            <span>{label}</span>
+          </span>
+        </span>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner
@@ -78,7 +84,7 @@ export function HttpServiceStatus() {
                 <div className="text-subtle">Port: {service.port}</div>
                 <div className="flex gap-2">
                   <button
-                    className={actionButtonClass}
+                    className={`${actionButtonClass} compact`}
                     disabled={stopping.includes(service.id)}
                     onClick={() =>
                       void openUrl(service.url).catch((error) => notify(errorMessage(error)))
@@ -87,7 +93,7 @@ export function HttpServiceStatus() {
                     Open in Browser
                   </button>
                   <button
-                    className={actionButtonClass}
+                    className={`${actionButtonClass} compact`}
                     disabled={stopping.includes(service.id)}
                     onClick={() =>
                       void stopHttpService(service.id).catch((error) => notify(errorMessage(error)))

@@ -192,7 +192,7 @@ export type GitFileBlame = {
 export type GitOperation =
   | { kind: "stage" | "unstage"; paths: string[] }
   | { kind: "discard"; files: { path: string; stamp: string }[] }
-  | { kind: "commit"; message: string }
+  | { kind: "commit"; message: string; amend?: boolean }
   | { kind: "fetch"; remote: string }
   | { kind: "pull"; rebase: boolean; remote?: string; branch?: string }
   | { kind: "push"; remote?: string }

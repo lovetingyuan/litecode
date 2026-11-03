@@ -679,6 +679,8 @@ pub enum Operation {
     },
     Commit {
         message: String,
+        #[serde(default)]
+        amend: bool,
     },
     Fetch {
         remote: String,
@@ -866,14 +868,24 @@ fn prepare(root: &Path, request: Operation) -> Result<Prepared> {
                 )
             }
         }
-        Operation::Commit { message } => {
-            if message.trim().is_empty() {
+        Operation::Commit { message, amend } => {
+            if !amend && message.trim().is_empty() {
                 return Err(git_error("Commit message is required"));
             }
             if repo.index().map_err(git_error)?.has_conflicts() {
                 return Err(git_error("Stage resolved conflicts before committing"));
             }
-            git_command(root, &["commit", "--file=-"], Some(message.as_bytes()))
+            let mut args = vec!["commit"];
+            if amend {
+                args.push("--amend");
+            }
+            if amend && message.trim().is_empty() {
+                args.push("--no-edit");
+                git_command(root, &args, None)
+            } else {
+                args.push("--file=-");
+                git_command(root, &args, Some(message.as_bytes()))
+            }
         }
         Operation::Fetch { remote } => {
             remote_name(&repo, &remote)?;

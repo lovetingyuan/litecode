@@ -18,6 +18,7 @@ export function GitCommitDialog({
 }>) {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [amend, setAmend] = useState(false);
   const working = useRef(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -25,7 +26,12 @@ export function GitCommitDialog({
   const message = useApp((s) => s.gitMessages[repository.path] ?? "");
   const grouped = useMemo(() => groupChanges(repository.changes), [repository.changes]);
   const hasCommittableChanges = !!grouped.staged.length && !grouped.conflicts.length;
-  const canCommit = hasCommittableChanges && !!message.trim() && !busy && !submitting;
+  const canCommit =
+    !grouped.conflicts.length &&
+    (amend || (hasCommittableChanges && !!message.trim())) &&
+    !busy &&
+    !submitting;
+  const commitLabel = amend ? "Amend Commit" : "Commit";
 
   async function commit() {
     if (
@@ -40,7 +46,7 @@ export function GitCommitDialog({
     working.current = true;
     setSubmitting(true);
     try {
-      if (await runGitOperation(repository.path, { kind: "commit", message })) {
+      if (await runGitOperation(repository.path, { kind: "commit", message, amend })) {
         setApp((s) => ({
           gitMessages: {
             ...s.gitMessages,
@@ -65,6 +71,9 @@ export function GitCommitDialog({
       open={open}
       onOpenChange={(next) => {
         if (!working.current) {
+          if (next) {
+            setAmend(false);
+          }
           setOpen(next);
         }
       }}
@@ -72,7 +81,7 @@ export function GitCommitDialog({
       <Dialog.Trigger
         ref={trigger}
         className={`${actionButtonClass} compact primary bg-focus text-foreground-strong rounded-[2px] py-[5px] px-[14px] ${workbenchStyles["primary"]}`}
-        disabled={!hasCommittableChanges || !!busy || submitting}
+        disabled={!!grouped.conflicts.length || !!busy || submitting}
       >
         Commit
       </Dialog.Trigger>
@@ -101,7 +110,9 @@ export function GitCommitDialog({
               id="git-commit-message"
               ref={input}
               aria-label="Commit Message"
-              placeholder="Message (Ctrl+Enter to commit)"
+              placeholder={
+                amend ? "Leave empty to keep the last message" : "Message (Ctrl+Enter to commit)"
+              }
               value={message}
               disabled={!!busy || submitting}
               rows={5}
@@ -117,10 +128,21 @@ export function GitCommitDialog({
                 }
               }}
             />
+            <label className="inline-flex self-start items-center gap-2 mt-1 text-[12px] whitespace-nowrap cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-3.5 h-3.5 shrink-0 m-0 p-0 accent-button"
+                checked={amend}
+                disabled={!!busy || submitting}
+                onChange={(event) => setAmend(event.target.checked)}
+              />
+              <span>Amend last commit</span>
+              <code className="text-[11px] text-muted">--amend</code>
+            </label>
             {!!grouped.conflicts.length && (
               <p className="git-commit-hint">Resolve and stage conflicts before committing.</p>
             )}
-            {!grouped.conflicts.length && !grouped.staged.length && (
+            {!amend && !grouped.conflicts.length && !grouped.staged.length && (
               <p className="git-commit-hint">Stage changes before committing.</p>
             )}
             <div
@@ -137,7 +159,7 @@ export function GitCommitDialog({
                     aria-hidden="true"
                   />
                 )}
-                {submitting ? "Committing…" : "Commit"}
+                {submitting ? "Committing…" : commitLabel}
               </button>
               <button type="button" disabled={submitting} onClick={() => setOpen(false)}>
                 Cancel

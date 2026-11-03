@@ -32,6 +32,7 @@ fn commit(root: &Path, message: &str) {
         root,
         Operation::Commit {
             message: message.into(),
+            amend: false,
         },
     )
     .unwrap();
@@ -47,6 +48,71 @@ fn changes(root: &Path) -> Snapshot {
         .update_index(false);
     let statuses = repo.statuses(Some(&mut options)).unwrap();
     snapshot(&repo, &statuses)
+}
+
+#[test]
+fn amend_uses_staged_changes_preserves_message_and_can_change_only_message() {
+    let (_temp, root) = fixture();
+    fs::write(root.join("file.txt"), "original\n").unwrap();
+    stage(&root, &["file.txt"]);
+    commit(&root, "original message");
+    fs::write(root.join("file.txt"), "staged\n").unwrap();
+    stage(&root, &["file.txt"]);
+    fs::write(root.join("file.txt"), "unstaged\n").unwrap();
+    execute(
+        &root,
+        Operation::Commit {
+            message: String::new(),
+            amend: true,
+        },
+    )
+    .unwrap();
+    let repo = Repository::open(&root).unwrap();
+    let amended = repo.head().unwrap().peel_to_commit().unwrap();
+    assert_eq!(amended.message(), Some("original message\n"));
+    assert_eq!(amended.parent_count(), 0);
+    let tree_id = amended.tree_id();
+    let blob = repo
+        .find_blob(amended.tree().unwrap().get_name("file.txt").unwrap().id())
+        .unwrap();
+    assert_eq!(blob.content(), b"staged\n");
+    assert_eq!(
+        fs::read_to_string(root.join("file.txt")).unwrap(),
+        "unstaged\n"
+    );
+
+    execute(
+        &root,
+        Operation::Commit {
+            message: "updated message".into(),
+            amend: true,
+        },
+    )
+    .unwrap();
+    let renamed = repo.head().unwrap().peel_to_commit().unwrap();
+    assert_eq!(renamed.message(), Some("updated message\n"));
+    assert_eq!(renamed.parent_count(), 0);
+    assert_eq!(renamed.tree_id(), tree_id);
+    assert_ne!(renamed.id(), amended.id());
+}
+
+#[test]
+fn amend_without_an_existing_commit_does_not_create_one() {
+    let (_temp, root) = fixture();
+    fs::write(root.join("file.txt"), "staged\n").unwrap();
+    stage(&root, &["file.txt"]);
+    assert!(
+        execute(
+            &root,
+            Operation::Commit {
+                message: "message".into(),
+                amend: true,
+            },
+        )
+        .is_err()
+    );
+    assert!(Repository::open(&root).unwrap().head().is_err());
+    assert!(changes(&root).changes[0].index_status.is_some());
 }
 
 #[test]
@@ -159,7 +225,8 @@ fn unborn_unstage_preserves_special_filenames_and_multiline_commit_message() {
         execute(
             &root,
             Operation::Commit {
-                message: " \n ".into()
+                message: " \n ".into(),
+                amend: false,
             }
         )
         .is_err()
@@ -648,6 +715,7 @@ fn hooks_fail_without_losing_the_index() {
         &root,
         Operation::Commit {
             message: "test".into(),
+            amend: false,
         },
     )
     .unwrap_err();
