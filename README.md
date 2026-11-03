@@ -49,6 +49,10 @@ HTML and Markdown support document formatting and `editor.formatOnSave` through 
 
 Debug builds use the `dev` subdirectory of the normal application data directory, so the development app and installed release can run together with separate settings and recovery sessions. Each data directory retains its own single-instance protection. An existing `data` directory beside the executable still takes precedence for portable mode.
 
+The Windows installer adds **Open with LiteCode** to the classic context menus for files, folders, and folder backgrounds (under **Show more options** on Windows 11). Each invocation opens one window for the selected file or folder, leaving existing windows intact. Starting this way defers historical window recovery until the next normal launch; recovery data is preserved. Install the updated installer to refresh existing context-menu registrations.
+
+Run `node tools/verify-shell-open.mjs` with the debug app built and Vite running to verify shell-open window counts and deferred recovery. An optional executable path tests a bundled build instead. Fixtures and results are isolated under `tmp/`.
+
 ## Error logs
 
 Use **Help → Open Logs Folder**, or run **Open Logs Folder** from the command palette, to open the current profile's `logs` directory. Errors are saved locally as JSON Lines in `litecode.log`. Each file rotates at 2 MiB, retaining four archives (approximately 10 MiB total). Installed Windows builds use `%APPDATA%/com.tingyuan.litecode/logs`; development builds add `dev` before `logs`, and portable builds use `data/logs` beside the executable.

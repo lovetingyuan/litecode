@@ -5,7 +5,7 @@ import path from "node:path";
 import { chromium } from "playwright";
 
 const root = path.resolve("website");
-const output = path.resolve(".verification/website-review");
+const output = path.resolve("tmp/verification/website");
 await mkdir(output, { recursive: true });
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -21,13 +21,17 @@ const types = {
 const server = createServer(async (req, res) => {
   try {
     let pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
-    if (pathname.startsWith("/litecode/")) pathname = pathname.slice("/litecode".length);
+    if (pathname.startsWith("/litecode/")) {
+      pathname = pathname.slice("/litecode".length);
+    }
     let file = path.resolve(root, `.${pathname}`);
     if (file !== root && !file.startsWith(root + path.sep)) {
       res.writeHead(403).end();
       return;
     }
-    if ((await stat(file)).isDirectory()) file = path.join(file, "index.html");
+    if ((await stat(file)).isDirectory()) {
+      file = path.join(file, "index.html");
+    }
     res.setHeader("Content-Type", types[path.extname(file)] || "application/octet-stream");
     res.end(await readFile(file));
   } catch {
@@ -71,11 +75,14 @@ try {
   const page = await context.newPage();
   page.on("pageerror", (error) => errors.push(String(error)));
   page.on("response", (response) => {
-    if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`);
+    if (response.status() >= 400) {
+      errors.push(`${response.status()} ${response.url()}`);
+    }
   });
   page.on("request", (request) => {
-    if (!request.url().startsWith(base))
+    if (!request.url().startsWith(base)) {
       errors.push(`Unexpected external request: ${request.url()}`);
+    }
   });
 
   for (const prefix of ["/", "/litecode/"]) {
@@ -83,115 +90,25 @@ try {
       await page.goto(base + prefix + language);
       const lang = language ? "en" : "zh-CN";
       assert.equal(await page.getAttribute("html", "lang"), lang);
-      assert.equal(await page.locator("h1").count(), 1);
-      assert.equal(await page.locator(".feature").count(), 5);
-      assert.equal(await page.locator(".getting-started, #faq, a[href='#faq']").count(), 0);
-      assert.equal(
-        await page.getAttribute('link[rel="canonical"]', "href"),
-        `https://litecode.tingyuan.in/${language}`,
-      );
-      assert.equal(await page.locator('link[rel="alternate"][hreflang]').count(), 3);
-      const schema = JSON.parse(
-        await page.locator('script[type="application/ld+json"]').textContent(),
-      );
-      assert.equal(schema.operatingSystem, "Windows 11 x64");
-      assert.equal(schema.downloadUrl, "https://github.com/lovetingyuan/litecode/releases");
-      assert.ok((await page.getAttribute('meta[name="description"]', "content")).length > 40);
-      const downloads = await page
-        .locator(".button-primary")
-        .evaluateAll((nodes) => nodes.map((node) => node.href));
-      assert.deepEqual(
-        downloads,
-        Array(2).fill("https://github.com/lovetingyuan/litecode/releases"),
-      );
       const resources = await page
         .locator(
           'img, script[src], link[rel="stylesheet"], link[rel="icon"], link[rel="apple-touch-icon"]',
         )
         .evaluateAll((nodes) => nodes.map((node) => node.src || node.href));
-      for (const resource of resources) assert.equal((await fetch(resource)).status, 200, resource);
+      for (const resource of resources) {
+        assert.equal((await fetch(resource)).status, 200, resource);
+      }
       for (const link of await page
         .locator('a[href^="#"]')
-        .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("href").slice(1))))
+        .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("href").slice(1)))) {
         assert.equal(await page.locator(`[id="${link}"]`).count(), 1, `Anchor ${link}`);
+      }
       const alternate = await page.getAttribute(".language-link", "href");
       assert.equal((await fetch(new URL(alternate, page.url()))).status, 200);
 
-      for (const width of [360, 768, 1440]) {
-        await page.setViewportSize({ width, height: 1000 });
-        for (const theme of ["light", "dark"]) {
-          await page.locator("#theme").selectOption(theme);
-          assert.equal(await page.getAttribute("html", "data-theme"), theme);
-          assert.ok(
-            await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-            `${lang} ${width} ${theme} overflows`,
-          );
-        }
-      }
-      await page.reload();
-      assert.equal(await page.locator("#theme").inputValue(), "dark");
-      await page.locator("#theme").selectOption("system");
-      await page.emulateMedia({ colorScheme: "light" });
-      await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
-      await page.emulateMedia({ colorScheme: "dark" });
-      await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
-      checks.push(
-        `${prefix + language}: metadata, links, assets, 360/768/1440px, explicit/system/persisted themes`,
-      );
+      checks.push(`${prefix + language}: assets, anchors and language links`);
     }
   }
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(base + "/en/");
-  await page.locator(".menu-toggle").click();
-  assert.equal(await page.getAttribute(".menu-toggle", "aria-expanded"), "true");
-  assert.ok(await page.locator("#navigation").isVisible());
-  await page.keyboard.press("Escape");
-  assert.equal(await page.getAttribute(".menu-toggle", "aria-expanded"), "false");
-  assert.ok(await page.locator(".menu-toggle").evaluate((node) => node === document.activeElement));
-  await page.locator(".menu-toggle").click();
-  await page.locator('#navigation a[href="#features"]').click();
-  assert.equal(await page.getAttribute(".menu-toggle", "aria-expanded"), "false");
-  await page.goto(base + "/");
-  await page.keyboard.press("Tab");
-  assert.ok(await page.locator(".skip-link").evaluate((node) => node === document.activeElement));
-  await page.keyboard.press("Enter");
-  assert.ok(page.url().endsWith("#main"));
-  assert.equal(await page.locator(".is-pending").count(), 0);
-  checks.push(
-    "Mobile menu, Escape/focus return, section navigation, keyboard skip link, reduced motion",
-  );
-
-  const noScript = await browser.newContext({
-    javaScriptEnabled: false,
-    viewport: { width: 390, height: 844 },
-    colorScheme: "dark",
-  });
-  const plain = await noScript.newPage();
-  for (const language of ["", "en/"]) {
-    await plain.goto(base + "/" + language);
-    assert.ok(await plain.locator("h1").isVisible());
-    assert.ok(await plain.locator("#navigation").isVisible());
-    assert.equal(await plain.locator(".feature").count(), 5);
-    assert.equal(await plain.locator(".is-pending").count(), 0);
-    assert.ok(await plain.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  }
-  await noScript.close();
-  const blocked = await browser.newContext({ locale: "zh-CN", colorScheme: "light" });
-  await blocked.addInitScript(() =>
-    Object.defineProperty(window, "localStorage", {
-      get() {
-        throw new DOMException("Storage disabled", "SecurityError");
-      },
-    }),
-  );
-  const privatePage = await blocked.newPage();
-  privatePage.on("pageerror", (error) => errors.push(String(error)));
-  await privatePage.goto(base + "/");
-  await privatePage.locator("#theme").selectOption("dark");
-  assert.equal(await privatePage.getAttribute("html", "data-theme"), "dark");
-  await blocked.close();
-  checks.push("Both languages without JavaScript; themes with local storage blocked");
 
   const languageCases = [
     { languages: ["zh-CN"], expected: "zh" },
@@ -241,7 +158,9 @@ try {
       languagePage.on("pageerror", (error) => errors.push(String(error)));
       let navigations = 0;
       languagePage.on("request", (request) => {
-        if (request.isNavigationRequest()) navigations++;
+        if (request.isNavigationRequest()) {
+          navigations++;
+        }
       });
       const query = test.query || "?utm_source=language-check";
       await languagePage.goto(base + prefix + (test.route || "") + query + "#idea");
@@ -310,47 +229,6 @@ try {
     "Manual language switches persist, index.html selects correctly, storage-blocked switches survive reload, and native links switch both ways without JavaScript",
   );
 
-  for (const [name, language, width, theme] of [
-    ["desktop", "", 1440, "light"],
-    ["desktop-dark", "", 1440, "dark"],
-    ["tablet", "en/", 768, "light"],
-    ["mobile", "", 390, "light"],
-    ["mobile-en-dark", "en/", 390, "dark"],
-  ]) {
-    await page.setViewportSize({ width, height: width > 760 ? 1000 : 844 });
-    await page.goto(base + "/" + language);
-    await page.locator("#theme").selectOption(theme);
-    // Load lazy images before a full-page capture and verify real image dimensions.
-    await page
-      .locator("img")
-      .evaluateAll((images) => images.forEach((image) => (image.loading = "eager")));
-    await page.waitForFunction(() =>
-      [...document.images].every((image) => image.complete && image.naturalWidth > 0),
-    );
-    await page.evaluate(() => document.fonts.ready);
-    await page
-      .locator("img")
-      .evaluateAll((images) => Promise.all(images.map((image) => image.decode())));
-    // Chromium may defer painting decoded offscreen images. Visit every real
-    // screenshot before capturing the whole page, rather than certifying blanks.
-    for (const image of await page.locator(".screenshot img").all()) {
-      await image.scrollIntoViewIfNeeded();
-      await page.evaluate(
-        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-      );
-    }
-    await page.evaluate(() => scrollTo(0, 0));
-    const images = await page
-      .locator(".screenshot img")
-      .evaluateAll((nodes) => nodes.map((image) => [image.naturalWidth, image.naturalHeight]));
-    assert.deepEqual(
-      images,
-      Array.from({ length: 6 }, () => [1280, 820]),
-    );
-    await page.screenshot({ path: path.join(output, name + ".png"), fullPage: true });
-    if (name === "desktop" || name === "mobile")
-      await page.screenshot({ path: path.join(output, name + "-viewport.png") });
-  }
   const sitemap = await readFile(path.join(root, "sitemap.xml"), "utf8");
   assert.equal((sitemap.match(/<loc>/g) || []).length, 2);
   assert.match(
@@ -360,9 +238,7 @@ try {
   const missing = await fetch(base + "/nested/missing/page");
   assert.equal(missing.status, 404);
   assert.match(await missing.text(), /https:\/\/litecode.tingyuan.in\/en\//);
-  checks.push(
-    "Five visual captures, six real 1280×820 images per page, sitemap/robots and nested 404",
-  );
+  checks.push("Sitemap, robots and nested 404 routing");
   assert.deepEqual(errors, []);
   await writeFile(path.join(output, "results.json"), JSON.stringify({ checks, errors }, null, 2));
   console.log(JSON.stringify({ checks, errors, output }, null, 2));

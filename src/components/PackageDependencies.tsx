@@ -85,11 +85,11 @@ export function PackageDependencies({
           return (
             <tbody key={section}>
               <tr>
-                {/* The whole header row is clickable; remove generic cell spacing and button rounding. */}
-                <th colSpan={5} scope="rowgroup" className="p-0 bg-table-header text-[13px]">
+                {/* Keep spacing outside the full-width button so adjacent groups remain distinct. */}
+                <th colSpan={5} scope="rowgroup" className="p-0 py-1 text-[14px]">
                   <button
                     type="button"
-                    className="flex items-center gap-1 w-full h-8 px-3 py-0 rounded-none text-left text-foreground hover:bg-hover"
+                    className="flex items-center gap-1 w-full h-9 px-3 py-0 rounded-none bg-table-header text-left text-foreground hover:bg-hover"
                     aria-expanded={expanded}
                     onClick={() =>
                       setCollapsed((state) => ({ ...state, [section]: !state[section] }))
@@ -196,7 +196,7 @@ export function PackageDependencies({
                       <td className="text-right">
                         <button
                           type="button"
-                          className={actionButtonClass}
+                          className={`${actionButtonClass} compact`}
                           disabled={
                             disabled || busy || !latest || current || !dependency.registryName
                           }

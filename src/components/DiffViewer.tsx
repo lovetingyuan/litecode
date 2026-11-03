@@ -43,8 +43,8 @@ export function DiffViewer() {
       theme: "dark-modern",
       readOnly: true,
       originalEditable: false,
-      originalAriaLabel: diff.conflict ? "磁盘版本" : "Original",
-      modifiedAriaLabel: diff.conflict ? "当前编辑版本" : "Modified",
+      originalAriaLabel: diff.conflict ? "Disk Version" : "Original",
+      modifiedAriaLabel: diff.conflict ? "Current Version" : "Modified",
     });
     editor.setModel({ original: before, modified: after });
     instance.current = editor;
@@ -118,13 +118,13 @@ export function DiffViewer() {
             <div className="flex items-center gap-2">
               <IconButton
                 icon="arrow-up"
-                label="上一个差异"
+                label="Previous Difference"
                 disabled={busy || !!diff?.error}
                 onClick={() => instance.current?.goToDiff("previous")}
               />
               <IconButton
                 icon="arrow-down"
-                label="下一个差异"
+                label="Next Difference"
                 disabled={busy || !!diff?.error}
                 onClick={() => instance.current?.goToDiff("next")}
               />
@@ -133,12 +133,12 @@ export function DiffViewer() {
           </div>
           <Dialog.Description className="sr-only">
             {diff?.conflict
-              ? "左侧是磁盘版本，右侧是当前编辑版本。选择一版作为整个文件的最终结果。"
+              ? "Left is the disk version; right is your current version. Choose one version for the entire file."
               : "Read-only comparison. Left is original; right is modified."}
           </Dialog.Description>
           <div className="grid grid-cols-2 gap-4 border-b border-strong px-4 py-2 text-sm">
-            <span>{diff?.conflict ? "磁盘版本" : "Original"}</span>
-            <span>{diff?.conflict ? "当前编辑版本（未保存）" : "Modified"}</span>
+            <span>{diff?.conflict ? "Disk Version" : "Original"}</span>
+            <span>{diff?.conflict ? "Current Version (Unsaved)" : "Modified"}</span>
           </div>
           {message && (
             <p role="alert" className="px-4 py-2 text-sm">
@@ -147,7 +147,7 @@ export function DiffViewer() {
           )}
           {diff?.error ? (
             <div role="alert" className="flex-1 px-4 py-6 text-sm">
-              {diff.error} 当前编辑内容已保留，请重试读取磁盘版本。
+              {diff.error} Your edits have been preserved. Retry loading the disk version.
             </div>
           ) : (
             <div ref={setHost} className="diff-editor flex-1 min-h-0" />
@@ -158,24 +158,24 @@ export function DiffViewer() {
               aria-busy={busy}
             >
               <button className={actionButtonClass} disabled={busy} onClick={() => void choose()}>
-                刷新对比
+                Refresh Comparison
               </button>
               <button
                 className={actionButtonClass}
                 disabled={busy || !!diff.error}
                 onClick={() => void choose("reload")}
               >
-                使用磁盘版本
+                Use Disk Version
               </button>
               <button
                 className={actionButtonClass}
                 disabled={busy || !!diff.error}
                 onClick={() => void choose("overwrite")}
               >
-                保留当前版本
+                Keep Current Version
               </button>
               <button className={actionButtonClass} disabled={busy} onClick={close}>
-                取消
+                Cancel
               </button>
             </div>
           )}

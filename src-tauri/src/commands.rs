@@ -342,6 +342,11 @@ pub(crate) fn create_editor_window(
         .disable_drag_drop_handler()
         .build()
         .map_err(|e| AppError::new("window", e.to_string()))?;
+        #[cfg(windows)]
+        if let Err(error) = crate::window_icon::install(&created) {
+            let _ = created.destroy();
+            return Err(AppError::new("window", error.to_string()));
+        }
         if let Err(error) =
             crate::external_drop::install(&created).and_then(|()| created.set_focus())
         {

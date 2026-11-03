@@ -149,7 +149,7 @@ fn builder(directory: Option<&Path>, max_size: u128) -> tauri_plugin_log::Builde
         .rotation_strategy(RotationStrategy::KeepSome(4))
         .format(|out, message, record| {
             out.finish(format_args!(
-                "{}",
+                "{}\n",
                 encode(&message.to_string(), record.level())
             ))
         })
@@ -239,7 +239,7 @@ pub fn record(level: Level, event: &str, window: Option<&str>, code: &str, messa
     if READY.load(Ordering::Acquire) {
         log::log!(target: "litecode", level, "{message}");
     } else {
-        eprintln!("{}", encode(&message, level));
+        eprintln!("{}\n", encode(&message, level));
     }
 }
 

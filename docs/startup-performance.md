@@ -64,8 +64,8 @@ node tools/verify-startup-loading.mjs
 `--profile=路径` 可复用一个测试 WebView2 目录；默认每次新建。`--exe=路径`、`--url=地址`
 可指定测试版本，URL 必须匹配该程序编译时的 devUrl，才能正常调用 Tauri IPC。
 
-后一个脚本用独立 Chrome 测试：阻塞工作台 JS/CSS 时仍能显示 loading、减少动画偏好、
-模块下载失败提示以及 Reload 重试。它也可用 `--url=地址` 指向 Vite preview 的正式资源。
+后一个脚本用独立 Chrome 验证模块下载失败后 Reload 能重新加载工作台。
+loading 外观与减少动画偏好改为手动验收。脚本也可用 `--url=地址` 指向 Vite preview 的正式资源。
 `CHROME_PATH` 可指定 Chrome 可执行文件。
 
 ## 验证结果

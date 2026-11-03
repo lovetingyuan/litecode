@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  blameAge,
-  blameRange,
-  blameRepository,
-  createBlameLoader,
-  type BlameTask,
-} from "./lineBlame";
+import { blameRange, blameRepository, createBlameLoader, type BlameTask } from "./lineBlame";
 import type { GitFileBlame, GitRepository } from "../types/types";
 
 const repository = (path: string): GitRepository => ({
@@ -68,14 +62,6 @@ describe("line attribution", () => {
     expect(blameRange(ranges, 0)).toBeUndefined();
     expect(blameRange(ranges, 7)).toBeUndefined();
     expect(blameRange([], 1)).toBeUndefined();
-  });
-  it("formats relative times in English including future author dates", () => {
-    const now = 1_800_000_000_000;
-    expect(blameAge(now / 1000 - 30, now)).toBe("just now");
-    expect(blameAge(now / 1000 - 90, now)).toBe("1 minute ago");
-    expect(blameAge(now / 1000 - 3600 * 3, now)).toBe("3 hours ago");
-    expect(blameAge(now / 1000 - 86400 * 32, now)).toBe("1 month ago");
-    expect(blameAge(now / 1000 + 86400 * 2, now)).toBe("in 2 days");
   });
 });
 

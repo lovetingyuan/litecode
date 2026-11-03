@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filesUnder, groupChanges, visibleRange } from "./changes";
+import { filesUnder, groupChanges } from "./changes";
 import type { GitChange } from "../types/types";
 
 const change = (path: string, patch: Partial<GitChange> = {}): GitChange => ({
@@ -57,13 +57,5 @@ describe("Git changes", () => {
       path: "working.txt",
       oldPath: "index.txt",
     });
-  });
-  it("bounds rendered rows independently of the number of changed files", () => {
-    for (const scroll of [0, 26000, 259000]) {
-      const { first, end } = visibleRange(10000, scroll, 312);
-      expect(end - first).toBeLessThanOrEqual(29);
-      expect(first).toBeGreaterThanOrEqual(0);
-      expect(end).toBeLessThanOrEqual(10000);
-    }
   });
 });

@@ -9,7 +9,6 @@
     "website/assets/style.css",
     "tools/verify-*.mjs",
     "!tools/verify-git-{blame,branches,diff}.mjs",
-    "!tools/verify-explorer-offscreen-creation.mjs",
     "tools/capture-*.mjs",
     "tools/benchmark-explorer-model.mjs",
     "tools/notices.mjs",

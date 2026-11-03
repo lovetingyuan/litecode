@@ -381,7 +381,7 @@ try {
   check(
     "A restored large document retains its unsaved body through the first metadata-only checkpoint",
   );
-  await second.getByRole("button", { name: "恢复操作前状态", exact: true }).click();
+  await second.getByRole("button", { name: "Restore Previous State", exact: true }).click();
   for (let i = 0; i < 100 && (await pending(second)).length; i++) {
     await delay(100);
   }
@@ -403,11 +403,11 @@ try {
   assert.equal(partialAgain.complete, false);
   await unlockAgain();
   await writeFile(c, "new external work\n");
-  await prompt(second, "恢复操作前状态");
+  await prompt(second, "Restore Previous State");
   await delay(500);
   assert.equal(await readFile(c, "utf8"), "new external work\n");
   assert.equal((await pending(second)).length, 1);
-  await prompt(second, "保留现状");
+  await prompt(second, "Keep Current State");
   for (let i = 0; i < 100 && (await pending(second)).length; i++) {
     await delay(100);
   }

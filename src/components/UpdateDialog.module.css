@@ -4,6 +4,9 @@ button.update-button {
   background: var(--lc-button-secondary);
   color: var(--lc-foreground);
 }
+button.update-button {
+  height: 24px;
+}
 .update-panel :global(.action-button):global(.primary),
 button.update-button {
   background: var(--lc-focus);

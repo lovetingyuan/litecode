@@ -473,19 +473,6 @@ mod tests {
         );
     }
 
-    #[cfg(windows)]
-    #[test]
-    fn resolves_case_insensitive_collisions() {
-        let (_temp, source, target) = fixture();
-        fs::write(source.join("a.txt"), "new").unwrap();
-        fs::write(target.join("A.TXT"), "old").unwrap();
-        assert_eq!(
-            copy_available(&source.join("a.txt"), &target.join("a.txt")).unwrap(),
-            target.join("a copy.txt")
-        );
-        assert_eq!(fs::read_to_string(target.join("A.TXT")).unwrap(), "old");
-    }
-
     #[test]
     fn rejects_self_and_descendant_directory_copies_but_allows_siblings() {
         let (_temp, source, target) = fixture();

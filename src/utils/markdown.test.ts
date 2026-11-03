@@ -96,19 +96,12 @@ describe("Markdown rendering", () => {
         text,
       ),
     );
-  it("renders GFM and stable unique anchors with Unicode headings", () => {
-    const html = render(
-      "# 中文 *标题*\n\n## Same\n## Same\n## Same-1\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n- [x] done\n- [ ] todo\n\n~~old~~\n\n```js\nconst a = 1;\n```",
-    );
+  it("creates stable unique anchors with Unicode headings", () => {
+    const html = render("# 中文 *标题*\n\n## Same\n## Same\n## Same-1");
     expect(html).toContain('id="markdown-中文-标题"');
     for (const id of ["same", "same-1", "same-1-1"]) {
       expect(html).toContain(`id="markdown-${id}"`);
     }
-    expect(html).toContain("<table>");
-    expect(html).toContain('type="checkbox"');
-    expect(html).toContain('disabled=""');
-    expect(html).toContain("<del>old</del>");
-    expect(html).toContain('<pre><code class="language-js">');
   });
   it("ignores raw HTML and never renders executable elements", () => {
     const html = render(

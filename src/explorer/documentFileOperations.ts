@@ -16,7 +16,7 @@ export async function deleteInternalFiles(paths: string[], onDeleted: (path: str
     return;
   }
   const warning = documentsAtPaths(paths).some((doc) => doc.dirty)
-    ? "\n\n包含未保存修改，删除后这些修改将丢失。"
+    ? "\n\nUnsaved changes will be lost when these files are deleted."
     : "";
   if (
     (await ask("Move to Recycle Bin?", paths.map((path) => relative(path)).join("\n") + warning, [

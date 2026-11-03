@@ -102,7 +102,7 @@ beforeEach(() => {
   custom = undefined;
   record = undefined;
   currentId = "";
-  x.ask.mockResolvedValue("稍后处理");
+  x.ask.mockResolvedValue("Later");
   x.checkpoint.mockResolvedValue(undefined);
   x.call.mockImplementation(async (command: string, args: any) => {
     if (custom) {
@@ -412,9 +412,9 @@ describe("Workspace replacement safety", () => {
   it("leaves disk and buffers alone when recovery is deferred or the user keeps the current state", async () => {
     record = { transactionId: "abc", root, paths: [path], buffers: [], targetAfter: true };
     await recoverInterruptedReplacements();
-    expect(x.ask.mock.calls[0][2][0]).toBe("稍后处理");
+    expect(x.ask.mock.calls[0][2][0]).toBe("Later");
     expect(x.call.mock.calls.some(([command]) => command === "recover_replacement")).toBe(false);
-    x.ask.mockResolvedValueOnce("保留现状");
+    x.ask.mockResolvedValueOnce("Keep Current State");
     await recoverInterruptedReplacements();
     expect(x.call.mock.calls.find(([command]) => command === "recover_replacement")?.[1]).toEqual({
       transactionId: "abc",
@@ -426,7 +426,7 @@ describe("Workspace replacement safety", () => {
   it("restores interrupted disk and buffer operations with a durable completion marker", async () => {
     const m = openBuffer();
     await replaceMatches([openHit, hit], "x", false, query);
-    x.ask.mockResolvedValueOnce("恢复操作前状态");
+    x.ask.mockResolvedValueOnce("Restore Previous State");
     await recoverInterruptedReplacements();
     expect(m.getValue()).toBe("a");
     expect(x.call.mock.calls.filter(([command]) => command === "finish_replacement")).toHaveLength(
@@ -443,7 +443,7 @@ describe("Workspace replacement safety", () => {
       buffers: [],
       targetAfter: true,
     };
-    x.ask.mockResolvedValueOnce("保留现状");
+    x.ask.mockResolvedValueOnce("Keep Current State");
     await recoverInterruptedReplacements();
     expect(x.call.mock.calls.find(([command]) => command === "recover_replacement")?.[1]).toEqual({
       transactionId: "abc",

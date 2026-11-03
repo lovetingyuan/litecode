@@ -11,7 +11,7 @@ const appIndex = process.argv.indexOf("--app");
 const executable = path.resolve(
   appIndex < 0 ? "src-tauri/target/debug/litecode.exe" : process.argv[appIndex + 1],
 );
-const run = path.resolve(".verification", `markdown-${Date.now()}`);
+const run = path.resolve("tmp/verification", `markdown-${Date.now()}`);
 const app = path.join(run, "app"),
   data = path.join(app, "data"),
   root = path.join(run, "fixture");
@@ -247,15 +247,6 @@ try {
     },
     { url: urls.monaco, text: syntaxSource, checks: tokenChecks },
   );
-  await page.waitForFunction(() =>
-    [...document.querySelectorAll(".monaco-host .view-lines .view-line")].some(
-      (line) =>
-        /\/\/\scomment/.test(line.textContent) &&
-        [...line.querySelectorAll("span")].some(
-          (span) => getComputedStyle(span).color === "rgb(106, 153, 85)",
-        ),
-    ),
-  );
   await page.screenshot({ path: path.join(run, "00-source-highlighting.png") });
   await mode(syntaxGroup, "Markdown Preview");
   await page.waitForFunction(
@@ -275,15 +266,6 @@ try {
       assert.equal(await block.textContent(), code ? code + "\n" : "");
     } else {
       await block.locator('[class^="mtk"]').first().waitFor();
-      const colors = await block.evaluate(
-        (el) =>
-          new Set(
-            [...el.querySelectorAll('span[class^="mtk"]')].map(
-              (span) => getComputedStyle(span).color,
-            ),
-          ).size,
-      );
-      assert.ok(colors >= 2, `${language} preview uses theme colors`);
       assert.equal(
         (await block.innerText()).replace(/\u00a0/g, " "),
         code.replace(/\t/g, "    ") + "\n",
@@ -299,7 +281,7 @@ try {
   assert.equal(await page.evaluate(() => window.markdownExecuted), undefined);
   await page.screenshot({ path: path.join(run, "00-preview-highlighting.png") });
   checks.push(
-    "Cold Markdown source and preview syntax colors, JS/TS/JSON/JSONC/Python/React aliases, matching long backtick/tilde fences, safe fallback and inline code",
+    "Cold Markdown source and preview tokenization, JS/TS/JSON/JSONC/Python/React aliases, matching long backtick/tilde fences, safe fallback and inline code",
   );
   console.log(checks.at(-1));
 

@@ -1,4 +1,3 @@
-import { actionButtonClass } from "./ui";
 import markdownPreviewStyles from "./MarkdownPreview.module.css";
 import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import Markdown, { type Components } from "react-markdown";
@@ -70,6 +69,7 @@ export function MarkdownPreview({ doc, group }: Readonly<{ doc: Doc; group: Grou
         text={text}
         path={doc.path}
         groupId={group.id}
+        allowRemote={group.mediaViews?.[doc.id]?.allowRemoteImages ?? false}
       />
     </div>
   );
@@ -79,12 +79,13 @@ const MarkdownContent = memo(function MarkdownContent({
   text,
   path,
   groupId,
+  allowRemote,
 }: {
   text: string;
   path: string | null;
   groupId: string;
+  allowRemote: boolean;
 }) {
-  const [allowRemote, setAllowRemote] = useState(false);
   async function follow(href: string, article: HTMLElement) {
     const target = resolveMarkdownUrl(href, path);
     if (!target) {
@@ -149,17 +150,6 @@ const MarkdownContent = memo(function MarkdownContent({
     <article
       className={`markdown-body max-w-245 my-0 mx-auto text-[14px] leading-[1.65] select-text ${markdownPreviewStyles["markdown-body"]}`}
     >
-      {text.trim().length > 0 && (
-        <button
-          type="button"
-          className={`${actionButtonClass} compact`}
-          aria-pressed={allowRemote}
-          title="Loading remote images shares your IP address with their hosts. Only HTTPS images are allowed."
-          onClick={() => setAllowRemote((allowed) => !allowed)}
-        >
-          {allowRemote ? "Block remote images" : "Load remote images"}
-        </button>
-      )}
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[markdownHeadingIds]}

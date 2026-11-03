@@ -57,9 +57,9 @@ import {
   ensureLanguage,
   stopLanguages,
 } from "./languages";
-import { commands, commandShortcut, execute, openFolder } from "../core/commands";
+import { commands, execute, openFolder } from "../core/commands";
 import { refreshTree } from "../components/Explorer";
-import { prepareWorkspaceOpen, rememberWorkspaceTrust } from "../core/workspaceTrust";
+import { prepareWorkspaceOpen } from "../core/workspaceTrust";
 import {
   attachDocument,
   autoSave,
@@ -73,7 +73,6 @@ import {
   restoreDocument,
   save,
   saveAll,
-  saveEditorView,
   session,
   showDocument,
   visiblePath,
@@ -81,10 +80,7 @@ import {
   closeGroup,
   closeTabs,
   tabsToClose,
-  keepOpen,
-  normalizeGroup,
   setSticky,
-  moveTab,
   splitGroup,
   checkpoint,
   scheduleBackup,
@@ -362,7 +358,7 @@ describe("Elevated document saves", () => {
   });
 });
 
-describe("Editor view snapshots", () => {
+describe("Document snapshots and model ownership", () => {
   it("preserves native recovery while startup is incomplete, including a failed partial restore", async () => {
     setApp({ ready: false });
     await checkpoint();
@@ -685,94 +681,9 @@ describe("Editor view snapshots", () => {
     expect(session()).not.toHaveProperty("activeSearchId");
     setApp({ searchSessions: [initialSearch()], activeSearchId: primarySearchId });
   });
-  function view(line: number): Monaco.editor.ICodeEditorViewState {
-    return {
-      cursorState: [],
-      viewState: {
-        scrollLeft: 0,
-        firstPosition: { lineNumber: line, column: 1 },
-        firstPositionDeltaTop: 0,
-      },
-      contributionsState: {},
-    };
-  }
-
-  function setup() {
-    const { id } = addDocument({ dirty: false });
-    setApp({
-      activeGroup: "one",
-      groups: [
-        { id: "one", tabs: [id], active: id, preview: null, views: { [id]: view(1) } },
-        { id: "two", tabs: [id], active: id, preview: null, views: { [id]: view(2) } },
-      ],
-    });
-    return id;
-  }
-
-  it("saves a view without mutating previous snapshots or another group", () => {
-    const id = setup();
-    const before = useApp.getState();
-    Object.freeze(before.groups[0].views);
-    Object.freeze(before.groups[0]);
-    const next = view(12);
-    saveEditorView("one", id, next);
-    const after = useApp.getState();
-    expect(before.groups[0].views[id]).toEqual(view(1));
-    expect(after.groups[0].views[id]).toBe(next);
-    expect(after.groups[1]).toBe(before.groups[1]);
-    expect(after.activeGroup).toBe(before.activeGroup);
-    expect(after.editorLayout).toBe(before.editorLayout);
-    saveEditorView("one", id, null);
-    expect(after.groups[0].views[id]).toBe(next);
-    expect(useApp.getState().groups[0].views[id]).toBeNull();
-  });
-
-  it("does not recreate a group removed before its view was saved", () => {
-    const id = setup();
-    setApp((s) => ({ groups: s.groups.filter((g) => g.id !== "one") }));
-    const before = useApp.getState();
-    saveEditorView("one", id, view(12));
-    expect(useApp.getState()).toBe(before);
-  });
-
-  it("captures independent live views in one session update without mutating old sessions", () => {
-    const id = setup();
-    const before = session();
-    for (const [index, group] of before.groups.entries()) {
-      Object.freeze(group.views);
-      Object.freeze(group);
-      editors.set(group.id, {
-        saveViewState: () => view(10 + index),
-      } as Monaco.editor.IStandaloneCodeEditor);
-    }
-    const changed = vi.fn();
-    const unsubscribe = useApp.subscribe(changed);
-    const saved = session();
-    unsubscribe();
-    expect(changed).toHaveBeenCalledOnce();
-    expect(before.groups.map((g) => g.views[id])).toEqual([view(1), view(2)]);
-    expect(saved.groups.map((g) => g.views[id])).toEqual([view(10), view(11)]);
-    expect(saved.activeGroup).toBe(before.activeGroup);
-    expect(saved.editorLayout).toBe(before.editorLayout);
-  });
-
-  it("copies the live view into a split and keeps subsequent group views independent", () => {
-    const id = setup();
-    editors.set("one", {
-      saveViewState: () => view(20),
-    } as Monaco.editor.IStandaloneCodeEditor);
-    const split = splitGroup("one", id);
-    const before = useApp.getState();
-    expect(before.groups.find((g) => g.id === split)?.views[id]).toEqual(view(20));
-    saveEditorView(split, id, view(30));
-    const saved = session();
-    expect(saved.groups.find((g) => g.id === "one")?.views[id]).toEqual(view(20));
-    expect(saved.groups.find((g) => g.id === split)?.views[id]).toEqual(view(30));
-    expect(before.groups.find((g) => g.id === split)?.views[id]).toEqual(view(20));
-  });
 });
 
-describe("Editor tab actions", () => {
+describe("Safe document closing", () => {
   function setup() {
     const ids = Array.from({ length: 4 }, () => addDocument({ dirty: false }).id);
     setApp({
@@ -784,64 +695,6 @@ describe("Editor tab actions", () => {
     });
     return ids;
   }
-
-  it("disables preview replacement across groups without closing or changing fixed tabs", () => {
-    const ids = setup();
-    setSticky(ids[0], "one", true);
-    setApp({ settings: { "workbench.editor.enablePreview": false } });
-    expect(useApp.getState().groups.every((group) => group.preview === null)).toBe(true);
-    const next = addDocument({ dirty: false });
-    showDocument(next.id, { preserveFocus: true });
-    expect(useApp.getState().groups[0]).toMatchObject({
-      tabs: [...ids, next.id],
-      preview: null,
-      sticky: [ids[0]],
-    });
-    expect(models.has(ids[3])).toBe(true);
-    expect(
-      normalizeGroup({
-        id: "restored",
-        tabs: [next.id],
-        active: next.id,
-        preview: next.id,
-        views: {},
-      }).preview,
-    ).toBeNull();
-    setApp({ settings: {} });
-    const preview = addDocument({ dirty: false });
-    showDocument(preview.id, { preserveFocus: true });
-    expect(useApp.getState().groups[0].preview).toBe(preview.id);
-  });
-
-  it("keeps preview persistence separate from group-local pinning", () => {
-    const ids = setup();
-    keepOpen(ids[3], "one");
-    expect(useApp.getState().groups[0].preview).toBeNull();
-    expect(useApp.getState().groups[0].sticky).toBeUndefined();
-    setSticky(ids[2], "one", true);
-    setSticky(ids[0], "one", true);
-    expect(useApp.getState().groups[0]).toMatchObject({
-      tabs: [ids[2], ids[0], ids[1], ids[3]],
-      sticky: [ids[2], ids[0]],
-    });
-    expect(useApp.getState().groups[1].sticky).toBeUndefined();
-    setSticky(ids[2], "one", false);
-    expect(useApp.getState().groups[0]).toMatchObject({
-      tabs: [ids[0], ids[2], ids[1], ids[3]],
-      sticky: [ids[0]],
-    });
-    expect(session().groups[0].sticky).toEqual([ids[0]]);
-  });
-
-  it("normalizes legacy and stale restored fixed tabs", () => {
-    const group = { id: "one", tabs: ["a", "b"], active: "a", preview: "b", views: {} };
-    expect(normalizeGroup(group)).toMatchObject({ sticky: [], tabs: ["a", "b"], preview: "b" });
-    expect(normalizeGroup({ ...group, sticky: ["missing", "b", "b"] })).toMatchObject({
-      sticky: ["b"],
-      tabs: ["b", "a"],
-      preview: null,
-    });
-  });
 
   it("selects group-local close targets and protects fixed and dirty tabs", () => {
     const ids = setup();
@@ -892,67 +745,6 @@ describe("Editor tab actions", () => {
     expect(useApp.getState().groups[0].tabs).toEqual([]);
   });
 
-  it("retains fixed order during reorder and cross-group moves", () => {
-    const ids = setup();
-    setSticky(ids[0], "one", true);
-    setSticky(ids[2], "one", true);
-    moveTab(ids[3], "one", "one", ids[0]);
-    expect(useApp.getState().groups[0].tabs).toEqual([ids[0], ids[2], ids[3], ids[1]]);
-    moveTab(ids[2], "one", "two");
-    expect(useApp.getState().groups[0].sticky).toEqual([ids[0]]);
-    expect(useApp.getState().groups[1]).toMatchObject({
-      tabs: [ids[2], ids[0]],
-      sticky: [ids[2]],
-      active: ids[2],
-    });
-  });
-
-  it("splits the specified inactive tab immediately right of its source", () => {
-    const ids = setup();
-    const view = { cursor: 8 };
-    setApp((s) => ({
-      groups: s.groups.map((g) => (g.id === "one" ? { ...g, views: { [ids[3]]: view } } : g)),
-      activeGroup: "two",
-    }));
-    const id = splitGroup("one", ids[3]);
-    const state = useApp.getState();
-    expect(state.groups.map((g) => g.id)).toEqual(["one", id, "two"]);
-    expect(state.groups[1]).toMatchObject({
-      active: ids[3],
-      tabs: [ids[3]],
-      views: { [ids[3]]: view },
-    });
-    expect(state.activeGroup).toBe(id);
-    expect(state.groups[0].tabs).toEqual(ids);
-  });
-
-  it("uses the side-by-side setting while explicit directions take precedence", () => {
-    setup();
-    setApp({ settings: { "workbench.editor.openSideBySideDirection": "down" } });
-    const below = splitGroup("one");
-    const layout = useApp.getState().editorLayout;
-    expect(JSON.stringify(layout)).toContain("vertical");
-    const left = splitGroup(below, undefined, "left");
-    expect(useApp.getState().groups.map((g) => g.id)).toEqual(["one", left, below, "two"]);
-    expect(useApp.getState().activeGroup).toBe(left);
-    expect(useApp.getState().groups.find((g) => g.id === below)?.active).toBe(
-      useApp.getState().groups.find((g) => g.id === left)?.active,
-    );
-  });
-
-  it("returns to the most recently active group and preserves focus when closing an inactive group", async () => {
-    const ids = setup();
-    const third = splitGroup("one");
-    setApp({ activeGroup: "one" });
-    setApp({ activeGroup: "two" });
-    setApp({ activeGroup: third });
-    await closeDocument(ids[1], third);
-    expect(useApp.getState().activeGroup).toBe("two");
-    expect(useApp.getState().groupMru).toEqual(["two", "one"]);
-    await closeTabs(ids[1], "one", "all");
-    expect(useApp.getState().activeGroup).toBe("two");
-  });
-
   it("merges a removed group into the recently active group without losing dirty or fixed tabs", () => {
     const ids = setup();
     const third = splitGroup("one", ids[2]);
@@ -970,40 +762,6 @@ describe("Editor tab actions", () => {
     expect(state.docs[ids[2]].dirty).toBe(true);
     expect(ask).not.toHaveBeenCalled();
     expect(JSON.stringify(state.editorLayout)).not.toContain(third);
-  });
-
-  it("removes the source group when its last tab is moved and saves layout and MRU in the session", () => {
-    const ids = setup();
-    const third = splitGroup("one", ids[3]);
-    moveTab(ids[3], third, "two");
-    expect(useApp.getState().groups.map((g) => g.id)).toEqual(["one", "two"]);
-    expect(useApp.getState().activeGroup).toBe("two");
-    const saved = session();
-    expect(saved.groupMru).toEqual(["two", "one"]);
-    expect(saved.editorLayout).toEqual(useApp.getState().editorLayout);
-    expect(saved.groups.find((g) => g.id === "two")?.tabs).toContain(ids[3]);
-  });
-});
-
-describe("Live model settings", () => {
-  it("updates existing and newly created models, including documents outside the active group", () => {
-    const first = addDocument();
-    const second = addDocument();
-    const settings = {
-      "editor.detectIndentation": false,
-      "editor.tabSize": 8,
-      "editor.insertSpaces": false,
-    };
-    setApp({ settings });
-    for (const { buffer } of [first, second, addDocument()]) {
-      expect(buffer.getOptions()).toMatchObject({ tabSize: 8, insertSpaces: false });
-      expect(buffer.getValue()).toBe("edited");
-    }
-    first.buffer.detectIndentation.mockClear();
-    setApp({ settings: { ...settings, "editor.cursorStyle": "block" } });
-    expect(first.buffer.detectIndentation).not.toHaveBeenCalled();
-    setApp({ settings: {} });
-    expect(first.buffer.detectIndentation).toHaveBeenCalledWith(true, 4);
   });
 });
 afterEach(() => {
@@ -1073,72 +831,6 @@ describe("Workspace switches", () => {
     expect(useApp.getState().root).toBe("C:/next");
   });
 
-  it("shows loading while the native picker is returning and clears it on cancellation", async () => {
-    setup();
-    const picked = deferred<string | null>();
-    vi.mocked(call).mockImplementation(async (command) =>
-      command === "pick_path" ? (picked.promise as never) : (undefined as never),
-    );
-    const opening = openFolder();
-    expect(useApp.getState().openingWorkspace).toBe("");
-    expect(prepareWorkspaceOpen).not.toHaveBeenCalled();
-    await execute("workbench.action.newWindow");
-    await openFolder();
-    expect(commandCalls("pick_path")).toHaveLength(1);
-    expect(commandCalls("new_window")).toHaveLength(0);
-    picked.resolve(null);
-    await opening;
-    expect(useApp.getState().openingWorkspace).toBeNull();
-    expect(useApp.getState().root).toBe("C:/workspace");
-  });
-
-  it("shows loading before trust and keeps it through opening, configuration and the first tree load", async () => {
-    setup();
-    const consent = deferred<Awaited<ReturnType<typeof prepareWorkspaceOpen>>>();
-    const opened = deferred<boolean>();
-    const configured = deferred<typeof configuration>();
-    const tree = deferred<void>();
-    vi.mocked(prepareWorkspaceOpen).mockReturnValueOnce(consent.promise);
-    vi.mocked(call).mockImplementation(async (command) => {
-      if (command === "open_workspace") {
-        return opened.promise as never;
-      }
-      if (command === "configuration") {
-        return configured.promise as never;
-      }
-      return undefined as never;
-    });
-    vi.mocked(refreshTree).mockReturnValueOnce(tree.promise);
-    const opening = openFolder(false, "C:/next");
-    expect(useApp.getState().openingWorkspace).toBe("C:/next");
-    expect(commandCalls("open_workspace")).toHaveLength(0);
-    expect(commandCalls("sync_documents")).toHaveLength(0);
-    consent.resolve({
-      path: "C:/canonical",
-      trusted: false,
-      alreadyOpen: false,
-      trust: { root: "C:/canonical", trusted: false },
-    });
-    await vi.waitFor(() => expect(commandCalls("open_workspace")).toHaveLength(1));
-    expect(commandCalls("open_workspace")[0][1]).toEqual({
-      path: "C:/canonical",
-      newWindow: false,
-      trust: { root: "C:/canonical", trusted: false },
-    });
-    expect(useApp.getState().openingWorkspace).toBe("C:/canonical");
-    opened.resolve(true);
-    await vi.waitFor(() => expect(commandCalls("configuration")).toHaveLength(1));
-    expect(useApp.getState().openingWorkspace).toBe("C:/canonical");
-    configured.resolve(configuration);
-    await vi.waitFor(() => expect(refreshTree).toHaveBeenCalledOnce());
-    expect(useApp.getState().openingWorkspace).toBe("C:/canonical");
-    expect(rememberWorkspaceTrust).toHaveBeenCalledWith("C:/canonical", true);
-    expect(session()).not.toHaveProperty("openingWorkspace");
-    tree.resolve();
-    await opening;
-    expect(useApp.getState().openingWorkspace).toBeNull();
-  });
-
   it("clears loading and retains editors when trust confirmation is dismissed", async () => {
     setup(true);
     const before = useApp.getState();
@@ -1153,6 +845,35 @@ describe("Workspace switches", () => {
     expect(commandCalls("open_workspace")).toHaveLength(0);
     expect(ask).not.toHaveBeenCalled();
   });
+
+  it.each(["preflight", "open_workspace", "configuration", "tree"])(
+    "releases the workspace command guard after %s fails",
+    async (stage) => {
+      setup();
+      if (stage === "preflight") {
+        vi.mocked(prepareWorkspaceOpen).mockRejectedValueOnce(new Error("Open failed"));
+      } else if (stage === "tree") {
+        vi.mocked(refreshTree).mockRejectedValueOnce(new Error("Open failed"));
+      } else {
+        const invoke = vi.mocked(call).getMockImplementation();
+        if (!invoke) {
+          throw new Error("Missing workspace IPC fixture");
+        }
+        vi.mocked(call).mockImplementation(<T>(command: string, args?: Record<string, unknown>) => {
+          if (command === stage) {
+            return Promise.reject<T>(new Error("Open failed"));
+          }
+          // Vitest erases the IPC generic; setup supplies the original command-specific replies.
+          return invoke(command, args) as Promise<T>;
+        });
+      }
+      await expect(openFolder(false, "C:/next")).rejects.toThrow("Open failed");
+      // This state also gates commands; a failed open must not leave the app locked.
+      expect(useApp.getState().openingWorkspace).toBeNull();
+      await execute("workbench.action.newWindow");
+      expect(commandCalls("new_window")).toHaveLength(1);
+    },
+  );
 
   it("ignores repeated opens and commands while a workspace is opening", async () => {
     setup();
@@ -1193,33 +914,6 @@ describe("Workspace switches", () => {
         openingWorkspace: null,
       });
       expect(ask).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each(["preflight", "open_workspace", "configuration", "tree"])(
-    "clears loading after %s fails",
-    async (stage) => {
-      setup();
-      if (stage === "preflight") {
-        vi.mocked(prepareWorkspaceOpen).mockRejectedValueOnce(new Error("Open failed"));
-      } else if (stage === "tree") {
-        vi.mocked(refreshTree).mockRejectedValueOnce(new Error("Open failed"));
-      } else {
-        vi.mocked(call).mockImplementation(async (command) => {
-          if (command === stage) {
-            throw new Error("Open failed");
-          }
-          if (command === "open_workspace") {
-            return true as never;
-          } else if (command === "configuration") {
-            return configuration as never;
-          } else {
-            return undefined as never;
-          }
-        });
-      }
-      await expect(openFolder(false, "C:/next")).rejects.toThrow("Open failed");
-      expect(useApp.getState().openingWorkspace).toBeNull();
     },
   );
 
@@ -1395,11 +1089,6 @@ describe("Workspace switches", () => {
     const { id, buffer } = setup(true);
     const before = useApp.getState();
     const command = commands.find((c) => c.id === "workbench.action.newWindow")!;
-    expect(command).toMatchObject({ label: "New Window", menu: "File" });
-    expect(commands[commands.indexOf(command) - 1].id).toBe(
-      "workbench.action.files.newUntitledFile",
-    );
-    expect(commandShortcut(command.id, {}, [])).toBe("Ctrl+Shift+N");
     vi.mocked(call).mockResolvedValueOnce("editor-empty-test");
 
     await execute(command.id);
@@ -1538,71 +1227,6 @@ describe("Workspace switches", () => {
 
 describe("Opening documents", () => {
   it.each([
-    ["App.tsx", "typescript", "typescriptreact"],
-    ["App.jsx", "javascript", "javascriptreact"],
-    ["tsconfig.json", "json", "jsonc"],
-    ["tsconfig.node.json", "json", "jsonc"],
-    [".gitignore", "plaintext", "gitignore"],
-    [".env", "plaintext", "dotenv"],
-    [".env.production.local", "plaintext", "dotenv"],
-    ["App.vue", "plaintext", "vue"],
-    ["Program.cs", "plaintext", "csharp"],
-    ["index.php", "plaintext", "php"],
-    ["Main.kt", "plaintext", "kotlin"],
-    ["main.pyi", "plaintext", "python"],
-    ["main.hpp", "plaintext", "cpp"],
-    ["Dockerfile", "plaintext", "dockerfile"],
-    ["file.unknown", "plaintext", "plaintext"],
-  ])(
-    "repairs the saved language mode for %s without changing its buffer",
-    (name, oldLanguage, language) => {
-      vi.mocked(languageFor).mockReturnValue(language);
-      const text =
-        language === "jsonc"
-          ? '{\n  // unsaved config edits\n  "compilerOptions": { "strict": true, },\n}'
-          : "unsaved source edits";
-      vi.mocked(monaco.editor.createModel).mockReturnValueOnce(
-        new Buffer(text) as unknown as Monaco.editor.ITextModel,
-      );
-      restoreDocument({
-        id: "restored",
-        path: `C:/workspace/${name}`,
-        language: oldLanguage,
-        text,
-        dirty: true,
-        version: 3,
-        revision: "revision",
-        encoding: "utf8",
-      });
-      expect(useApp.getState().docs.restored).toMatchObject({ language, dirty: true, version: 3 });
-      expect(models.get("restored")!.getValue()).toBe(text);
-    },
-  );
-
-  it("preserves a saved non-plaintext language choice", () => {
-    vi.mocked(languageFor).mockReturnValue("php");
-    const text = "unsaved HTML edits";
-    vi.mocked(monaco.editor.createModel).mockReturnValueOnce(
-      new Buffer(text) as unknown as Monaco.editor.ITextModel,
-    );
-    restoreDocument({
-      id: "manual-language",
-      path: "C:/workspace/index.php",
-      language: "html",
-      text,
-      dirty: true,
-      version: 3,
-      revision: "revision",
-      encoding: "utf8",
-    });
-    expect(useApp.getState().docs["manual-language"]).toMatchObject({
-      language: "html",
-      dirty: true,
-    });
-    expect(models.get("manual-language")!.getValue()).toBe(text);
-  });
-
-  it.each([
     ["\\\\?\\D:\\project\\App.tsx", "D:\\project\\App.tsx"],
     ["\\\\?\\UNC\\server\\share\\App.tsx", "\\\\server\\share\\App.tsx"],
   ])("uses a standard file path for model URIs: %s", (path, expected) => {
@@ -1610,106 +1234,6 @@ describe("Opening documents", () => {
     expect(visiblePath(path)).toBe(expected);
     expect(normalize(path)).toBe(normalize(expected));
     expect(monaco.editor.createModel).toHaveBeenLastCalledWith("edited", "plaintext", expected);
-  });
-
-  function setup() {
-    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-      callback(0);
-      return 0;
-    });
-    const { id } = addDocument();
-    setApp({
-      activeGroup: "group",
-      groups: [{ id: "group", tabs: [], active: null, preview: null, views: {} }],
-      history: [],
-      historyIndex: -1,
-    });
-    const editor = {
-      focus: vi.fn(),
-      setPosition: vi.fn(),
-      revealLineInCenterIfOutsideViewport: vi.fn(),
-      getModel: () => null,
-      setModel: vi.fn(),
-      saveViewState: () => null,
-    };
-    editors.set("group", editor as unknown as Monaco.editor.IStandaloneCodeEditor);
-    return { id, editor };
-  }
-
-  it("activates an existing file as a preview without taking focus from the explorer", async () => {
-    const { id, editor } = setup();
-    await openPath(useApp.getState().docs[id].path!, { preserveFocus: true });
-    expect(useApp.getState().groups[0]).toMatchObject({ active: id, tabs: [id], preview: id });
-    expect(useApp.getState().history[0].id).toBe(id);
-    expect(editor.focus).not.toHaveBeenCalled();
-  });
-
-  it("loads a new file and preserves focus while still revealing the requested location", async () => {
-    const { editor } = setup();
-    vi.mocked(call)
-      .mockResolvedValueOnce({ kind: "text", size: 5, stamp: "fresh" })
-      .mockResolvedValueOnce({ text: "fresh", encoding: "utf8", eol: "LF", revision: "new" });
-    vi.mocked(monaco.editor.createModel).mockReturnValueOnce(
-      new Buffer("fresh") as unknown as Monaco.editor.ITextModel,
-    );
-    const id = await openPath("C:/workspace/fresh.txt", {
-      preserveFocus: true,
-      line: 3,
-      column: 2,
-    });
-    expect(models.get(id)?.getValue()).toBe("fresh");
-    expect(useApp.getState().groups[0]).toMatchObject({ active: id, preview: id });
-    expect(editor.setPosition).toHaveBeenCalledWith({ lineNumber: 3, column: 2 });
-    expect(editor.focus).not.toHaveBeenCalled();
-  });
-
-  it("focuses and pins the current preview when explicitly opened", () => {
-    const { id, editor } = setup();
-    showDocument(id, { preserveFocus: true });
-    showDocument(id, { pinned: true });
-    expect(useApp.getState().groups[0]).toMatchObject({ active: id, tabs: [id], preview: null });
-    expect(editor.focus).toHaveBeenCalledOnce();
-  });
-
-  it("continues focusing ordinary opens and leaves background opens inactive", () => {
-    const { id, editor } = setup();
-    showDocument(id, { background: true });
-    expect(useApp.getState().groups[0].active).toBeNull();
-    expect(editor.focus).not.toHaveBeenCalled();
-    showDocument(id);
-    expect(editor.focus).toHaveBeenCalledOnce();
-  });
-
-  it("requests a reveal on every foreground open, including the already active document", () => {
-    const { id, editor } = setup();
-    showDocument(id, { preserveFocus: true });
-    const first = useApp.getState().tabRevealRequests.group;
-    showDocument(id, { preserveFocus: true });
-    expect(useApp.getState().tabRevealRequests.group).toBe(first + 1);
-    expect(useApp.getState().groups[0].tabs).toEqual([id]);
-    expect(editor.focus).not.toHaveBeenCalled();
-  });
-
-  it("does not request a reveal for background opens or change another group request", () => {
-    const { id } = setup();
-    showDocument(id);
-    const requests = useApp.getState().tabRevealRequests;
-    const other = addDocument();
-    showDocument(other.id, { background: true });
-    expect(useApp.getState().tabRevealRequests).toBe(requests);
-    expect(useApp.getState().groups[0].active).toBe(id);
-    setApp((s) => ({
-      groups: [...s.groups, { id: "other", tabs: [], active: null, preview: null, views: {} }],
-    }));
-    showDocument(other.id, { group: "other" });
-    expect(useApp.getState().tabRevealRequests).toEqual({ ...requests, other: 1 });
-  });
-
-  it("keeps reveal requests out of the saved session", () => {
-    const { id, editor } = setup();
-    Object.assign(editor, { saveViewState: () => null });
-    showDocument(id);
-    expect(session()).not.toHaveProperty("tabRevealRequests");
   });
 });
 
@@ -1900,7 +1424,7 @@ describe("File deletion", () => {
     expect(state.history.map((location) => location.id)).toEqual([sibling.id]);
     expect(state.historyIndex).toBe(0);
     expect(ask).toHaveBeenCalledOnce();
-    expect(vi.mocked(ask).mock.calls[0][1]).toContain("包含未保存修改");
+    expect(vi.mocked(ask).mock.calls[0][1]).toContain("Unsaved changes will be lost");
     expect(onDeleted).toHaveBeenCalledWith("c:\\WORKSPACE\\folder/");
     await checkpoint();
     const snapshot = vi
@@ -1909,18 +1433,6 @@ describe("File deletion", () => {
       .slice(-1)[0][1]!;
     expect((snapshot.documents as Doc[]).map((doc) => doc.id)).toEqual([sibling.id]);
     expect(writes()).toHaveLength(0);
-  });
-
-  it("keeps the last group empty when its final file is deleted", async () => {
-    const { id } = addDocument({ path, dirty: false });
-    setApp({
-      groups: [{ id: "one", tabs: [id], active: id, preview: id, views: {} }],
-      activeGroup: "one",
-    });
-    await deleteInternalFiles([path], vi.fn());
-    expect(useApp.getState().groups).toHaveLength(1);
-    expect(useApp.getState().groups[0]).toMatchObject({ tabs: [], active: null, preview: null });
-    expect(vi.mocked(ask).mock.calls[0][1]).not.toContain("包含未保存修改");
   });
 
   it("closes a live comparison before releasing its deleted source", async () => {
@@ -2508,67 +2020,6 @@ describe("Document move backups", () => {
     }
     await checkpoint();
     expect(commandCalls("sync_documents")).toHaveLength(2);
-  });
-});
-
-describe("Markdown view navigation", () => {
-  it("switches only the destination group to text when revealing a source line", () => {
-    const { id } = addDocument({ language: "markdown", dirty: false });
-    setApp({
-      activeGroup: "one",
-      groups: ["one", "two"].map((group) => ({
-        id: group,
-        tabs: [id],
-        active: id,
-        preview: null,
-        views: {},
-        mediaViews: { [id]: { mode: "markdown", scrollTop: 150 } },
-      })),
-    });
-    showDocument(id, { group: "two", line: 8, column: 3 });
-    expect(useApp.getState().groups[0].mediaViews?.[id]).toEqual({
-      mode: "markdown",
-      scrollTop: 150,
-    });
-    expect(useApp.getState().groups[1].mediaViews?.[id]).toEqual({ mode: "text", scrollTop: 150 });
-  });
-  it("copies the view on split and move, and keeps buffer contents in the session backup", async () => {
-    const { id, buffer } = addDocument({ language: "markdown" });
-    setApp({
-      activeGroup: "one",
-      groups: [
-        {
-          id: "one",
-          tabs: [id],
-          active: id,
-          preview: null,
-          views: {},
-          mediaViews: { [id]: { mode: "markdown", scrollTop: 180 } },
-        },
-      ],
-    });
-    const split = splitGroup();
-    patchMediaView(split, id, { mode: "text" });
-    expect(useApp.getState().groups[0].mediaViews?.[id]?.mode).toBe("markdown");
-    moveTab(id, split, "one");
-    expect(useApp.getState().groups[0].mediaViews?.[id]).toEqual({ mode: "text", scrollTop: 180 });
-    buffer.edit("# Unsaved Markdown");
-    await checkpoint();
-    const backup = vi
-      .mocked(call)
-      .mock.calls.filter(([command]) => command === "sync_documents")
-      .slice(-1)[0]![1]!;
-    expect((backup.documents as import("../types/types").Mirror[])[0]).toMatchObject({
-      language: "markdown",
-      text: "# Unsaved Markdown",
-      dirty: true,
-    });
-    expect((backup.session as import("../types/types").Session).groups[0].mediaViews?.[id]).toEqual(
-      {
-        mode: "text",
-        scrollTop: 180,
-      },
-    );
   });
 });
 

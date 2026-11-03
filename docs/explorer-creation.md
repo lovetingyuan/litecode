@@ -70,16 +70,14 @@ npm test
 npm run lint
 npm run build
 cargo test --manifest-path src-tauri/Cargo.toml --lib
-node tools/verify-explorer-creation.mjs
-node tools/verify-explorer-scroll.mjs
 cargo build --manifest-path src-tauri/Cargo.toml
 node tools/verify-explorer-creation-desktop.mjs
 ```
 
-The browser fixture uses real tree rendering and substitutes disk IPC. The
-desktop check launches an isolated portable app with WebView2 debugging,
+The desktop check launches an isolated portable app with WebView2 debugging,
 uses actual Tauri commands and disk operations, and preserves the user's
-workspace and app data. Reports/screenshots are written under `.verification/`.
-Both checks cover rename as well as creation, including nested and case-only
-renames, inline errors, and dirty descendant documents; the browser fixture
-also delivers structural watcher events before the rename response.
+workspace and app data. Reports are written under `tmp/verification/`.
+It covers rename as well as creation, including nested and case-only renames,
+native validation, and dirty descendant documents. Unit tests cover stale
+validation, cancellation and watcher ordering. Inspect virtual scrolling,
+inline input placement and focus manually.

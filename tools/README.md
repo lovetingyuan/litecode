@@ -11,14 +11,35 @@ still be a manual verification entry point.
 | `package-portable.mjs`                                          | Package the portable app and installer; imported by the release workflow. ZIP creation uses Windows `tar.exe`.                                        |
 | `notices.mjs`                                                   | Generate dependency license notices and inventory from the npm and Cargo locks.                                                                       |
 | `verify-*.mjs`                                                  | Manual browser and desktop regression checks. `npm run test:e2e` runs `verify-desktop.mjs`; specialized checks run separately.                        |
-| `explorer-fixture.mjs`, `fixtures/`, `process-resources.ps1`    | Shared verification fixtures and Windows process resource measurements.                                                                               |
+| `fixtures/`, `process-resources.ps1`                            | Native media fixtures and Windows process resource measurements.                                                                                      |
 | `benchmark-explorer-model.mjs`                                  | Read-only explorer benchmark; set `LITECODE_BENCH_ROOT`. See [benchmark instructions](../docs/verification/EXPLORER_PERFORMANCE.md).                  |
 | `capture-website.mjs`, `capture-inline-conflicts-reference.mjs` | Recreate [website captures](../docs/website.md) and the [VS Code conflict reference](../docs/inline-conflicts.md).                                    |
 | `report-verification.mjs`                                       | Generate performance and UI environment reports from matching desktop release evidence and the release manifest.                                      |
 
 Browser checks generally require `npm run dev`. Desktop checks additionally need
 the appropriate built executable and Windows tools; check the script and feature
-documentation for prerequisites. `verify-git-{blame,branches,diff}.mjs` and
-`verify-explorer-offscreen-creation.mjs` are imported helpers, not standalone checks.
+documentation for prerequisites. `verify-git-{blame,branches,diff}.mjs`
+are imported helpers, not standalone checks.
 
-Verification evidence is kept in `.verification/` or `docs/verification/`.
+Updated verification scripts write disposable fixtures and evidence under `tmp/verification/`.
+Older scripts may still use `.verification/`; published historical evidence remains in
+`docs/verification/`.
+
+## Test policy
+
+Keep automated checks for data preservation, authorization, concurrency, resource
+ownership and protocol handling. Routine interactions that are immediately visible
+when using the app belong in manual acceptance, including tab order, splits,
+navigation, preview switching and loading indicators. Do not test colors, fonts,
+pixel sizes, menu order or fixed presentation defaults. Screenshots are diagnostic or measurement
+evidence, not UI acceptance assertions. Keep opt-in performance benchmarks separate
+from ordinary correctness checks.
+
+Run `npm test -- --maxWorkers=2` and
+`cargo test --manifest-path src-tauri/Cargo.toml --lib` for the automated suites.
+The worker limit keeps the frontend run's process count bounded. Core desktop
+verification remains available through `npm run test:e2e` and the specialized
+native scripts, including creation, moves, clipboard paste, recovery and updates.
+Browser checks retain real Worker scheduling, startup retry and website routing.
+Removed mock-IPC presentation scripts are covered by the
+remaining domain tests and native workflows; inspect appearance manually.

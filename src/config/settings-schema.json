@@ -12,100 +12,100 @@
     "terminal.integrated.fontFamily": {
       "type": "string",
       "default": "",
-      "description": "终端字体。空字符串继承 editor.fontFamily；保存后即时生效。"
+      "description": "Terminal font. An empty string inherits editor.fontFamily. Applies immediately after saving."
     },
     "terminal.integrated.fontSize": {
       "type": "number",
       "minimum": 6,
       "maximum": 100,
       "default": 14,
-      "description": "终端字号，单位为像素。"
+      "description": "Terminal font size in pixels."
     },
     "terminal.integrated.lineHeight": {
       "type": "number",
       "minimum": 1,
       "maximum": 3,
       "default": 1,
-      "description": "终端行高，为字号倍数。"
+      "description": "Terminal line height as a multiple of the font size."
     },
     "terminal.integrated.letterSpacing": {
       "type": "number",
       "minimum": -5,
       "maximum": 20,
       "default": 0,
-      "description": "终端字符间距，单位为像素。"
+      "description": "Terminal letter spacing in pixels."
     },
     "terminal.integrated.scrollback": {
       "type": "integer",
       "minimum": 0,
       "maximum": 100000,
       "default": 1000,
-      "description": "终端保留的回滚行数。"
+      "description": "Number of scrollback lines retained by the terminal."
     },
     "terminal.integrated.fontWeight": {
       "type": ["string", "number"],
       "default": "normal",
-      "description": "终端普通文字字重，可填写 normal、bold 或 100–900。"
+      "description": "Normal terminal text weight: normal, bold, or 100–900."
     },
     "terminal.integrated.fontWeightBold": {
       "type": ["string", "number"],
       "default": "bold",
-      "description": "终端粗体文字字重，可填写 normal、bold 或 100–900。"
+      "description": "Bold terminal text weight: normal, bold, or 100–900."
     },
     "terminal.integrated.cursorStyle": {
       "enum": ["block", "underline", "bar"],
       "default": "block",
-      "description": "终端光标样式：block 方块、underline 下划线、bar 竖线。"
+      "description": "Terminal cursor style: block, underline, or bar."
     },
     "terminal.integrated.cursorBlinking": {
       "type": "boolean",
       "default": false,
-      "description": "终端光标是否闪烁。"
+      "description": "Enable terminal cursor blinking."
     },
     "terminal.integrated.smoothScrolling": {
       "type": "boolean",
       "default": false,
-      "description": "终端是否平滑滚动。"
+      "description": "Enable smooth scrolling in the terminal."
     },
     "terminal.integrated.enableBell": {
       "type": "boolean",
       "default": false,
-      "description": "终端是否播放响铃。"
+      "description": "Enable the terminal bell."
     },
     "terminal.integrated.copyOnSelection": {
       "type": "boolean",
       "default": false,
-      "description": "终端选择文本后自动复制到剪贴板。"
+      "description": "Automatically copy selected terminal text to the clipboard."
     },
     "terminal.integrated.mouseWheelZoom": {
       "type": "boolean",
       "default": false,
-      "description": "是否允许 Ctrl+鼠标滚轮调整终端字号。"
+      "description": "Allow Ctrl+mouse wheel to change the terminal font size."
     },
     "terminal.integrated.shellIntegration.enabled": {
       "type": "boolean",
       "default": true,
-      "description": "新终端是否启用 Shell 集成，自动上报当前目录。禁用后分屏只能继承最后已知目录。"
+      "description": "Enable shell integration in new terminals to report the current directory automatically. When disabled, split terminals can only inherit the last known directory."
     },
     "terminal.integrated.gpuAcceleration": {
       "enum": ["auto", "on", "off"],
       "default": "auto",
-      "description": "终端 WebGL 硬件加速。不可用时自动回退，不中断会话。"
+      "description": "Terminal WebGL acceleration. Falls back automatically without interrupting the session when unavailable."
     },
     "terminal.integrated.rightClickBehavior": {
       "enum": ["default", "copyPaste", "paste", "selectWord", "nothing"],
       "default": "default",
-      "description": "终端右键行为。Windows 的 default 与 copyPaste 相同：有选区复制，否则粘贴。Shift+右键打开菜单。"
+      "description": "Terminal right-click behavior. On Windows, default behaves like copyPaste: copy the selection, or paste if nothing is selected. Shift+right-click opens the menu."
     },
     "terminal.integrated.enableMultiLinePasteWarning": {
       "enum": ["auto", "always", "never"],
       "default": "auto",
-      "description": "多行粘贴提示：auto 在 Shell 未启用括号粘贴时提示，always 始终提示，never 不提示。"
+      "description": "Multiline paste warning: auto warns when the shell has not enabled bracketed paste; always warns every time; never disables warnings."
     },
     "terminal.integrated.defaultProfile.windows": {
       "type": ["string", "null"],
       "default": null,
-      "description": "新终端的默认 Shell profile。null 自动选择 PowerShell 7、Windows PowerShell 或 cmd。"
+      "description": "Default shell profile for new terminals. null automatically selects PowerShell 7, Windows PowerShell, or cmd."
     },
     "terminal.integrated.profiles.windows": {
       "type": "object",
@@ -141,7 +141,7 @@
           }
         ]
       },
-      "description": "Windows Shell profiles。支持 path 或 source、args 和 env；null 隐藏自动检测项。"
+      "description": "Windows shell profiles. Supports path or source, args, and env. null hides an automatically detected profile."
     },
     "terminal.integrated.env.windows": {
       "type": "object",
@@ -149,90 +149,90 @@
       "additionalProperties": {
         "type": ["string", "null"]
       },
-      "description": "新终端的环境变量覆盖；null 删除变量。支持 ${workspaceFolder}、${userHome} 和 ${env:NAME}。"
+      "description": "Environment variable overrides for new terminals. null removes a variable. Supports ${workspaceFolder}, ${userHome}, and ${env:NAME}."
     },
     "terminal.integrated.cwd": {
       "type": "string",
       "default": "",
-      "description": "新 tab 的启动目录。空字符串使用项目根目录，无项目时使用用户主目录；相对路径基于项目。支持 ${workspaceFolder}、${userHome} 和 ${env:NAME}。"
+      "description": "Starting directory for new terminal tabs. An empty string uses the project root, or the user home directory when no project is open. Relative paths resolve from the project. Supports ${workspaceFolder}, ${userHome}, and ${env:NAME}."
     },
     "terminal.integrated.splitCwd": {
       "enum": ["inherited", "initial", "workspaceRoot"],
       "default": "inherited",
-      "description": "分屏启动目录：inherited 继承当前目录，initial 使用源会话启动目录，workspaceRoot 使用当前项目根目录。"
+      "description": "Starting directory for split terminals: inherited uses the current directory; initial uses the source session's starting directory; workspaceRoot uses the current project root."
     },
     "workbench.editor.openSideBySideDirection": {
       "enum": ["right", "down"],
       "default": "right",
-      "description": "分屏及在侧边打开编辑器的默认方向：right 向右，down 向下。显式指定方向的分屏命令不受此设置影响。"
+      "description": "Default direction for splitting and opening editors to the side: right or down. Split commands with an explicit direction ignore this setting."
     },
     "workbench.list.openMode": {
       "enum": ["singleClick", "doubleClick"],
       "default": "singleClick",
-      "description": "文件树的鼠标打开方式：singleClick 单击预览并保留文件树焦点；doubleClick 单击仅选中。双击或按 Enter 打开并固定文件，将焦点移到编辑器。"
+      "description": "File tree open behavior: singleClick previews files while keeping focus in the tree; doubleClick only selects on a single click. Double-click or Enter opens and pins the file, then focuses the editor."
     },
     "editor.fontSize": {
       "type": "number",
       "minimum": 6,
       "maximum": 100,
       "default": 14,
-      "description": "编辑器字号，单位为像素，范围 6–100。"
+      "description": "Editor font size in pixels, from 6 to 100."
     },
     "editor.fontFamily": {
       "type": "string",
       "default": "Consolas, \"Courier New\", monospace",
-      "description": "编辑器及 Markdown 预览代码的字体，按逗号分隔的顺序查找本机已安装的字体。含空格的字体名可用引号包裹。保存后即时生效。"
+      "description": "Fonts for the editor and Markdown preview code, checked in comma-separated order against installed fonts. Font names containing spaces can be quoted. Applies immediately after saving."
     },
     "editor.fontLigatures": {
       "type": ["boolean", "string"],
       "default": false,
-      "description": "编辑器及 Markdown 预览代码的字体连字，与 VS Code 一致。false 关闭 liga 和 calt（默认）；true 开启；字符串可自定义 CSS font-feature-settings，例如 \"'liga' off, 'calt' on\"。需要字体支持。保存后即时生效。"
+      "description": "Font ligatures for the editor and Markdown preview code, matching VS Code. false disables liga and calt (default); true enables them. A string customizes CSS font-feature-settings, such as \"'liga' off, 'calt' on\". Requires font support. Applies immediately after saving."
     },
     "editor.lineHeight": {
       "type": "number",
       "minimum": 0,
       "maximum": 150,
       "default": 20,
-      "description": "编辑器行高：0 为自动计算；大于 0 且小于 8 为字号倍数；8–150 为像素。"
+      "description": "Editor line height: 0 calculates automatically; values greater than 0 and less than 8 are font size multipliers; 8–150 are pixels."
     },
     "editor.tabSize": {
       "type": "integer",
       "minimum": 1,
       "maximum": 16,
       "default": 4,
-      "description": "一个 Tab 显示的空格宽度，范围 1–16；detectIndentation 开启时，以文件检测结果为准。"
+      "description": "Tab width in spaces, from 1 to 16. Detected file indentation takes precedence when detectIndentation is enabled."
     },
     "editor.wordWrap": {
       "enum": ["off", "on", "wordWrapColumn", "bounded"],
       "default": "off",
-      "description": "自动折行：off 关闭，on 按编辑器宽度，wordWrapColumn 按指定列，bounded 按编辑器宽度和指定列中的较小值。不修改文件内容。"
+      "description": "Word wrap: off disables wrapping; on wraps at the editor width; wordWrapColumn wraps at the specified column; bounded uses the smaller of the editor width and specified column. Does not change file contents."
     },
     "editor.minimap.enabled": {
       "type": "boolean",
       "default": true,
-      "description": "是否显示代码缩略图；大文件模式下始终关闭。"
+      "description": "Show the code minimap. Always disabled in large file mode."
     },
     "editor.formatOnSave": {
       "type": "boolean",
       "default": false,
-      "description": "保存时是否格式化文档。HTML、Markdown 等使用内置 Oxfmt，需要可用的 Node.js；Rust 需要 rustfmt。项目配置也可选择其他格式化工具。"
+      "description": "Format documents on save. HTML, Markdown, and other supported files use bundled Oxfmt and require Node.js; Rust requires rustfmt. Project configuration can select other formatters."
     },
     "editor.defaultFormatter": {
       "type": ["string", "null"],
       "enum": [null, "esbenp.prettier-vscode", "oxc.oxc-vscode", "rust-lang.rust-analyzer"],
       "default": null,
-      "description": "默认格式化工具。null 表示自动选择：Rust 使用 rustfmt；其他支持的文件（含 HTML、Markdown）根据项目配置选择 Prettier，否则使用 Oxfmt。应用内置 Oxfmt，无需安装语言工具，但需要 Node.js。也可填写列出的工具标识。"
+      "description": "Default formatter. null selects automatically: rustfmt for Rust; Prettier when selected by project configuration for other supported files (including HTML and Markdown), otherwise Oxfmt. Bundled Oxfmt requires Node.js but no language tools installation. You can also specify a listed formatter ID."
     },
     "files.autoSave": {
       "enum": ["off", "afterDelay", "onFocusChange", "onWindowChange"],
       "default": "off",
-      "description": "自动保存模式：off 关闭；afterDelay 在停止编辑后延迟保存；onFocusChange 在离开当前编辑器时保存；onWindowChange 在窗口失去焦点时保存。自动保存仅处理有文件路径、已修改且无冲突的文档。"
+      "description": "Auto save: off disables it; afterDelay saves after editing stops; onFocusChange saves when leaving the current editor; onWindowChange saves when the window loses focus. Only modified documents with a file path and no conflicts are saved."
     },
     "files.autoSaveDelay": {
       "type": "number",
       "minimum": 0,
       "default": 1000,
-      "description": "afterDelay 自动保存的等待时间，单位为毫秒。"
+      "description": "Delay in milliseconds for afterDelay auto save."
     },
     "files.exclude": {
       "type": "object",
@@ -255,7 +255,7 @@
         "**/.DS_Store": true,
         "**/Thumbs.db": true
       },
-      "description": "Ctrl+P 继承的文件排除 glob；true 开启，false 关闭，也支持 when 同级文件条件。当前不用于文件树过滤。"
+      "description": "File exclusion globs inherited by Ctrl+P. true enables a rule; false disables it. Supports when conditions for sibling files. Currently does not filter the file tree."
     },
     "search.exclude": {
       "type": "object",
@@ -271,62 +271,62 @@
         ]
       },
       "default": { "**/node_modules": true, "**/bower_components": true, "**/*.code-search": true },
-      "description": "Ctrl+P 排除 glob，继承并覆盖 files.exclude；false 关闭同名规则。排除已打开文件需匹配其绝对路径，例如 **/node_modules/**。全文搜索仍使用搜索面板的排除条件。"
+      "description": "Ctrl+P exclusion globs, inheriting and overriding files.exclude. false disables the matching rule. Excluding open files requires matching their absolute paths, such as **/node_modules/**. Full-text search uses the search panel's exclusion patterns."
     },
     "search.useIgnoreFiles": {
       "type": "boolean",
       "default": true,
-      "description": "Ctrl+P 是否应用工作区内的 .gitignore 和 .ignore 文件。"
+      "description": "Apply workspace .gitignore and .ignore files to Ctrl+P."
     },
     "search.useGlobalIgnoreFiles": {
       "type": "boolean",
       "default": false,
-      "description": "Ctrl+P 是否应用全局 Git 忽略文件；仅在 search.useIgnoreFiles 开启时生效。"
+      "description": "Apply global Git ignore files to Ctrl+P. Requires search.useIgnoreFiles."
     },
     "search.useParentIgnoreFiles": {
       "type": "boolean",
       "default": false,
-      "description": "Ctrl+P 是否应用工作区父目录的忽略文件；仅在 search.useIgnoreFiles 开启时生效。"
+      "description": "Apply ignore files from workspace parent directories to Ctrl+P. Requires search.useIgnoreFiles."
     },
     "search.followSymlinks": {
       "type": "boolean",
       "default": true,
-      "description": "Ctrl+P 枚举文件时是否跟随符号链接。"
+      "description": "Follow symbolic links when listing files for Ctrl+P."
     },
     "litecode.nodePath": {
       "type": ["string", "null"],
       "default": null,
-      "description": "Node.js 可执行文件路径。null 表示优先使用应用安装的 Node.js，再从 PATH 查找。Windows 路径中的反斜杠需要写成双反斜杠。"
+      "description": "Path to the Node.js executable. null tries the Node.js installed by the app, then PATH. Backslashes in Windows paths must be doubled."
     },
     "typescript.native.serverPath": {
       "type": ["string", "null"],
       "default": null,
-      "description": "TypeScript Native 的 tsgo.exe 路径。null 表示优先使用应用安装的工具，再从 PATH 查找。TypeScript 7 之前的项目使用兼容语言服务器。"
+      "description": "Path to the TypeScript Native tsgo.exe executable. null tries the tool installed by the app, then PATH. Projects using TypeScript versions earlier than 7 use the compatibility language server."
     },
     "litecode.typescriptLanguageServerPath": {
       "type": ["string", "null"],
       "default": null,
-      "description": "TypeScript 兼容语言服务器的 lib/cli.mjs 路径。null 表示优先使用应用安装的语言工具，否则使用应用内置服务器；优先加载项目 TypeScript，无项目版本时使用服务器附带版本。需要 Node.js 22.22.2 或更高版本。"
+      "description": "Path to lib/cli.mjs for the TypeScript compatibility language server. null uses language tools installed by the app, otherwise the bundled server. Loads the project's TypeScript version when available, otherwise the server's version. Requires Node.js 22.22.2 or later."
     },
     "rust-analyzer.server.path": {
       "type": ["string", "null"],
       "default": null,
-      "description": "rust-analyzer 可执行文件路径。null 表示从 PATH 查找项目的 Rust 工具链。"
+      "description": "Path to the rust-analyzer executable. null searches PATH for the project's Rust toolchain."
     },
     "oxfmt.path": {
       "type": ["string", "null"],
       "default": null,
-      "description": "Oxfmt 可执行文件路径。null 表示依次尝试项目、应用内置、应用安装的 Oxfmt，最后从 PATH 查找。内置 npm 版本支持 HTML，需要 Node.js；独立二进制不支持 HTML。"
+      "description": "Path to the Oxfmt executable. null tries the project, bundled Oxfmt, Oxfmt installed by the app, then PATH. The bundled npm version supports HTML and requires Node.js; standalone binaries do not support HTML."
     },
     "editor.lineNumbers": {
       "enum": ["off", "on", "relative", "interval"],
       "default": "on",
-      "description": "行号显示方式：off 关闭，on 绝对行号，relative 相对行号，interval 每十行显示。"
+      "description": "Line numbers: off hides them; on shows absolute numbers; relative shows relative numbers; interval shows every tenth line."
     },
     "editor.renderWhitespace": {
       "enum": ["none", "boundary", "selection", "trailing", "all"],
       "default": "selection",
-      "description": "空白字符显示方式：none 不显示，boundary 显示边界空白，selection 仅选区，trailing 仅行尾，all 全部。"
+      "description": "Whitespace display: none hides it; boundary shows boundary whitespace; selection shows it only in selections; trailing shows trailing whitespace; all shows all whitespace."
     },
     "editor.rulers": {
       "type": "array",
@@ -355,32 +355,32 @@
         ]
       },
       "default": [],
-      "description": "垂直参考线的列位置，例如 [80, 120]，也支持 {\"column\": 80, \"color\": \"#808080\"}。空数组不显示。"
+      "description": "Vertical ruler columns, such as [80, 120]. Also supports {\"column\": 80, \"color\": \"#808080\"}. An empty array hides rulers."
     },
     "editor.renderLineHighlight": {
       "enum": ["none", "gutter", "line", "all"],
       "default": "line",
-      "description": "当前行高亮区域：none 关闭，gutter 行号区域，line 文本区域，all 两者。"
+      "description": "Current line highlight: none disables it; gutter highlights the line number area; line highlights the text area; all highlights both."
     },
     "editor.guides.indentation": {
       "type": "boolean",
       "default": true,
-      "description": "是否显示缩进参考线。"
+      "description": "Show indentation guides."
     },
     "editor.guides.bracketPairs": {
       "enum": [true, "active", false],
       "default": true,
-      "description": "括号对参考线：true 显示全部，active 仅当前括号对，false 关闭。"
+      "description": "Bracket pair guides: true shows all; active shows only the active pair; false hides them."
     },
     "editor.bracketPairColorization.enabled": {
       "type": "boolean",
       "default": true,
-      "description": "是否为配对括号着色。"
+      "description": "Enable bracket pair colorization."
     },
     "editor.folding": {
       "type": "boolean",
       "default": true,
-      "description": "是否启用代码折叠；大文件模式下始终关闭。"
+      "description": "Enable code folding. Always disabled in large file mode."
     },
     "editor.fontWeight": {
       "anyOf": [
@@ -395,61 +395,61 @@
         }
       ],
       "default": "normal",
-      "description": "编辑器字重：normal、bold 或 1–1000 的数字及数字字符串。"
+      "description": "Editor font weight: normal, bold, or a number or numeric string from 1 to 1000."
     },
     "editor.letterSpacing": {
       "type": "number",
       "minimum": -5,
       "maximum": 20,
       "default": 0,
-      "description": "编辑器字符间距，单位为像素。"
+      "description": "Editor letter spacing in pixels."
     },
     "editor.cursorStyle": {
       "enum": ["line", "block", "underline", "line-thin", "block-outline", "underline-thin"],
       "default": "line",
-      "description": "编辑器光标样式。"
+      "description": "Editor cursor style."
     },
     "editor.cursorBlinking": {
       "enum": ["blink", "smooth", "phase", "expand", "solid"],
       "default": "blink",
-      "description": "编辑器光标闪烁方式；solid 为常亮。"
+      "description": "Editor cursor blinking style. solid keeps the cursor visible."
     },
     "editor.cursorSmoothCaretAnimation": {
       "enum": ["off", "explicit", "on"],
       "default": "off",
-      "description": "光标平滑动画：off 关闭，explicit 仅手动移动，on 始终启用。"
+      "description": "Smooth cursor animation: off disables it; explicit animates manual movement only; on always animates."
     },
     "editor.scrollBeyondLastLine": {
       "type": "boolean",
       "default": true,
-      "description": "是否允许滚动到最后一行之后。"
+      "description": "Allow scrolling past the last line."
     },
     "editor.smoothScrolling": {
       "type": "boolean",
       "default": true,
-      "description": "是否启用编辑器平滑滚动。"
+      "description": "Enable smooth scrolling in the editor."
     },
     "editor.mouseWheelZoom": {
       "type": "boolean",
       "default": false,
-      "description": "是否允许 Ctrl+鼠标滚轮调整编辑器字号。"
+      "description": "Allow Ctrl+mouse wheel to change the editor font size."
     },
     "editor.wordWrapColumn": {
       "type": "integer",
       "minimum": 1,
       "maximum": 10000,
       "default": 80,
-      "description": "wordWrapColumn 和 bounded 折行模式使用的列数，不改变文件内容。"
+      "description": "Column used by wordWrapColumn and bounded wrapping modes. Does not change file contents."
     },
     "editor.insertSpaces": {
       "type": "boolean",
       "default": true,
-      "description": "按 Tab 时是否插入空格。detectIndentation 开启时，以文件检测结果为准；不改写已有缩进。"
+      "description": "Insert spaces when pressing Tab. Detected file indentation takes precedence when detectIndentation is enabled. Does not rewrite existing indentation."
     },
     "editor.detectIndentation": {
       "type": "boolean",
       "default": true,
-      "description": "是否根据文件内容自动检测 Tab 宽度及空格缩进；关闭时使用 tabSize 和 insertSpaces。"
+      "description": "Detect tab width and space indentation from file contents. When disabled, uses tabSize and insertSpaces."
     },
     "editor.quickSuggestions": {
       "anyOf": [
@@ -501,66 +501,66 @@
         "comments": "off",
         "strings": "off"
       },
-      "description": "输入时自动显示补全。支持布尔值、on/off/offWhenInlineCompletions，或分别设置 other、comments、strings。仅提供当前补全列表支持的模式。"
+      "description": "Show completions automatically while typing. Accepts a boolean, on/off/offWhenInlineCompletions, or separate values for other, comments, and strings. Only modes supported by the current completion list are available."
     },
     "editor.quickSuggestionsDelay": {
       "type": "integer",
       "minimum": 0,
       "maximum": 1073741824,
       "default": 10,
-      "description": "输入后显示自动补全的延迟，单位为毫秒。"
+      "description": "Delay in milliseconds before showing automatic completions after typing."
     },
     "editor.suggestOnTriggerCharacters": {
       "type": "boolean",
       "default": true,
-      "description": "输入语言定义的触发字符时是否自动显示补全。"
+      "description": "Show completions when typing trigger characters defined by the language."
     },
     "editor.acceptSuggestionOnEnter": {
       "enum": ["on", "smart", "off"],
       "default": "on",
-      "description": "是否用 Enter 接受补全：smart 仅在补全会改变文本时接受，off 仅插入换行。"
+      "description": "Accept completions with Enter: smart accepts only when the completion changes the text; off inserts a newline instead."
     },
     "editor.parameterHints.enabled": {
       "type": "boolean",
       "default": true,
-      "description": "是否自动显示函数参数提示，需要语言服务支持。"
+      "description": "Automatically show function parameter hints. Requires language service support."
     },
     "editor.hover.enabled": {
       "enum": ["on", "off", "onKeyboardModifier"],
       "default": "on",
-      "description": "悬停提示：on 开启，off 关闭，onKeyboardModifier 按住 Ctrl 或 Alt 时显示。"
+      "description": "Hover tooltips: on enables them; off disables them; onKeyboardModifier shows them while holding Ctrl or Alt."
     },
     "editor.hover.delay": {
       "type": "number",
       "minimum": 0,
       "maximum": 10000,
       "default": 300,
-      "description": "显示悬停提示的延迟，单位为毫秒。"
+      "description": "Delay in milliseconds before showing hover tooltips."
     },
     "editor.inlayHints.enabled": {
       "enum": ["on", "onUnlessPressed", "offUnlessPressed", "off"],
       "default": "on",
-      "description": "行内提示开关，需要语言服务支持；onUnlessPressed 和 offUnlessPressed 用 Ctrl+Alt 临时切换。"
+      "description": "Inlay hints. Requires language service support. Use Ctrl+Alt to temporarily toggle onUnlessPressed and offUnlessPressed modes."
     },
     "editor.autoClosingBrackets": {
       "enum": ["always", "languageDefined", "beforeWhitespace", "never"],
       "default": "languageDefined",
-      "description": "括号自动闭合方式：always 始终，languageDefined 按语言规则，beforeWhitespace 仅空白字符前，never 关闭。"
+      "description": "Auto-close brackets: always, languageDefined for language rules, beforeWhitespace only before whitespace, or never."
     },
     "editor.autoClosingQuotes": {
       "enum": ["always", "languageDefined", "beforeWhitespace", "never"],
       "default": "languageDefined",
-      "description": "引号自动闭合方式：always 始终，languageDefined 按语言规则，beforeWhitespace 仅空白字符前，never 关闭。"
+      "description": "Auto-close quotes: always, languageDefined for language rules, beforeWhitespace only before whitespace, or never."
     },
     "editor.autoSurround": {
       "enum": ["languageDefined", "quotes", "brackets", "never"],
       "default": "languageDefined",
-      "description": "选中文本后自动包围方式：languageDefined 按语言规则，quotes 仅引号，brackets 仅括号，never 关闭。"
+      "description": "Automatically surround selected text: languageDefined follows language rules; quotes allows quotes only; brackets allows brackets only; never disables it."
     },
     "workbench.editor.enablePreview": {
       "type": "boolean",
       "default": true,
-      "description": "是否使用可复用的预览标签。关闭后新打开文件保持独立标签，已有标签不会被关闭。"
+      "description": "Use a reusable preview tab. When disabled, newly opened files keep separate tabs. Existing tabs remain open."
     },
     "breadcrumbs.enabled": {
       "type": "boolean",
@@ -570,22 +570,22 @@
     "diffEditor.renderSideBySide": {
       "type": "boolean",
       "default": true,
-      "description": "差异查看器是否左右并排显示；关闭时在同一列显示差异。"
+      "description": "Show differences side by side. When disabled, shows differences in a single column."
     },
     "merge-conflict.codeLens.enabled": {
       "type": "boolean",
       "default": true,
-      "description": "是否在合并冲突块上方显示逐块接受操作。"
+      "description": "Show accept actions above each merge conflict block."
     },
     "merge-conflict.decorators.enabled": {
       "type": "boolean",
       "default": true,
-      "description": "是否高亮显示合并冲突的当前、传入和共同祖先区域。"
+      "description": "Highlight current, incoming, and common ancestor regions in merge conflicts."
     },
     "diffEditor.ignoreTrimWhitespace": {
       "type": "boolean",
       "default": true,
-      "description": "差异比较时是否忽略行首和行尾空白的变化。"
+      "description": "Ignore changes to leading and trailing whitespace when comparing files."
     }
   }
 }

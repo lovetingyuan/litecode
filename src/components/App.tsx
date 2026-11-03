@@ -33,6 +33,7 @@ import { SearchView } from "./SearchView";
 import { EditorLayoutView, WorkbenchLayout } from "./EditorGrid";
 import { WelcomePage } from "./WelcomePage";
 import { QuickOpen } from "./QuickOpen";
+import { ManageMenu } from "./ManageMenu";
 import { DialogHost } from "./dialog";
 import { UpdateButton, UpdateDialog } from "./UpdateDialog";
 import { initializeUpdates, updateLocked, useUpdates } from "../core/updates";
@@ -657,13 +658,7 @@ export default function App() {
                 <Icon name="terminal" />
               </button>
             </div>
-            <button
-              title="Manage"
-              aria-label="Manage"
-              onClick={() => setApp({ quick: ">Preferences:" })}
-            >
-              <Icon name="settings-gear" />
-            </button>
+            <ManageMenu />
           </nav>
           {s.ready && (
             <WorkbenchLayout

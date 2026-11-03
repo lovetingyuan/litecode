@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 export default defineConfig(async (env) =>
   mergeConfig(await (typeof viteConfig === "function" ? viteConfig(env) : viteConfig), {
-    test: { exclude: [...configDefaults.exclude, ".verification/**", "artifacts/**"] },
+    test: { exclude: [...configDefaults.exclude, "tmp/**", ".verification/**", "artifacts/**"] },
     resolve: {
       alias: [
         {

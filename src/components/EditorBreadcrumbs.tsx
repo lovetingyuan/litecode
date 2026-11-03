@@ -62,7 +62,7 @@ export function EditorBreadcrumbs({ doc, group }: Readonly<{ doc: Doc; group: Gr
                 </span>
               </>
             );
-            const title = `${pathTitle(segment.path)}${deleted ? "\n文件已从磁盘删除" : ""}`;
+            const title = `${pathTitle(segment.path)}${deleted ? "\nFile deleted from disk" : ""}`;
             const path = segment.workspacePath;
             return (
               <span key={segment.path}>
@@ -87,7 +87,7 @@ export function EditorBreadcrumbs({ doc, group }: Readonly<{ doc: Doc; group: Gr
                   >
                     <Popover.Trigger
                       title={title}
-                      aria-label={`Browse siblings of ${segment.label}${deleted ? ", 文件已从磁盘删除" : ""}`}
+                      aria-label={`Browse siblings of ${segment.label}${deleted ? ", File deleted from disk" : ""}`}
                       onKeyDown={(event) => {
                         if (event.key === "ArrowDown") {
                           event.preventDefault();

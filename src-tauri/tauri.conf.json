@@ -13,6 +13,7 @@
   "app": {
     "windows": [
       {
+        "create": false,
         "title": "LiteCode",
         "width": 1280,
         "height": 820,

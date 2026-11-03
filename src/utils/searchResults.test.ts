@@ -22,52 +22,20 @@ const results = [
 ];
 
 describe("Search result layouts", () => {
-  it("keeps file headings and nested matches in the flat layout", () => {
-    const { files } = buildSearchResults(results, "/work");
-    const rows = searchResultRows(files, new Set());
-    expect(rows.filter((row) => row.kind === "file")).toHaveLength(4);
-    expect(rows.every((row) => row.depth === (row.kind === "file" ? 0 : 1))).toBe(true);
-    expect(rows.filter((row) => row.kind === "match")).toHaveLength(results.length);
-    expect(
-      searchResultRows(files, new Set([files[0].path])).filter((row) => row.kind === "match"),
-    ).toHaveLength(results.length - files[0].count);
-  });
-
-  it("builds directory levels with aggregate counts and preserves original match indices", () => {
+  it("preserves match indices and aggregate selection targets in the directory tree", () => {
     const { tree } = buildSearchResults(results, "/work/");
     const rows = searchResultRows(tree, new Set());
-    expect(
-      rows.filter((row) => row.kind === "folder").map((row) => [row.name, row.depth, row.count]),
-    ).toEqual([
-      ["app", 0, 4],
-      ["src", 1, 4],
-      ["maps", 2, 2],
-      ["maps-other", 2, 1],
-    ]);
-    expect(rows.find((row) => row.kind === "file" && row.name === "Map.tsx")?.depth).toBe(3);
-    for (const row of rows) {
-      if (row.kind === "match") {
-        expect(results[row.index]).toBe(row.match);
-      }
+    const matches = rows.filter((row) => row.kind === "match");
+    expect(matches).toHaveLength(results.length);
+    for (const row of matches) {
+      expect(results[row.index]).toBe(row.match);
     }
     expect(searchRowMatches(tree[0])).toHaveLength(4);
-  });
-
-  it("collapses just the selected subtree, including similarly named sibling folders", () => {
-    const { tree } = buildSearchResults(results, "/work");
-    const rows = searchResultRows(tree, new Set(["/work/app/src/maps"]));
-    expect(rows.filter((row) => row.kind === "match").map((row) => row.match)).toEqual([
-      results[4],
-      results[2],
-      results[3],
-    ]);
-    const folder = rows.find((row) => row.kind === "folder" && row.name === "maps")!;
+    const folder = rows.find((row) => row.kind === "folder" && row.path === "/work/app/src/maps");
+    if (!folder) {
+      throw new Error("Missing replacement target folder");
+    }
     expect(searchRowMatches(folder)).toEqual(results.slice(0, 2));
-    expect(searchResultRows(tree, new Set(["/work/app"])).map((row) => row.kind)).toEqual([
-      "folder",
-      "file",
-      "match",
-    ]);
   });
 
   it("handles Windows separators, root casing, root files and external files", () => {

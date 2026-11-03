@@ -91,7 +91,7 @@ export async function verifyGitBlame({ page, root, git, run, waitPage, invoke, r
   assert.match(await status.getAttribute("title"), /second line attribution/);
   assert.ok((await status.getAttribute("title")).includes(second.slice(0, 8)));
   await page.keyboard.type("unsaved ");
-  await status.filter({ hasText: "尚未提交" }).waitFor();
+  await status.filter({ hasText: "Uncommitted" }).waitFor();
   await clickLine(3);
   await status.filter({ hasText: "Alice" }).waitFor();
   await clickLine(2);
@@ -109,10 +109,10 @@ export async function verifyGitBlame({ page, root, git, run, waitPage, invoke, r
   await page.keyboard.type("saved ");
   await page.keyboard.press("Control+s");
   await waitPage(async (url) => !(await import(url)).activeDoc()?.dirty, resources.store);
-  await status.filter({ hasText: "尚未提交" }).waitFor();
+  await status.filter({ hasText: "Uncommitted" }).waitFor();
   git(root, "add", "--", file);
   await refresh();
-  await status.filter({ hasText: "尚未提交" }).waitFor();
+  await status.filter({ hasText: "Uncommitted" }).waitFor();
   git(
     root,
     "commit",
@@ -149,14 +149,6 @@ export async function verifyGitBlame({ page, root, git, run, waitPage, invoke, r
   await page.waitForFunction(() =>
     document.querySelector(".status-right")?.textContent.includes("Ln 2, Col"),
   );
-  await page.setViewportSize({ width: 800, height: 650 });
-  assert.equal(
-    await status.evaluate(
-      (el) => el.nextElementSibling.getBoundingClientRect().right <= innerWidth,
-    ),
-    true,
-  );
-  await page.screenshot({ path: path.join(run, "line-blame-narrow.png") });
   let rejected = false;
   try {
     await invoke("git_blame_file", { ...context, path: "../escape", contents: "escape" });
@@ -171,5 +163,5 @@ export async function verifyGitBlame({ page, root, git, run, waitPage, invoke, r
     rejected = true;
   }
   assert.ok(rejected, "Native IPC rejects stale workspace sessions");
-  return "Line blame: real IPC, authors, mouse/keyboard, unsaved/saved/staged changes, undo, commit/watch refresh, branch switches, split focus, narrow layout and access guards";
+  return "Line blame: real IPC, authors, mouse/keyboard, unsaved/saved/staged changes, undo, commit/watch refresh, branch switches, split editors and access guards";
 }

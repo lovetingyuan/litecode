@@ -103,9 +103,30 @@ async fn read_request(reader: &mut (impl AsyncRead + Unpin)) -> std::io::Result<
 
 pub struct Instance {
     pub data_dir: PathBuf,
+    initial_open: Mutex<Option<PathBuf>>,
     ready: AtomicBool,
     pending: Mutex<VecDeque<Request>>,
     draining: AtomicBool,
+}
+
+impl Instance {
+    fn new(data_dir: PathBuf, request: Request) -> Self {
+        Self {
+            data_dir,
+            initial_open: Mutex::new(match request {
+                Request::NewWindow => None,
+                Request::Open(path) => Some(path),
+            }),
+            ready: AtomicBool::new(false),
+            pending: Mutex::new(VecDeque::new()),
+            draining: AtomicBool::new(false),
+        }
+    }
+
+    // The first request is handled during setup, before any default or recovery window exists.
+    pub fn take_initial_open(&self) -> Option<PathBuf> {
+        self.initial_open.lock_recover().take()
+    }
 }
 
 fn pipe_name(directory: &Path) -> std::io::Result<String> {
@@ -219,7 +240,7 @@ async fn wait_and_rebind(
     Ok(None)
 }
 
-fn show_error(message: &str) {
+pub(crate) fn show_error(message: &str) {
     use windows::{
         Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW},
         core::PCWSTR,
@@ -330,16 +351,7 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
             match result {
                 Ok((data_dir, name, Some(server), request)) => {
                     crate::logging::init(app, &data_dir);
-                    let mut pending = VecDeque::new();
-                    if matches!(request, Request::Open(_)) {
-                        pending.push_back(request);
-                    }
-                    app.manage(Instance {
-                        data_dir,
-                        ready: AtomicBool::new(false),
-                        pending: Mutex::new(pending),
-                        draining: AtomicBool::new(false),
-                    });
+                    app.manage(Instance::new(data_dir, request));
                     tauri::async_runtime::spawn(serve(app.clone(), name, server));
                 }
                 Ok((_, _, None, _)) => {
@@ -381,6 +393,31 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
         std::fs::create_dir_all(&root).unwrap();
         tempfile::tempdir_in(root).unwrap()
+    }
+
+    #[test]
+    fn startup_open_is_consumed_once_without_replaying_or_removing_forwarded_requests() {
+        let directory = temp_directory();
+        let initial = PathBuf::from(r"C:\项目 with spaces\a.txt");
+        let instance = Instance::new(directory.path().into(), Request::Open(initial.clone()));
+        assert!(instance.pending.lock_recover().is_empty());
+        instance
+            .pending
+            .lock_recover()
+            .extend([Request::Open(r"C:\next folder".into()), Request::NewWindow]);
+        assert_eq!(instance.take_initial_open(), Some(initial));
+        assert_eq!(instance.take_initial_open(), None);
+        let mut pending = instance.pending.lock_recover();
+        assert_eq!(
+            pending.pop_front(),
+            Some(Request::Open(r"C:\next folder".into()))
+        );
+        assert_eq!(pending.pop_front(), Some(Request::NewWindow));
+        assert!(pending.is_empty());
+
+        let normal = Instance::new(directory.path().into(), Request::NewWindow);
+        assert_eq!(normal.take_initial_open(), None);
+        assert!(normal.pending.lock_recover().is_empty());
     }
 
     #[test]

@@ -135,18 +135,18 @@ try {
   );
   assert.equal(
     await exec(
-      "return document.querySelector('.diff-panel').textContent.includes('磁盘版本') && document.querySelector('.diff-panel').textContent.includes('当前编辑版本');",
+      "return document.querySelector('.diff-panel').textContent.includes('Disk Version') && document.querySelector('.diff-panel').textContent.includes('Current Version');",
     ),
     true,
   );
   await request("POST", url("/element"), {
     using: "css selector",
-    value: '.diff-panel button[aria-label="下一个差异"]',
+    value: '.diff-panel button[aria-label="Next Difference"]',
   }).then((element) =>
     request("POST", url(`/element/${element["element-6066-11e4-a52e-4f735466cecf"]}/click`), {}),
   );
   await screenshot("01-conflict-diff");
-  await click("取消");
+  await click("Cancel");
   await closed();
   assert.equal(await getBuffer(), local);
   assert.equal(await readFile(file, "utf8"), external);
@@ -160,7 +160,7 @@ try {
     "return !!document.querySelector('.diff-panel');",
     "Manual conflict did not open comparison",
   );
-  await click("使用磁盘版本");
+  await click("Use Disk Version");
   await closed();
   assert.equal(await getBuffer(), external);
   assert.equal(await readFile(file, "utf8"), external);
@@ -171,7 +171,7 @@ try {
   const externalLF = external.replaceAll("\r\n", "\n");
   await writeFile(file, externalLF);
   await documents("await d.refreshDocuments();await d.compareDisk(args[0]);", [documentId]);
-  await click("使用磁盘版本");
+  await click("Use Disk Version");
   await closed();
   assert.equal(await getBuffer(), externalLF);
   await documents("d.models.get(args[0]).undo();", [documentId]);
@@ -179,7 +179,7 @@ try {
   checks.push("Choosing disk also adopts its line endings and undo restores CRLF");
 
   await conflict();
-  await click("保留当前版本");
+  await click("Keep Current Version");
   await closed();
   assert.equal(await getBuffer(), local);
   assert.equal(await readFile(file, "utf8"), local);
@@ -188,41 +188,41 @@ try {
   await conflict();
   const newer = "第一行：第三方再次修改\r\n第二行：新的磁盘版本\r\n";
   await writeFile(file, newer);
-  await click("保留当前版本");
+  await click("Keep Current Version");
   await wait(
-    "return document.querySelector('.diff-panel')?.textContent.includes('再次选择');",
+    "return document.querySelector('.diff-panel')?.textContent.includes('choose the final version again');",
     "Changed disk was not rejected",
   );
   assert.equal(await readFile(file, "utf8"), newer);
   assert.equal(await getBuffer(), local);
   await screenshot("02-updated-comparison");
-  await click("使用磁盘版本");
+  await click("Use Disk Version");
   await closed();
   assert.equal(await getBuffer(), newer);
   checks.push("Disk changes during comparison refresh the diff and require a second choice");
 
   await conflict();
   await edit("对比后又编辑\r\n");
-  await click("使用磁盘版本");
+  await click("Use Disk Version");
   await wait(
-    "return document.querySelector('.diff-panel')?.textContent.includes('再次选择');",
+    "return document.querySelector('.diff-panel')?.textContent.includes('choose the final version again');",
     "Changed buffer was not rejected",
   );
   assert.equal(await getBuffer(), "对比后又编辑\r\n");
-  await click("取消");
+  await click("Cancel");
   await closed();
   checks.push("Editor changes during comparison are preserved and require a second choice");
 
   await conflict();
   await unlink(file);
-  await click("保留当前版本");
+  await click("Keep Current Version");
   await wait(
-    "return document.querySelector('.diff-panel')?.textContent.includes('无法读取磁盘版本');",
+    "return document.querySelector('.diff-panel')?.textContent.includes('Unable to read disk version');",
     "Missing file error was not shown",
   );
   assert.equal(
     await exec(
-      "return [...document.querySelectorAll('.diff-panel button')].filter(b=>/使用磁盘版本|保留当前版本/.test(b.textContent)).every(b=>b.disabled);",
+      "return [...document.querySelectorAll('.diff-panel button')].filter(b=>/Use Disk Version|Keep Current Version/.test(b.textContent)).every(b=>b.disabled);",
     ),
     true,
   );
@@ -233,14 +233,14 @@ try {
   assert.equal(await getBuffer(), local);
   await screenshot("03-file-unavailable");
   await writeFile(file, external);
-  await click("刷新对比");
+  await click("Refresh Comparison");
   await wait(
     "return document.querySelectorAll('.diff-panel .view-lines').length===2;",
     "Retry did not restore comparison",
   );
   // Deliver two clicks in one task to verify the immediate in-flight guard.
   await exec(
-    "const b=[...document.querySelectorAll('.diff-panel button')].find(b=>b.textContent==='保留当前版本');b.click();b.click();",
+    "const b=[...document.querySelectorAll('.diff-panel button')].find(b=>b.textContent==='Keep Current Version');b.click();b.click();",
   );
   await closed();
   assert.equal(await readFile(file, "utf8"), local);
@@ -254,7 +254,7 @@ try {
   await wait("return !!document.querySelector('.diff-panel');", "Generic preview missing");
   assert.equal(
     await exec(
-      "return document.querySelector('.diff-panel').textContent.includes('保留当前版本');",
+      "return document.querySelector('.diff-panel').textContent.includes('Keep Current Version');",
     ),
     false,
   );

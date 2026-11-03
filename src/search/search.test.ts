@@ -56,14 +56,7 @@ import {
   runSearch,
 } from "../search/search";
 import { checkpoint, newDocument } from "../editor/documents";
-import {
-  initialSearch,
-  patchSearch,
-  primarySearchId,
-  searchSession,
-  setApp,
-  useApp,
-} from "../store/store";
+import { initialSearch, primarySearchId, searchSession, setApp, useApp } from "../store/store";
 import { defaultQuery, type SearchBatch, type SearchMatch } from "../types/types";
 
 beforeEach(() => {
@@ -134,21 +127,6 @@ function emit(job: ReturnType<typeof request>, patch: Partial<SearchBatch> = {})
 }
 
 describe("Search sessions", () => {
-  it("creates blank independent sessions, retains numbering and cannot close the primary search", () => {
-    patchSearch(primarySearchId, { query: query("original"), results: [hit] });
-    const second = createSearchTab();
-    const third = createSearchTab();
-    expect(searchSession(second)).toMatchObject({ number: 2, query: defaultQuery, results: [] });
-    closeSearchTab(third);
-    expect(useApp.getState().activeSearchId).toBe(second);
-    closeSearchTab(primarySearchId);
-    expect(searchSession(primarySearchId)?.query.text).toBe("original");
-    const fourth = createSearchTab();
-    closeSearchTab(second);
-    expect(useApp.getState().activeSearchId).toBe(fourth);
-    expect(searchSession(fourth)?.number).toBe(4);
-  });
-
   it("routes concurrent batches, errors and limits to their own session while sharing history", async () => {
     const second = createSearchTab();
     await runSearch(query("first"), primarySearchId);

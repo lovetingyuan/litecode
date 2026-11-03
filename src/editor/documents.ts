@@ -1742,7 +1742,7 @@ export async function readConflictDiff(id: string): Promise<DiffRequest> {
   try {
     disk = await call("read_document", { path: doc.path, force: true, encoding: doc.encoding });
   } catch (e) {
-    error = `无法读取磁盘版本：${errorMessage(e)}`;
+    error = `Unable to read disk version: ${errorMessage(e)}`;
   }
   const latest = useApp.getState().docs[id];
   const m = models.get(id);
@@ -1750,7 +1750,7 @@ export async function readConflictDiff(id: string): Promise<DiffRequest> {
     throw changedConflict();
   }
   return {
-    title: `${latest.name} · 解决保存冲突`,
+    title: `${latest.name} · Resolve Save Conflict`,
     before: disk?.text ?? "",
     after: m.getValue(),
     language: latest.language,
@@ -1775,7 +1775,8 @@ export async function compareDisk(id: string) {
 function changedConflict() {
   return {
     code: "conflict",
-    message: "文件或编辑内容已变化，请查看更新后的差异，再次选择最终版本。",
+    message:
+      "The file or your edits have changed. Review the updated comparison and choose the final version again.",
   };
 }
 

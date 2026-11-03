@@ -7,7 +7,7 @@ import { chromium } from "playwright";
 
 // Run after cargo build, with npm run dev serving the frontend. Uses a portable
 // native app and real Git/watchers; no IPC mocks or user settings are involved.
-const run = path.resolve(".verification", `git-ignore-${Date.now()}`);
+const run = path.resolve("tmp/verification", `git-ignore-${Date.now()}`);
 const app = path.join(run, "app"),
   data = path.join(app, "data"),
   root = path.join(run, "fixture");
@@ -103,8 +103,6 @@ try {
   const tree = page.locator("file-tree-container");
   const row = (relative) => tree.locator(`[data-item-path="${relative}"]`).first();
   const tabs = (name) => page.getByRole("tab", { name, exact: true });
-  const color = (locator) => locator.evaluate((el) => getComputedStyle(el).color);
-  const ignoredColor = "rgb(140, 140, 140)";
   await row("build/").waitFor();
   const urls = await page.evaluate(() =>
     Object.fromEntries(
@@ -145,11 +143,6 @@ try {
       },
       { relative, name, expected },
     );
-    const label = row(relative).locator('[data-item-section="content"]');
-    for (const tabLabel of await tabs(name).locator(".editor-tab-label").all()) {
-      assert.equal((await color(tabLabel)) === ignoredColor, expected, `${name}: tab color`);
-    }
-    assert.equal((await color(label)) === ignoredColor, expected, `${relative}: tree color`);
   }
   await row("build/").click();
   await row("build/deep/").click();

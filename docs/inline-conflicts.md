@@ -32,7 +32,7 @@ Then run `node tools/verify-inline-conflicts.mjs`. This Windows acceptance scrip
 uses an isolated portable native app and connects Playwright to its real WebView2
 renderer on port 9277. It does not mock IPC or Git.
 
-The script creates `.verification/inline-conflicts-<timestamp>/fixture`, commits a
+The script creates `tmp/verification/inline-conflicts-<timestamp>/fixture`, commits a
 shared base, edits the same three locations on `main` and `incoming`, and performs
 an actual merge with `merge.conflictStyle=diff3`. It clicks the inline actions and
 checks exact saved bytes, undo/redo, navigation, settings, split editors, stale
@@ -44,6 +44,10 @@ screenshots, `original-conflict.txt`, `resolved-result.txt`, `git-status.txt` an
 `results.json`. A passing script is native development evidence, not a release-wide
 claim of full VS Code parity. Three-way merge and Source Control UI are outside
 this feature.
+
+`node tools/capture-inline-conflicts-reference.mjs` uses the latest fixture under
+`tmp/verification/` to capture the installed VS Code and save its appearance
+metadata for manual comparison. It does not assert color or font parity.
 
 ## Verification record (2026-10-26)
 

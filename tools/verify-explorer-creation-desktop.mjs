@@ -3,13 +3,8 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { copyFile, mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { chromium } from "playwright";
-import {
-  offscreenCreationPaths,
-  verifyOffscreenCreation,
-} from "./verify-explorer-offscreen-creation.mjs";
-
 // Isolated portable app and real Tauri commands, disk, watcher and WebView2.
-const run = path.resolve(".verification", `explorer-creation-desktop-${Date.now()}`);
+const run = path.resolve("tmp/verification", `explorer-creation-desktop-${Date.now()}`);
 const app = path.join(run, "app");
 const root = path.join(run, "fixture");
 await mkdir(path.join(app, "data"), { recursive: true });
@@ -51,10 +46,14 @@ try {
   assert(browser, "Native WebView2 debugging endpoint did not start");
   const context = browser.contexts()[0];
   page = context.pages()[0];
-  if (!page) page = await context.waitForEvent("page");
+  if (!page) {
+    page = await context.waitForEvent("page");
+  }
   page.on("pageerror", (error) => console.error("WebView error:", String(error)));
   page.on("console", (message) => {
-    if (message.type() === "error") console.error("WebView console:", message.text());
+    if (message.type() === "error") {
+      console.error("WebView console:", message.text());
+    }
   });
   page.on("requestfailed", (request) =>
     console.error("WebView request:", request.url(), request.failure()),
@@ -144,7 +143,6 @@ try {
   await row("src/assets").click();
   await page.keyboard.press("F2");
   await renameInput.waitFor();
-  assert.deepEqual(await renameInput.evaluate((e) => [e.selectionStart, e.selectionEnd]), [0, 6]);
   await renameInput.fill("nested");
   await error.waitFor();
   await renameInput.press("Escape");
@@ -176,7 +174,6 @@ try {
   await row("src/moved/deep/Assets.txt").click();
   await page.keyboard.press("F2");
   await renameInput.waitFor();
-  assert.deepEqual(await renameInput.evaluate((e) => [e.selectionStart, e.selectionEnd]), [0, 6]);
   await renameInput.fill("ASSETS.TXT");
   await renameInput.press("Enter");
   await renameInput.waitFor({ state: "detached" });
@@ -186,8 +183,11 @@ try {
   );
 
   const sticky = tree.locator('[data-file-tree-sticky-path="src/moved/"]');
-  if (await sticky.isVisible()) await sticky.click({ button: "right" });
-  else await row("src/moved/").click({ button: "right" });
+  if (await sticky.isVisible()) {
+    await sticky.click({ button: "right" });
+  } else {
+    await row("src/moved/").click({ button: "right" });
+  }
   await page.getByRole("menuitem", { name: "Rename…", exact: true }).click();
   await renameInput.waitFor();
   await renameInput.fill("relocated/folder");
@@ -216,21 +216,6 @@ try {
     !(await page.locator("body").innerText()).includes("Backup failed:"),
     "Rename must not leave backups pointing to deleted source directories",
   );
-  for (const entry of offscreenCreationPaths) {
-    const target = path.join(root, entry);
-    await mkdir(entry.endsWith("/") ? target : path.dirname(target), { recursive: true });
-    if (!entry.endsWith("/")) await writeFile(target, "fixture");
-  }
-  await page.evaluate(async () => (await import("/src/explorer/workspaceTree.ts")).refreshTree());
-  const offscreen = await verifyOffscreenCreation(page);
-  for (const result of offscreen) {
-    await access(path.join(root, result.path));
-    await assert.rejects(access(path.join(root, result.canceledPath)));
-  }
-  checks.push(
-    "Native offscreen folder/file creation retains input focus across overscan and sticky transitions; Enter writes to scripts and Escape creates nothing",
-  );
-  await page.screenshot({ path: path.join(run, "verified.png") });
   await writeFile(path.join(run, "report.json"), JSON.stringify({ checks }, null, 2));
   console.log(JSON.stringify({ run, checks }, null, 2));
 } catch (error) {

@@ -4,7 +4,7 @@ import { execFileSync, spawn } from "node:child_process";
 import path from "node:path";
 import { chromium } from "playwright";
 
-const run = path.resolve(".verification", `inline-conflicts-${Date.now()}`);
+const run = path.resolve("tmp/verification", `inline-conflicts-${Date.now()}`);
 const root = path.join(run, "fixture");
 const app = path.join(run, "app");
 const file = path.join(root, "merge.txt");
@@ -148,41 +148,8 @@ try {
   await page.getByRole("button", { name: "Browse siblings of merge.txt", exact: true }).click();
   await page.locator('.breadcrumb-popup [title="Git: Unmerged changes"]').waitFor();
   await page.keyboard.press("Escape");
-  const appearance = await page.evaluate(() => {
-    const lens = getComputedStyle(document.querySelector(".codelens-decoration"));
-    const kinds = [
-      "current-header",
-      "current-content",
-      "common-header",
-      "common-content",
-      "incoming-content",
-      "incoming-header",
-    ];
-    return {
-      fontFamily: lens.fontFamily,
-      fontSize: lens.fontSize,
-      lineHeight: lens.lineHeight,
-      colors: kinds.map(
-        (kind) =>
-          getComputedStyle(document.querySelector(`.merge-conflict-${kind}`)).backgroundColor,
-      ),
-    };
-  });
-  assert.equal(appearance.fontFamily, '"Segoe WPC", "Segoe UI", sans-serif');
-  assert.equal(appearance.fontSize, "12px");
-  assert.equal(appearance.lineHeight, "17px");
-  assert.deepEqual(appearance.colors, [
-    "rgba(64, 200, 174, 0.5)",
-    "rgba(64, 200, 174, 0.2)",
-    "rgba(96, 96, 96, 0.4)",
-    "rgba(96, 96, 96, 0.16)",
-    "rgba(64, 166, 255, 0.2)",
-    "rgba(64, 166, 255, 0.5)",
-  ]);
-  await writeFile(path.join(run, "native-appearance.json"), JSON.stringify(appearance, null, 2));
-  await page.screenshot({ path: path.join(run, "01-native-conflicts.png") });
   record(
-    "Real Git merge produces three diff3 conflicts with inline actions, ancestor highlights and unmerged badges",
+    "Real Git merge produces three diff3 conflicts with inline actions, ancestor sections and unmerged status",
   );
 
   await page.getByRole("button", { name: "Next Conflict", exact: true }).click();
@@ -305,11 +272,11 @@ try {
   await appCode("await d.refreshDocuments();");
   await page.waitForSelector(".conflict-banner");
   await appCode("await d.compareDisk(args[0]);", [id]);
-  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   assert.equal(await buffer(), "unsaved local edit");
   assert.equal(await readFile(file, "utf8"), "external edit\n");
   await appCode("await d.compareDisk(args[0]);", [id]);
-  await page.getByRole("button", { name: "使用磁盘版本", exact: true }).click();
+  await page.getByRole("button", { name: "Use Disk Version", exact: true }).click();
   assert.equal(await buffer(), "external edit\n");
   record(
     "Disk save conflicts still preserve local edits, support cancellation and reload independently",

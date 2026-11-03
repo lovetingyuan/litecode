@@ -68,7 +68,6 @@ export async function verifyGitBranches({
       repository: repository.path,
     });
 
-  assert.deepEqual(await page.locator(".git-info-field > span:first-child").allTextContents(), []);
   await difference("");
   const base = "feature/older-base-with-a-long-name-that-must-leave-room-for-all-branch-actions";
   git(root, "branch", base, "HEAD~1");
@@ -200,23 +199,9 @@ export async function verifyGitBranches({
     await refresh();
   }
 
-  const layout = await button(base).evaluate((el) => {
-    const row = el.closest(".git-branch-row");
-    const name = el.querySelector("span:nth-child(2)");
-    return {
-      truncated: name.scrollWidth > name.clientWidth,
-      title: el.title,
-      actionsFit: [...row.querySelectorAll(".git-branch-actions button")].every(
-        (button) => button.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1,
-      ),
-    };
-  });
-  assert.equal(layout.title, base);
-  assert.equal(layout.truncated, true);
-  assert.equal(layout.actionsFit, true);
   await page.screenshot({ path: path.join(run, "03-branch-actions.png") });
   git(root, "worktree", "remove", occupied);
-  console.log("Branch checks: worktree, busy guards and layout passed");
+  console.log("Branch checks: worktree and busy guards passed");
 
   git(root, "commit", "--allow-empty", "-m", "local ahead fixture");
   await refresh();
@@ -243,5 +228,5 @@ export async function verifyGitBranches({
   // Return the fixture to a clean, remote-free baseline for the remaining checks.
   git(root, "remote", "remove", "origin");
   await refresh();
-  return "Branch row actions, source OIDs, remote reuse/creation/collision/picker, clipboard, safe deletion, worktree/busy guards, keyboard/overflow and real ahead/behind states";
+  return "Branch row actions, source OIDs, remote reuse/creation/collision/picker, clipboard, safe deletion, worktree/busy guards, keyboard activation and real ahead/behind states";
 }

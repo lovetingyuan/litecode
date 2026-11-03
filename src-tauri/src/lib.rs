@@ -33,6 +33,8 @@ mod terminal;
 mod tools;
 mod transactions;
 mod updates;
+#[cfg(windows)]
+mod window_icon;
 mod workspace;
 
 use tauri::{Emitter, Manager};
@@ -106,15 +108,31 @@ pub fn run() {
                 data_dir,
                 ..Default::default()
             });
-            if let Some(window) = app.get_webview_window("main") {
-                external_drop::install(&window)?;
-            }
             let state = app.state::<state::AppState>();
             if let Some(status) = app.try_state::<logging::LogStatus>()
                 && let Some(warning) = &status.0
             {
                 state.startup_warnings.lock_recover().push(warning.clone());
             }
+            #[cfg(windows)]
+            if let Some(path) = app.state::<instance::Instance>().take_initial_open() {
+                // Explicit opens must not restore or overwrite unrelated recovery sessions.
+                if let Err(error) = launch::open(app.handle(), &path) {
+                    let message = format!("Could not open {}: {}", path.display(), error.message);
+                    instance::show_error(&message);
+                    return Err(std::io::Error::other(message).into());
+                }
+                startup::mark("setup-completed", setup_started);
+                return Ok(());
+            }
+            let window = tauri::WebviewWindowBuilder::from_config(
+                app.handle(),
+                &app.config().app.windows[0],
+            )?
+            .build()?;
+            #[cfg(windows)]
+            window_icon::install(&window)?;
+            external_drop::install(&window)?;
             let mut labels = state.recovery_windows().unwrap_or_else(|error| {
                 logging::warning("recovery_inspection_failed", None, &error.message);
                 state.startup_warnings.lock_recover().push(format!(

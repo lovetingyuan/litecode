@@ -18,6 +18,8 @@ export function usePackageManager(doc: Doc) {
   const [revision, setRevision] = useState(0);
   const [snapshot, setSnapshot] = useState<PackageSnapshot>();
   const [snapshotError, setSnapshotError] = useState("");
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [registryLoading, setRegistryLoading] = useState(false);
   const [registry, setRegistry] = useState<Record<string, PackageRegistry>>({});
   let manifest: PackageManifest | undefined;
   let parseError = "";
@@ -31,6 +33,7 @@ export function usePackageManager(doc: Doc) {
       return;
     }
     let disposed = false;
+    setSnapshotLoading(true);
     setSnapshotError("");
     void call<PackageSnapshot>("package_snapshot", { root, manifestPath: doc.path })
       .then((value) => {
@@ -46,9 +49,15 @@ export function usePackageManager(doc: Doc) {
           setSnapshot(undefined);
           setSnapshotError(errorMessage(error));
         }
+      })
+      .finally(() => {
+        if (!disposed) {
+          setSnapshotLoading(false);
+        }
       });
     return () => {
       disposed = true;
+      setSnapshotLoading(false);
     };
   }, [root, view, doc.path, doc.version, doc.revision, revision]);
 
@@ -66,6 +75,7 @@ export function usePackageManager(doc: Doc) {
       return;
     }
     let disposed = false;
+    setRegistryLoading(true);
     setRegistry({});
     let index = 0;
     async function worker() {
@@ -85,11 +95,15 @@ export function usePackageManager(doc: Doc) {
         }
       }
     }
-    for (let count = 0; count < Math.min(4, dependencies.length); count++) {
-      void worker();
-    }
+    void Promise.all(Array.from({ length: Math.min(4, dependencies.length) }, () => worker()))
+      .finally(() => {
+        if (!disposed) {
+          setRegistryLoading(false);
+        }
+      });
     return () => {
       disposed = true;
+      setRegistryLoading(false);
     };
   }, [manifestText, snapshot, revision]);
 
@@ -98,6 +112,7 @@ export function usePackageManager(doc: Doc) {
     manifest,
     snapshot,
     registry,
+    loading: snapshotLoading || registryLoading,
     error: parseError || snapshotError,
     refresh: () => {
       clearPackageRegistry();

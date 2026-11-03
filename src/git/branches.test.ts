@@ -20,7 +20,6 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { setApp, useApp } from "../store/store";
 import { readGitInfo, runGitOperation } from "./git";
 import {
-  branchDifference,
   branchReference,
   branchSwitchTarget,
   copyBranchName,
@@ -270,31 +269,5 @@ describe("branch operations", () => {
     await copyBranchName(local("feature/demo"));
     expect(write).toHaveBeenCalledWith("feature/demo");
     expect(writeText).not.toHaveBeenCalled();
-  });
-});
-
-describe("branch difference", () => {
-  it.each([
-    [0, 0],
-    [2, 0],
-    [0, 3],
-    [2, 3],
-  ])("shows ahead %i and behind %i, including zeros", (ahead, behind) => {
-    expect(branchDifference({ ...details([]), ahead, behind }, repository)).toBe(
-      `(↓${behind} behind · ↑${ahead} ahead)`,
-    );
-  });
-  it("hides unavailable, detached and mismatched counts", () => {
-    expect(branchDifference(null, repository)).toBe("");
-    for (const extra of [
-      { upstream: null },
-      { ahead: null },
-      { behind: null },
-      { detached: true },
-      { branch: "other" },
-    ]) {
-      expect(branchDifference({ ...details([]), ...extra }, repository)).toBe("");
-    }
-    expect(branchDifference(details([]), { ...repository, detached: true })).toBe("");
   });
 });

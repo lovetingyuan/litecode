@@ -9,7 +9,7 @@ VS Code screenshot.
 
 - Explorer's Delete key and context menu use the same existing confirmation.
   When affected files contain unsaved changes, that confirmation includes
-  `包含未保存修改，删除后这些修改将丢失。` No second save prompt appears.
+  `Unsaved changes will be lost when these files are deleted.` No second save prompt appears.
 - Successful deletions close previews, pinned tabs, shared split views, media,
   and open descendants of deleted folders. Unrelated paths remain open.
   Canceled, failed and unattempted deletions retain their editors.

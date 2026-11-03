@@ -51,7 +51,7 @@
   z-index: 6;
 }
 .terminal-pane:focus-within > :global(.terminal-pane-caption) {
-  color: var(--focus-border, var(--lc-focus));
+  color: var(--lc-link);
 }
 .terminal-pane:hover > :global(.terminal-pane-close),
 .terminal-pane:focus-within > :global(.terminal-pane-close) {

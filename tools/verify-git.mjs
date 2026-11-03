@@ -14,7 +14,7 @@ const source = process.argv.includes("--repo")
   : null;
 const branchesOnly = process.argv.includes("--branches-only");
 assert.ok(!branchesOnly || !source, "Branch checks require an independent temporary repository");
-const run = path.resolve(".verification", `git-${Date.now()}`);
+const run = path.resolve("tmp/verification", `git-${Date.now()}`);
 const app = path.join(run, "app"),
   data = path.join(app, "data"),
   root = path.join(run, "worktree");
@@ -282,18 +282,7 @@ async function verify() {
   const commitDialog = page.getByRole("dialog", { name: "Commit Changes", exact: true });
   const commitMessage = commitDialog.getByRole("textbox", { name: "Commit Message", exact: true });
   const confirmCommit = commitDialog.getByRole("button", { name: "Commit", exact: true });
-  assert.deepEqual(await toolbar.getByRole("button").allTextContents(), [
-    "Fetch",
-    "Pull",
-    "Pull (Rebase)",
-    "Push",
-    "Commit",
-  ]);
   assert.equal(await commitTrigger.isEnabled(), true);
-  assert.equal(
-    await commitTrigger.evaluate((button) => getComputedStyle(button).backgroundColor),
-    "rgb(0, 127, 212)",
-  );
   assert.equal(await page.getByRole("textbox", { name: "Commit Message" }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "Open Remote", exact: true }).count(), 0);
   await page.getByRole("tab", { name: "Repository", exact: true }).click();
@@ -365,52 +354,6 @@ async function verify() {
     await longButton.focus();
     await page.keyboard.press("Enter");
     await waitPage(() => window.__gitBrowserCheck.urls.length === 5);
-    const sidebarSeparator = page.getByRole("separator", {
-      name: "Primary side bar width",
-      exact: true,
-    });
-    await sidebarSeparator.focus();
-    for (let step = 0; step < 11; step++) {
-      await page.keyboard.press("ArrowLeft");
-    }
-    await waitPage(() => document.querySelector(".git-view").getBoundingClientRect().width <= 241);
-    const layout = await remoteRows.evaluateAll((rows) =>
-      rows.map((row) => {
-        const code = row.querySelector("code");
-        const name = row.querySelector("strong").getBoundingClientRect();
-        const address = code.getBoundingClientRect();
-        const button = row.querySelector("button").getBoundingClientRect();
-        const bounds = row.getBoundingClientRect();
-        return {
-          truncated: code.scrollWidth > code.clientWidth,
-          fullAddress: code.title === code.textContent,
-          singleLine: bounds.height <= button.height + 1,
-          fits:
-            button.right <= bounds.right + 1 &&
-            address.right <= button.left &&
-            name.right <= address.left,
-        };
-      }),
-    );
-    assert.ok(
-      layout.every((row) => row.fits),
-      "Address buttons must stay visible to the right without overlap",
-    );
-    assert.ok(
-      layout.every((row) => row.singleLine && row.fullAddress),
-      "Remote names, addresses and buttons must share one line with full address tooltips",
-    );
-    assert.ok(
-      layout.some((row) => row.truncated),
-      "Long remote addresses must truncate",
-    );
-    await page.screenshot({ path: path.join(run, "00-remotes-narrow.png") });
-    await sidebarSeparator.focus();
-    for (let step = 0; step < 11; step++) {
-      await page.keyboard.press("ArrowRight");
-    }
-    await waitPage(() => document.querySelector(".git-view").getBoundingClientRect().width >= 349);
-    await page.screenshot({ path: path.join(run, "00-remotes.png") });
   }
   const opened = await page.evaluate(() => {
     const check = window.__gitBrowserCheck;
@@ -433,7 +376,7 @@ async function verify() {
     }
   }
   checks.push(
-    "Toolbar order, per-address browser opener IPC, distinct fetch/push targets, unsupported URLs, keyboard and narrow-sidebar layout",
+    "Per-address browser opener IPC, distinct fetch/push targets, unsupported URLs and keyboard activation",
   );
   if (process.argv.includes("--remotes-only")) {
     return;

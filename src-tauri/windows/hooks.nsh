@@ -1,7 +1,12 @@
 !macro LiteCodeContextMenu KEY TARGET
   WriteRegStr HKCU "Software\Classes\${KEY}\shell\LiteCode" "" "Open with LiteCode"
   WriteRegStr HKCU "Software\Classes\${KEY}\shell\LiteCode" "Icon" '"$INSTDIR\${MAINBINARYNAME}.exe",0'
-  WriteRegStr HKCU "Software\Classes\${KEY}\shell\LiteCode" "MultiSelectModel" "Single"
+  !if "${KEY}" == "Directory\Background"
+    ; Background clicks select no items. Also remove the restriction left by older installs.
+    DeleteRegValue HKCU "Software\Classes\${KEY}\shell\LiteCode" "MultiSelectModel"
+  !else
+    WriteRegStr HKCU "Software\Classes\${KEY}\shell\LiteCode" "MultiSelectModel" "Single"
+  !endif
   WriteRegStr HKCU "Software\Classes\${KEY}\shell\LiteCode\command" "" '"$INSTDIR\${MAINBINARYNAME}.exe" --open-path "${TARGET}"'
 !macroend
 

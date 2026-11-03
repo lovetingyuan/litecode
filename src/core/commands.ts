@@ -894,9 +894,22 @@ export const commands: Command[] = [
       if (!root) {
         throw new Error("Open a workspace containing .vscode/settings.json first.");
       }
-      const disk = await call<{ text: string }>("read_document", {
-        path: join(root, ".vscode/settings.json"),
-      });
+      const path = join(root, ".vscode/settings.json");
+      const disk = await call<{ text: string }>("read_document", { path }).catch(
+        (error: unknown) => {
+          if (
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "notFound"
+          ) {
+            throw new Error(
+              `VS Code workspace settings were not found at "${pathTitle(path)}". Open a project containing .vscode/settings.json to review settings for import.`,
+            );
+          }
+          throw error;
+        },
+      );
       const settings = parseConfiguration(disk.text);
       const { settingsSchemas } = await import("../editor/languages");
       const keys = new Set(Object.keys(settingsSchemas()[0].schema.properties));

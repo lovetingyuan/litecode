@@ -7,7 +7,7 @@ import { chromium } from "playwright";
 
 // Exercise embedded production assets and a Store shell alias without the dev server.
 const executable = path.resolve(process.argv[2] ?? "src-tauri/target/release/litecode.exe");
-const run = path.resolve(".verification", `release-${Date.now()}`);
+const run = path.resolve("tmp/verification", `release-${Date.now()}`);
 const app = path.join(run, "app"),
   root = path.join(run, "project 中文 space");
 await mkdir(path.join(app, "data"), { recursive: true });
@@ -41,7 +41,9 @@ const samples = {
   "main.py": 'def hello():\n    return "Hello"\n',
   "style.css": ".message { color: red; font-size: 14px; }\n",
 };
-for (const [name, text] of Object.entries(samples)) await writeFile(path.join(root, name), text);
+for (const [name, text] of Object.entries(samples)) {
+  await writeFile(path.join(root, name), text);
+}
 const socket = createServer();
 await new Promise((resolve) => socket.listen(0, "127.0.0.1", resolve));
 const port = socket.address().port;
@@ -58,7 +60,7 @@ const child = spawn(path.join(app, "LiteCode.exe"), [], {
 });
 let browser, page;
 const errors = [],
-  colors = {},
+  tokenClasses = {},
   checks = [];
 let stage = "startup";
 try {
@@ -98,25 +100,22 @@ try {
       const tokens = [
         ...document.querySelectorAll(".monaco-editor .view-lines span[class*='mtk']"),
       ];
-      return (
-        new Set(tokens.filter((t) => t.textContent.trim()).map((t) => getComputedStyle(t).color))
-          .size >= 3
-      );
+      return new Set(tokens.filter((t) => t.textContent.trim()).map((t) => t.className)).size >= 3;
     });
-    colors[name] = await page
+    tokenClasses[name] = await page
       .locator(".monaco-editor .view-lines")
       .first()
       .evaluate((element) => [
         ...new Set(
           [...element.querySelectorAll("span[class*='mtk']")]
             .filter((t) => t.textContent.trim())
-            .map((t) => getComputedStyle(t).color),
+            .map((t) => t.className),
         ),
       ]);
-    assert(colors[name].length >= 3, `${name} lost token colors`);
+    assert(tokenClasses[name].length >= 3, `${name} lost syntax tokens`);
   }
   checks.push(
-    "JavaScript, TypeScript, Vue, JSON, Python and CSS have visible token colors in the release WebView",
+    "JavaScript, TypeScript, Vue, JSON, Python and CSS load distinct syntax tokens in the release WebView",
   );
   await page.getByRole("tab", { name: "App.vue", exact: true }).click();
   await page.screenshot({ path: path.join(run, "highlighting.png") });
@@ -134,7 +133,9 @@ try {
   await page.getByRole("textbox", { name: "Terminal search", exact: true }).fill(root);
   for (let attempt = 0; attempt < 100; attempt++) {
     await page.getByRole("textbox", { name: "Terminal search", exact: true }).press("Enter");
-    if ((await page.locator(".terminal-find [role='status']").textContent()) === "") break;
+    if ((await page.locator(".terminal-find [role='status']").textContent()) === "") {
+      break;
+    }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   assert.equal(
@@ -155,8 +156,9 @@ try {
       await readFile(marker, "utf8")
         .then((text) => text.includes("RELEASE_SHELL_OK"))
         .catch(() => false)
-    )
+    ) {
       break;
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.match(await readFile(marker, "utf8"), /RELEASE_SHELL_OK/);
@@ -179,7 +181,7 @@ try {
   checks.push("No CSP or JavaScript errors");
   await writeFile(
     path.join(run, "report.json"),
-    JSON.stringify({ executable, shell, checks, colors, errors }, null, 2),
+    JSON.stringify({ executable, shell, checks, tokenClasses, errors }, null, 2),
   );
   console.log(JSON.stringify({ run, checks }, null, 2));
 } catch (error) {

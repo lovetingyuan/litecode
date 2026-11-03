@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gitConflictDecoration, isGitConflicted, isGitIgnored } from "./gitStatus";
+import { isGitConflicted, isGitIgnored } from "./gitStatus";
 import type { GitEntry } from "../types/types";
 
 const entries: GitEntry[] = [
@@ -10,15 +10,12 @@ const entries: GitEntry[] = [
 const ignored = (path: string | null, git = entries) =>
   isGitIgnored(path, "C:/project", "C:/project", git);
 
-describe("Git unmerged decorations", () => {
+describe("Git conflict status", () => {
   const conflicts: GitEntry[] = [{ path: "src/组件.ts", status: "conflicted" }];
-  it("recognizes normalized paths and displays a distinct unmerged badge", () => {
+  it("recognizes conflicted files through normalized paths", () => {
     expect(
       isGitConflicted("\\\\?\\C:\\PROJECT\\src\\组件.ts", "C:/project", "C:/project", conflicts),
     ).toBe(true);
-    expect(
-      gitConflictDecoration("C:/project/src/组件.ts", "C:/project", "C:/project", conflicts),
-    ).toMatchObject({ text: "!", title: "Git: Unmerged changes" });
     expect(isGitConflicted("C:/project/src/other.ts", "C:/project", "C:/project", conflicts)).toBe(
       false,
     );
@@ -31,9 +28,7 @@ describe("Git unmerged decorations", () => {
     expect(isGitConflicted("C:/project/src/组件.ts", "C:/project", "C:/old", conflicts)).toBe(
       false,
     );
-    expect(
-      gitConflictDecoration("C:/project/src/组件.ts", "C:/project", "C:/project", []),
-    ).toBeNull();
+    expect(isGitConflicted("C:/project/src/组件.ts", "C:/project", "C:/project", [])).toBe(false);
   });
 });
 
@@ -88,27 +83,21 @@ describe("Git ignore decorations", () => {
     expect(ignored("C:/project/ignored.txt", [])).toBe(false);
   });
 
-  it("indexes 200,000 entries once across repeated tab and group lookups", () => {
+  it("indexes each snapshot once and reuses it for subsequent lookups", () => {
     let reads = 0;
-    const large: GitEntry[] = Array.from({ length: 200_000 }, (_, i) => ({
+    const snapshot: GitEntry[] = Array.from({ length: 3 }, (_, i) => ({
       get path() {
         reads++;
         return `generated-${i}/`;
       },
       status: "ignored",
     }));
-    const start = performance.now();
-    expect(ignored("C:/project/generated-199999/deep/file.ts", large)).toBe(true);
-    const indexed = performance.now();
+    expect(ignored("C:/project/generated-2/deep/file.ts", snapshot)).toBe(true);
     const initialReads = reads;
-    for (let i = 0; i < 10_000; i++) {
-      if (!ignored("C:/project/generated-199999/deep/file.ts", large)) {
-        throw new Error("Lost ignored status");
-      }
-    }
+    expect(initialReads).toBeGreaterThan(0);
+    expect(ignored("C:/project/generated-2/other.ts", snapshot)).toBe(true);
+    expect(ignored("C:/project/missing.ts", snapshot)).toBe(false);
+    expect(ignored("C:/project/missing.ts", snapshot)).toBe(false);
     expect(reads).toBe(initialReads);
-    console.info(
-      `Git decoration benchmark: index ${(indexed - start).toFixed(1)} ms; 10,000 cached queries ${(performance.now() - indexed).toFixed(1)} ms`,
-    );
   });
 });

@@ -72,18 +72,10 @@ export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group
   const packageDocument = isWorkspacePackageDocument(doc, root);
   const html = isHtmlDocument(doc);
   const starting = useHtmlPreviews((state) => state.starting.includes(doc.id));
+  const previewStarting = html && starting;
   const markdown = isMarkdownDocument(doc);
-  let mode;
-  if (packageDocument) {
-    mode = isPackageView(doc, group) ? "package" : "text";
-  } else if (markdown) {
-    mode = isMarkdownView(doc, group) ? "markdown" : "text";
-  } else if (isTextView(doc, group)) {
-    mode = "text";
-  } else {
-    mode = "image";
-  }
-  let options: { mode: NonNullable<MediaView["mode"]> | "html"; label: string }[];
+  const mode = editorViewMode(doc, group, packageDocument);
+  let options: { mode: NonNullable<MediaView["mode"]> | "html" | "markdownRemote"; label: string }[];
   if (packageDocument) {
     options = [
       { mode: "text", label: "Edit" },
@@ -98,6 +90,7 @@ export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group
     options = [
       { mode: "text", label: "Text Editor" },
       { mode: "markdown", label: "Markdown Preview" },
+      { mode: "markdownRemote", label: "Preview with Remote Images" },
     ];
   } else {
     options = [
@@ -118,7 +111,7 @@ export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group
       <Menu.Trigger
         className="editor-view-trigger"
         aria-label={`Select ${type} editor`}
-        disabled={html && starting}
+        disabled={previewStarting}
       >
         {options.find((option) => option.mode === mode)?.label}
         <Icon name="chevron-down" />
@@ -132,12 +125,12 @@ export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group
             {options.map((option) => (
               <Menu.Item
                 key={option.mode}
-                disabled={html && starting}
+                disabled={previewStarting}
                 onClick={() => {
                   if (option.mode === "html") {
                     void previewHtml(doc.id).catch((error) => notify(errorMessage(error)));
                   } else {
-                    patchMediaView(group.id, doc.id, { mode: option.mode });
+                    selectPreview(group.id, doc.id, option.mode);
                   }
                 }}
               >
@@ -150,4 +143,25 @@ export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group
       </Menu.Portal>
     </Menu.Root>
   );
+}
+
+function selectPreview(
+  groupId: string,
+  docId: string,
+  mode: NonNullable<MediaView["mode"]> | "markdownRemote",
+) {
+  patchMediaView(groupId, docId, {
+    mode: mode === "markdownRemote" ? "markdown" : mode,
+    allowRemoteImages: mode === "markdownRemote",
+  });
+}
+
+function editorViewMode(doc: Doc, group: Group, packageDocument: boolean) {
+  if (packageDocument) {
+    return isPackageView(doc, group) ? "package" : "text";
+  }
+  if (isMarkdownView(doc, group)) {
+    return group.mediaViews?.[doc.id]?.allowRemoteImages ? "markdownRemote" : "markdown";
+  }
+  return isTextView(doc, group) ? "text" : "image";
 }

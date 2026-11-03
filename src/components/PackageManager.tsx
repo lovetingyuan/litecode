@@ -10,7 +10,7 @@ import { actionButtonClass, Icon } from "./ui";
 import { PackageDependencies } from "./PackageDependencies";
 
 export function PackageManager({ doc }: Readonly<{ doc: Doc }>) {
-  const { root, manifest, snapshot, registry, error, refresh } = usePackageManager(doc);
+  const { root, manifest, snapshot, registry, loading, error, refresh } = usePackageManager(doc);
   const [busy, setBusy] = useState(false);
   const [hideUpToDate, setHideUpToDate] = useState(false);
   const unavailable = doc.dirty || !!doc.conflict || !!doc.deleted;
@@ -39,11 +39,7 @@ export function PackageManager({ doc }: Readonly<{ doc: Doc }>) {
       <div className="mx-auto max-w-300 flex flex-col gap-6">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 text-muted text-[12px]">
-              <Icon name="package" />
-              package.json
-            </div>
-            <h1 className="mt-2 text-[24px] font-semibold text-foreground-strong">
+            <h1 className="text-[24px] font-semibold text-foreground-strong">
               {manifest?.name || "Unnamed package"}{" "}
               {manifest?.version && (
                 <span className="ml-3 text-[14px] font-normal text-muted">v{manifest.version}</span>
@@ -57,17 +53,16 @@ export function PackageManager({ doc }: Readonly<{ doc: Doc }>) {
             {manifest?.description && (
               <p className="mt-2 text-[13px] max-w-200">{manifest.description}</p>
             )}
-            {manifest && (manifest.license || !manifest.private || manifest.packageManager) && (
-              <div className="mt-3 flex flex-wrap gap-4 text-muted text-[12px]">
-                {manifest.license && <span>License: {manifest.license}</span>}
-                {!manifest.private && <span>Public package</span>}
-                {manifest.packageManager && <span>Package manager: {manifest.packageManager}</span>}
-              </div>
-            )}
           </div>
           <div className="flex gap-2">
-            <button type="button" className={actionButtonClass} onClick={refresh} disabled={busy}>
-              <Icon name="refresh" />
+            <button
+              type="button"
+              className={`${actionButtonClass} compact`}
+              onClick={refresh}
+              disabled={busy || loading}
+              aria-busy={loading}
+            >
+              <Icon name="refresh" className={loading ? "inline-block animate-spin" : ""} />
               Refresh
             </button>
           </div>
@@ -126,13 +121,16 @@ export function PackageManager({ doc }: Readonly<{ doc: Doc }>) {
               {!manifest.scripts.length && (
                 <p className="text-muted text-[13px]">No npm scripts defined.</p>
               )}
-              <ul className="flex flex-col border-t border-panel">
+              <ul className="flex flex-col border-t border-strong">
                 {manifest.scripts.map(([name, command]) => (
-                  <li key={name} className="flex items-start gap-4 border-b border-panel px-3 py-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-[13px] font-semibold">{name}</h3>
+                  <li
+                    key={name}
+                    className="flex items-center gap-4 border-b border-strong px-3 py-3"
+                  >
+                    <div className="flex flex-1 min-w-0 items-baseline gap-4">
+                      <h3 className="shrink-0 text-[13px] font-semibold">{name}</h3>
                       <pre
-                        className="mt-1 whitespace-pre-wrap break-all text-muted text-[12px] select-text"
+                        className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-muted text-[12px] select-text"
                         title={command}
                       >
                         {command}
@@ -140,7 +138,7 @@ export function PackageManager({ doc }: Readonly<{ doc: Doc }>) {
                     </div>
                     <button
                       type="button"
-                      className={actionButtonClass}
+                      className={`${actionButtonClass} compact`}
                       aria-label={`Run npm script ${name}`}
                       disabled={busy || unavailable || !snapshot || !!error}
                       onClick={() => void execute(["run", "--", name])}

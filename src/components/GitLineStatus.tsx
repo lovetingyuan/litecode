@@ -104,7 +104,7 @@ export function GitLineStatus({ doc }: Readonly<{ doc?: Doc }>) {
   }
   const author = commit ? commit.author || "Unknown author" : "";
   const age = commit ? blameAge(commit.authorTime, now) : "";
-  const label = commit ? `${author} (${age})` : "尚未提交";
+  const label = commit ? `${author} (${age})` : "Uncommitted";
   return (
     <CommitStatus
       key={JSON.stringify([
@@ -145,7 +145,7 @@ function CommitStatus({
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
         className={`status-item ${workbenchStyles["status-item"]} git-line-status ${workbenchStyles["git-line-status"]}`}
-        aria-label={`Current line Git: ${label}，查看提交详情`}
+        aria-label={`Current line Git: ${label}, View commit details`}
       >
         <Icon name="git-commit" />
         <span className="git-line-label overflow-hidden text-ellipsis whitespace-nowrap">
@@ -165,9 +165,17 @@ function CommitStatus({
             data-testid="git-commit-popup"
             initialFocus={false}
           >
-            <Popover.Title className="sr-only">{sha ? "提交详情" : "尚未提交"}</Popover.Title>
+            <Popover.Title className="sr-only">
+              {sha ? "Commit Details" : "Uncommitted"}
+            </Popover.Title>
             <Popover.Close
-              render={<IconButton icon="close" label="关闭提交详情" className="float-right ml-2" />}
+              render={
+                <IconButton
+                  icon="close"
+                  label="Close Commit Details"
+                  className="float-right ml-2"
+                />
+              }
             />
             {open &&
               (sha && commit ? (
@@ -179,7 +187,7 @@ function CommitStatus({
                   commit={commit}
                 />
               ) : (
-                <p>当前行尚未包含在 HEAD 提交中。</p>
+                <p>The current line is not included in the HEAD commit.</p>
               ))}
           </Popover.Popup>
         </Popover.Positioner>
@@ -253,9 +261,9 @@ function CommitDetails({
       } else {
         await navigator.clipboard.writeText(sha);
       }
-      setCopyStatus("已复制 SHA");
+      setCopyStatus("SHA copied");
     } catch (reason) {
-      setCopyStatus(`复制失败：${errorMessage(reason)}`);
+      setCopyStatus(`Copy failed: ${errorMessage(reason)}`);
     }
   }
   const time = new Date((details?.authorTime ?? commit.authorTime) * 1000);
@@ -271,7 +279,7 @@ function CommitDetails({
       </p>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <time dateTime={validTime ? time.toISOString() : undefined}>
-          {validTime ? time.toLocaleString() : "未知时间"}
+          {validTime ? time.toLocaleString() : "Unknown time"}
         </time>
         <span className="inline-flex shrink-0 items-center gap-1">
           {commitUrl ? (
@@ -296,9 +304,9 @@ function CommitDetails({
             </code>
           )}
           <IconButton
-            icon={copyStatus === "已复制 SHA" ? "check" : "copy"}
-            label="复制 SHA"
-            title={copyStatus || "复制 SHA"}
+            icon={copyStatus === "SHA copied" ? "check" : "copy"}
+            label="Copy SHA"
+            title={copyStatus || "Copy SHA"}
             className="h-[20px]! w-[20px]! p-0!"
             onClick={() => void copySha()}
           />
@@ -310,20 +318,22 @@ function CommitDetails({
         </p>
       )}
       <p
-        className={copyStatus.startsWith("复制失败") ? "mt-1 [overflow-wrap:anywhere]" : "sr-only"}
+        className={
+          copyStatus.startsWith("Copy failed") ? "mt-1 [overflow-wrap:anywhere]" : "sr-only"
+        }
         role="status"
       >
         {copyStatus}
       </p>
       {!details && !error && (
         <p className="mt-3" role="status">
-          正在加载完整提交信息…
+          Loading full commit details…
         </p>
       )}
       {error && (
         <div className="mt-3">
           <p role="alert" className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-            无法读取提交详情：{error}
+            Unable to load commit details: {error}
           </p>
           <button
             type="button"
@@ -333,7 +343,7 @@ function CommitDetails({
               setAttempt((value) => value + 1);
             }}
           >
-            重试
+            Retry
           </button>
         </div>
       )}

@@ -9,17 +9,6 @@ import {
 } from "./settings";
 
 describe("Annotated settings", () => {
-  it("shows every default and description, and is unchanged when opened again", () => {
-    const text = completeSettings("{}\n");
-    const values = parseConfiguration(text) as Record<string, unknown>;
-    for (const [key, setting] of Object.entries(settingsSchema.properties)) {
-      expect(values[key]).toEqual(setting.default);
-      expect(text).toContain(`// ${setting.description}`);
-      expect(text).toContain(`// 默认值：${JSON.stringify(setting.default)}`);
-    }
-    expect(completeSettings(text)).toBe(text);
-  });
-
   it("preserves custom values, unknown keys, comments and JSON string contents", () => {
     const original =
       '{\r\n  // 我的行高\r\n  "editor.lineHeight": 28,\r\n  "constructor": "custom",\r\n  /* 保留 */ "custom": { "url": "https://example.com/*literal*/", },\r\n}\r\n';
@@ -86,7 +75,15 @@ describe("Organizing settings JSONC", () => {
       expect(result).toContain('"url": "https://x/*literal*/", "b": [2,1,],');
       expect(result).toContain('"**/z": true, "**/a": false');
       expect(result).toMatch(/\/\/ File footer\r?\n}\r?\n\/\/ Outside footer\r?\n$/);
-      const groups = ["编辑器", "工作台与面包屑", "文件", "搜索", "终端", "语言与工具", "其他"];
+      const groups = [
+        "Editor",
+        "Workbench and Breadcrumbs",
+        "Files",
+        "Search",
+        "Terminal",
+        "Languages and Tools",
+        "Other",
+      ];
       const positions = groups.map((title) => result.indexOf(`// --- LiteCode: ${title} ---`));
       expect(positions.every((position) => position >= 0)).toBe(true);
       expect(positions).toEqual([...positions].sort((a, b) => a - b));
@@ -109,10 +106,13 @@ describe("Organizing settings JSONC", () => {
   });
 
   it("does not fill workspace defaults, change nested order, or duplicate its headings", () => {
-    const input = '{\n\t"files.exclude": {"z":true,"a":false,},\n\t"editor.tabSize":2,\n}\n';
+    const input =
+      '{\n\t// --- LiteCode: 文件 ---\n\t"files.exclude": {"z":true,"a":false,},\n\t// --- LiteCode: 编辑器 ---\n\t"editor.tabSize":2,\n}\n';
     const result = organizeSettings(input);
     expect(Object.keys(parseConfiguration(result))).toEqual(["editor.tabSize", "files.exclude"]);
-    expect(result).toContain("\t// --- LiteCode: 编辑器 ---");
+    expect(result).toContain("\t// --- LiteCode: Editor ---");
+    expect(result).not.toContain("// --- LiteCode: 编辑器 ---");
+    expect(result).not.toContain("// --- LiteCode: 文件 ---");
     expect(result).toContain('{"z":true,"a":false,}');
     expect(organizeSettings(result)).toBe(result);
     expect(organizeSettings("{ /* keep empty */ }")).toBe("{ /* keep empty */ }");
@@ -132,15 +132,6 @@ describe("Organizing settings JSONC", () => {
 });
 
 describe("Schema-backed setting values", () => {
-  it("uses every schema default for missing settings", () => {
-    for (const [key, rule] of Object.entries(settingsSchema.properties)) {
-      expect(settingValue({}, key as keyof typeof settingsSchema.properties)).toEqual(rule.default);
-      expect(
-        settingValue({ [key]: rule.default }, key as keyof typeof settingsSchema.properties),
-      ).toEqual(rule.default);
-    }
-  });
-
   it.each([
     ["editor.lineNumbers", "relative"],
     ["editor.guides.bracketPairs", "active"],

@@ -25,4 +25,3 @@ fn records_are_json_lines_with_a_strict_byte_limit() {
     assert!(record["operationId"].is_string());
     assert!(record.get("text").is_none());
 }
-

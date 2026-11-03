@@ -82,9 +82,9 @@ and short hash. The summary is read-only and enabled automatically.
 
 Attribution starts at the file's containing repository's current HEAD, including
 nested repositories and detached HEADs. Added or changed lines in the editor,
-working tree or index show `尚未提交`; unchanged lines retain their commits even
+working tree or index show `Uncommitted`; unchanged lines retain their commits even
 after insertions and deletions. Untracked files and unborn branches also show
-`尚未提交`. The Source Control repository selector does not affect this lookup.
+`Uncommitted`. The Source Control repository selector does not affect this lookup.
 
 The read-only `git_blame_file` command uses the existing workspace/session and
 repository-path checks. Rust reads HEAD blame in a blocking task, then maps
@@ -152,8 +152,7 @@ at 240px, with ellipses and full-text tooltips. Evidence is in
 
 Run frontend tests and checks with `npm test`, `npm run lint`, and `npm run build`.
 Run native tests with `cargo test --lib` in `src-tauri`.
-With Vite running, `node tools/verify-git-panes.mjs` checks group dividers,
-collapse/expansion, independent scrolling, virtualization and transient sizing.
+Inspect group dividers, collapse/expansion, scrolling and pane sizing manually.
 
 With the debug executable built and Vite running on port 1420:
 
@@ -167,16 +166,15 @@ node tools/verify-git.mjs --blame-only
 
 The first command uses an independent temporary repository and a local bare
 remote for branch row actions, tracking reuse and creation, name collisions,
-copying, worktree guards, keyboard/overflow checks and ahead/behind states.
+copying, worktree guards, keyboard activation and ahead/behind states.
 These additional branch checks run without `--repo`, keeping remote settings
 isolated from a user's shared worktree configuration.
 Use `--blame-only` for real IPC, line attribution, unsaved/saved/staged changes,
-commit and branch watcher refreshes, split focus, overflow and access checks.
-`node tools/verify-line-blame.mjs` checks the real Monaco/status UI with isolated
-IPC, including zero Git reads on cursor movement and long author truncation.
+commit and branch watcher refreshes, split editors and access checks.
+Frontend unit tests cover attribution request reuse and stale response rejection.
 Use `--branches-only` to run just the branch checks in a fresh fixture.
 Use `--remotes-only` to check per-address Open buttons, fetch/push targets,
-unsupported addresses, keyboard activation and single-line narrow-sidebar layout in an
+unsupported addresses and keyboard activation in an
 isolated fixture. Browser opener requests are intercepted without launching
 external websites.
 
@@ -190,8 +188,8 @@ runs remove their temporary worktree and branch. No test commits are pushed to
 GitHub; local bare remotes cover Push, Pull, tracking and divergence in Rust tests.
 
 Screenshots, results, process memory observations and preservation checks are
-written under `.verification/git-<timestamp>/`. The existing editor-tab browser
-regression is `node tools/verify-editor-tabs.mjs`.
+written under `tmp/verification/git-<timestamp>/`. Editor document tests cover
+shared models and tab state; inspect tab appearance manually.
 
 The opt-in large repository benchmark is:
 

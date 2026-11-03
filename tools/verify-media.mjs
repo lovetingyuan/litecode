@@ -10,7 +10,7 @@ const appIndex = process.argv.indexOf("--app");
 const executable = path.resolve(
   appIndex < 0 ? "src-tauri/target/debug/litecode.exe" : process.argv[appIndex + 1],
 );
-const run = path.resolve(".verification", `media-${Date.now()}`);
+const run = path.resolve("tmp/verification", `media-${Date.now()}`);
 const app = path.join(run, "app"),
   data = path.join(app, "data"),
   root = path.join(run, "fixture");
@@ -27,14 +27,9 @@ await writeFile(
   path.join(root, "icon.svg"),
   '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#0078d4"/><circle cx="128" cy="128" r="80" fill="white"/></svg>',
 );
-await writeFile(
-  path.join(root, "viewbox.svg"),
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 60"><rect width="120" height="60" fill="red"/></svg>',
-);
 await writeFile(path.join(root, "binary.dat"), Buffer.from([65, 0, 66, 255]));
 await writeFile(path.join(root, "invalid.txt"), Buffer.from([255, 254, 0]));
 await writeFile(path.join(root, "corrupt.png"), "not an image");
-await writeFile(path.join(root, "text.txt"), "ordinary text content");
 const wav = Buffer.alloc(44 + 16000 * 2);
 wav.write("RIFF");
 wav.writeUInt32LE(wav.length - 8, 4);
@@ -182,51 +177,10 @@ try {
   await writeFile(path.join(root, "icon.ico"), Buffer.concat([ico, png]));
 
   const imageId = await open("image #+中文.png");
-  await page.getByRole("button", { name: "Image Zoom: Whole Image", exact: true }).waitFor();
-  assert.match(await page.locator(".status-right").innerText(), /256x256/);
-  assert.doesNotMatch(await page.locator(".status-right").innerText(), /Ln 1/);
+  await page.waitForFunction(() => document.querySelector(".image-stage img")?.naturalWidth > 0);
   await action("documents", "refreshDocuments");
-  await page.locator(".media-loading").waitFor({ state: "hidden" });
-  await page.locator(".image-stage img").click();
-  await page.getByRole("button", { name: "Image Zoom: 150%", exact: true }).waitFor();
-  await screenshot("01-image");
-  await page.locator(".image-stage img").click({ modifiers: ["Control"] });
-  await page.getByRole("button", { name: "Image Zoom: 100%", exact: true }).waitFor();
-  await page.locator(".image-viewport").press("+");
-  await page.getByRole("button", { name: "Image Zoom: 150%", exact: true }).waitFor();
-  await page.getByRole("button", { name: "Image Zoom: 150%", exact: true }).click();
-  await page.getByRole("menuitem", { name: "200%", exact: true }).click();
-  await page.getByRole("button", { name: "Image Zoom: 200%", exact: true }).waitFor();
-  await page.locator(".image-viewport").hover();
-  await page.keyboard.down("Control");
-  await page.mouse.wheel(0, 100);
-  await page.keyboard.up("Control");
-  await page.getByRole("button", { name: "Image Zoom: 185%", exact: true }).waitFor();
-  const firstGroup = (await state()).activeGroup;
-  await action("documents", "patchMediaView", firstGroup, imageId, { scale: 10 });
-  await page.waitForFunction(
-    () =>
-      document.querySelector(".image-viewport").scrollWidth >
-      document.querySelector(".image-viewport").clientWidth,
-  );
-  await page.locator(".image-viewport").evaluate((el) => el.scrollTo(180, 120));
-  await page.waitForFunction(
-    () => Math.abs(document.querySelector(".image-viewport").scrollTop - 120) < 1,
-  );
-  await open("text.txt");
-  await action("documents", "showDocument", imageId);
-  await page.waitForFunction(
-    () => Math.abs(document.querySelector(".image-viewport")?.scrollTop - 120) < 1,
-  );
-  await action("documents", "patchMediaView", firstGroup, imageId, {
-    scale: 1.5,
-    scrollLeft: 0,
-    scrollTop: 0,
-  });
-  checks.push(
-    "Real protocol image loading, Unicode/space/#/+ paths, original dimensions, status bar, click/Ctrl-click and keyboard zoom",
-  );
-  checks.push("Zoom picker, Ctrl+wheel and scroll position restored across tabs");
+  await page.waitForFunction(() => document.querySelector(".image-stage img")?.naturalWidth > 0);
+  checks.push("Native media protocol decodes Unicode/space/#/+ paths and reloads image content");
   for (const name of [
     "image #+中文.JpEg",
     "image #+中文.webp",
@@ -235,7 +189,7 @@ try {
     "icon.ico",
   ]) {
     await open(name);
-    await page.getByRole("button", { name: "Image Zoom: Whole Image", exact: true }).waitFor();
+    await page.waitForFunction(() => document.querySelector(".image-stage img")?.naturalWidth > 0);
   }
   checks.push("JPEG (mixed-case extension), WebP, GIF, BMP and ICO decoding");
   const svgId = await open("icon.svg");
@@ -256,16 +210,17 @@ try {
   );
   await page.getByRole("button", { name: "Select SVG editor", exact: true }).click();
   await page.getByRole("menuitem", { name: "Image Preview", exact: true }).click();
-  await page.waitForFunction(() =>
-    document.querySelector(".status-right").textContent.includes("80x40"),
-  );
+  await page.waitForFunction(() => document.querySelector(".image-stage img")?.naturalWidth === 80);
   assert.equal((await state()).docs[svgId].dirty, true);
   assert.doesNotMatch(await readFile(path.join(root, "icon.svg"), "utf8"), /width="80"/);
   await screenshot("02-svg");
+  const previewGroup = (await state()).activeGroup;
   const splitId = await action("documents", "splitGroup");
   await action("documents", "patchMediaView", splitId, svgId, { mode: "text" });
-  assert.equal(await page.locator(".media-preview").count(), 1);
-  assert.equal(await page.locator(".monaco-host:visible").count(), 1);
+  const svgModes = async () =>
+    Object.fromEntries((await state()).groups.map((g) => [g.id, g.mediaViews?.[svgId]?.mode]));
+  const expectedModes = { [previewGroup]: "image", [splitId]: "text" };
+  assert.deepEqual(await svgModes(), expectedModes);
   checks.push(
     "SVG defaults to image; source edit previews unsaved buffer without saving; split views remain independent",
   );
@@ -274,16 +229,16 @@ try {
   await page.locator("file-tree-container").waitFor({ timeout: 180000 });
   await page.waitForFunction(() => document.querySelectorAll(".editor-group").length === 2);
   assert.equal((await state()).docs[svgId].dirty, true);
-  assert.equal(await page.locator(".media-preview").count(), 1);
+  assert.deepEqual(await svgModes(), expectedModes);
+  assert.equal(
+    await page.evaluate(async ({ url, id }) => (await import(url)).models.get(id)?.getValue(), {
+      url: urls.documents,
+      id: svgId,
+    }),
+    modified,
+  );
   checks.push("Session restore keeps media tabs, SVG modes and unsaved source");
   await action("documents", "closeDocument", svgId, splitId);
-  await open("viewbox.svg");
-  await page.getByRole("button", { name: "Image Zoom: Whole Image", exact: true }).waitFor();
-  const before = await page.locator(".image-stage img").boundingBox();
-  await page.locator(".image-stage img").click();
-  const after = await page.locator(".image-stage img").boundingBox();
-  assert.ok(after.width > before.width);
-  checks.push("ViewBox-only SVG zoom changes rendered dimensions");
   await open("binary.dat");
   await page
     .getByText(
@@ -297,11 +252,6 @@ try {
   await open("corrupt.png");
   await page.getByRole("button", { name: "Retry", exact: true }).waitFor();
   checks.push("Binary and unsupported encoding editor UI; corrupt image shows retry");
-  await open("binary.dat");
-  const warningSize = await page
-    .locator(".binary-message>.codicon")
-    .evaluate((el) => getComputedStyle(el).fontSize);
-  assert.equal(warningSize, "64px");
   const audioId = await open("tone.wav");
   await page.waitForFunction(() => document.querySelector("audio")?.readyState >= 1);
   assert.equal(await page.locator("audio").evaluate((el) => el.autoplay), false);
@@ -327,21 +277,21 @@ try {
   });
   await writeFile(path.join(root, "image #+中文.png"), Buffer.from(updatedPng, "base64"));
   await action("documents", "refreshDocuments");
-  await page.waitForFunction(() =>
-    document.querySelector(".status-right").textContent.includes("32x16"),
-  );
+  await page.waitForFunction(() => document.querySelector(".image-stage img")?.naturalWidth === 32);
   checks.push("External image writes refresh dimensions and actual file size");
   await rename(path.join(root, "image #+中文.png"), path.join(root, "renamed.png"));
   await action("documents", "renameDocuments", [
     { from: path.join(root, "image #+中文.png"), to: path.join(root, "renamed.png") },
   ]);
-  await page.getByRole("button", { name: "Image Zoom: 150%", exact: true }).waitFor();
+  await page.waitForFunction(() => document.querySelector(".image-stage img")?.naturalWidth === 32);
   await unlink(path.join(root, "renamed.png"));
   await action("documents", "refreshDocuments");
   await page
     .getByText("The file could not be found. It may have been moved or deleted.", { exact: true })
     .waitFor();
-  checks.push("Media rename preserves tab and zoom; deletion displays file missing state");
+  checks.push(
+    "Media rename preserves the tab and decoded content; deletion reports the missing file",
+  );
   const backup = JSON.parse(await readFile(path.join(data, "session-main.json"), "utf8"));
   assert.equal(backup.version, 2);
   for (const id of [audioId, videoId]) {

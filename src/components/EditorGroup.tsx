@@ -341,10 +341,10 @@ export function EditorGroup({ group }: Readonly<{ group: Group }>) {
               <EditorTabMenu key={id} group={group} documentId={id}>
                 <div
                   role="tab"
-                  title={`${tab.path ? pathTitle(tab.path) : tab.name}${tab.deleted ? "\n文件已从磁盘删除" : ""}`}
+                  title={`${tab.path ? pathTitle(tab.path) : tab.name}${tab.deleted ? "\nFile deleted from disk" : ""}`}
                   tabIndex={group.active === id ? 0 : -1}
                   aria-selected={group.active === id}
-                  aria-label={`${tab.name}${tab.dirty ? ", unsaved" : ""}${tab.deleted ? ", 文件已从磁盘删除" : ""}${isGitConflicted(tab.path, root, treeRoot, git) ? ", Git: Unmerged changes" : ""}`}
+                  aria-label={`${tab.name}${tab.dirty ? ", unsaved" : ""}${tab.deleted ? ", File deleted from disk" : ""}${isGitConflicted(tab.path, root, treeRoot, git) ? ", Git: Unmerged changes" : ""}`}
                   className={`editor-tab h-full flex items-center gap-[6px] cursor-pointer whitespace-nowrap border-r border-r-panel border-t border-t-transparent select-none shrink-0 ${editorStyles["editor-tab"]} ${group.active === id ? "active" : ""} ${group.preview === id ? "preview" : ""} ${sticky ? "pinned" : ""}`}
                   draggable
                   onDragStart={(e) =>

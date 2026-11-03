@@ -612,7 +612,7 @@ function clearRecoveredReplacement(record: Recovery, choice: string) {
   for (const stack of [undoStack, redoStack]) {
     const index = stack.findIndex((t) => t.id === record.transactionId);
     if (index >= 0) {
-      if (choice === "保留现状") {
+      if (choice === "Keep Current State") {
         stack.splice(index, 1);
       } else {
         stack[index].direction = null;
@@ -627,16 +627,16 @@ export function recoverInterruptedReplacements() {
     const records = await call<Recovery[]>("replacement_recovery");
     for (const record of records) {
       const choice = await ask(
-        "检测到未完成的工作区替换",
-        "文件快照和操作记录已保留。恢复操作前状态时，将检查文件是否被外部修改。",
-        ["稍后处理", "恢复操作前状态", "保留现状"],
+        "Interrupted Workspace Replacement",
+        "File snapshots and operation records have been preserved. Restoring the previous state will check for external file changes.",
+        ["Later", "Restore Previous State", "Keep Current State"],
         { items: record.paths, itemsLabel: "Affected files" },
       );
-      if (!choice || choice === "稍后处理") {
+      if (!choice || choice === "Later") {
         continue;
       }
       try {
-        if (choice !== "保留现状") {
+        if (choice !== "Keep Current State") {
           checkRoot(record.root);
           restoreRecoveryBuffers(record);
           await checkpoint();
@@ -644,18 +644,18 @@ export function recoverInterruptedReplacements() {
         }
         const report = await call<Report>("recover_replacement", {
           transactionId: record.transactionId,
-          keep: choice === "保留现状",
+          keep: choice === "Keep Current State",
         });
         if (!report.complete) {
           throw new Error(failure(report));
         }
-        if (choice !== "保留现状") {
+        if (choice !== "Keep Current State") {
           await finishRecoveredReplacement(record);
         }
         clearRecoveredReplacement(record, choice);
-        notify("恢复记录已处理，备份仍保留。");
+        notify("Recovery record processed. Backups have been retained.");
       } catch (error) {
-        notify(errorMessage(error) + "\n恢复尚未完成，备份已保留。");
+        notify(errorMessage(error) + "\nRecovery is incomplete. Backups have been retained.");
       }
     }
   });
