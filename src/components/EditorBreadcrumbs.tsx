@@ -1,4 +1,5 @@
 import { treeTheme } from "../styles/theme";
+import { treeIcons } from "../explorer/treeIcons";
 import workbenchStyles from "../styles/workbench.module.css";
 import editorBreadcrumbsStyles from "./EditorBreadcrumbs.module.css";
 import mediaPreviewStyles from "./MediaPreview.module.css";
@@ -160,7 +161,7 @@ function BreadcrumbPicker({
     itemHeight: 26,
     overscan: 5,
     stickyFolders: false,
-    icons: { set: "complete", colored: true },
+    icons: treeIcons,
     search: false,
     renaming: false,
     dragAndDrop: false,

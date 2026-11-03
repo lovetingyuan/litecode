@@ -13,6 +13,7 @@ import {
 } from "react";
 import { Allotment, type AllotmentHandle } from "allotment";
 import { FileTree, useFileTree } from "@pierre/trees/react";
+import { treeIcons } from "../explorer/treeIcons";
 import { themeToTreeStyles, type GitStatusEntry } from "@pierre/trees";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useApp, setApp, notify } from "../store/store";
@@ -1061,7 +1062,7 @@ function GitChangesTree(
     itemHeight: 26,
     overscan: 8,
     search: false,
-    icons: { set: "complete", colored: true },
+    icons: treeIcons,
     onSelectionChange: (paths) => setSelected(paths[0] ?? ""),
     renderRowDecoration: ({ row }) => {
       const change = latestIndex.current.get(row.path);

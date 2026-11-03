@@ -4,6 +4,7 @@ import {
   selectRevealedEntry,
 } from "../explorer/treeNavigation";
 import { treeTheme } from "../styles/theme";
+import { treeIcons } from "../explorer/treeIcons";
 import workbenchStyles from "../styles/workbench.module.css";
 import {
   useEffect,
@@ -157,7 +158,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
     itemHeight: 26,
     overscan: 10,
     stickyFolders: true,
-    icons: { set: "complete", colored: true },
+    icons: treeIcons,
     search: false,
     renderRowDecoration: ({ row }) => {
       if (row.kind === "directory") {
