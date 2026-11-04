@@ -192,9 +192,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.git-remote-address :global(.action-button) {
-  flex-shrink: 0;
-}
 .git-info h3 {
   font-size: 12px;
   font-weight: 600;

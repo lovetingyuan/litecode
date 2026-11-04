@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitInfo, GitRepository } from "../types/types";
 
-const dialogResponses = vi.hoisted(() => ({ input: vi.fn() }));
+const dialogResponses = vi.hoisted(() => ({ ask: vi.fn(), input: vi.fn() }));
 vi.mock("../components/dialog", () => ({
+  ask: dialogResponses.ask,
   input: async (...args: Parameters<typeof import("../components/dialog").input>) => {
     const value = await dialogResponses.input(...args);
     if (value) {
@@ -24,7 +25,7 @@ vi.mock("./git", () => ({
       .gitState.repositories?.find((r) => r.path === useApp.getState().gitRepository),
 }));
 
-const { input } = dialogResponses;
+const { ask, input } = dialogResponses;
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { setApp, useApp } from "../store/store";
 import { readGitInfo, runGitOperation } from "./git";
@@ -86,6 +87,7 @@ beforeEach(() => {
   });
   vi.mocked(readGitInfo).mockResolvedValue(details([local("main", { current: true }), remote]));
   vi.mocked(input).mockResolvedValue("child");
+  ask.mockResolvedValue("Switch Branch");
   vi.mocked(runGitOperation).mockResolvedValue(true);
 });
 
@@ -128,6 +130,34 @@ describe("branch targets", () => {
 });
 
 describe("branch operations", () => {
+  it("confirms before switching a local branch", async () => {
+    const branch = local("dev");
+    vi.mocked(readGitInfo).mockResolvedValue(details([branch]));
+    await switchBranch(repository.path, branch, vi.fn());
+    expect(ask).toHaveBeenCalledWith("Switch branch?", "Switch to branch “dev”?", [
+      "Switch Branch",
+      "Cancel",
+    ]);
+    expect(runGitOperation).toHaveBeenCalledWith(repository.path, {
+      kind: "switch",
+      branch: "dev",
+    });
+  });
+  it.each(["Cancel", null])("does not switch when confirmation returns %s", async (choice) => {
+    ask.mockResolvedValue(choice);
+    await switchBranch(repository.path, remote, vi.fn());
+    expect(readGitInfo).not.toHaveBeenCalled();
+    expect(runGitOperation).not.toHaveBeenCalled();
+  });
+  it("stops if the selected repository changes during confirmation", async () => {
+    ask.mockImplementation(async () => {
+      setApp({ gitRepository: "C:/other" });
+      return "Switch Branch";
+    });
+    await switchBranch(repository.path, remote, vi.fn());
+    expect(readGitInfo).not.toHaveBeenCalled();
+    expect(runGitOperation).not.toHaveBeenCalled();
+  });
   it.each([local("feature/base"), remote])("creates and switches from $name", async (branch) => {
     vi.mocked(readGitInfo).mockResolvedValue(details([branch]));
     await createBranch(repository.path, branch);
@@ -158,7 +188,7 @@ describe("branch operations", () => {
       start: branchReference(remote),
     });
   });
-  it("switches an existing tracking branch without prompting or recreating it", async () => {
+  it("switches an existing tracking branch without asking for a name or recreating it", async () => {
     vi.mocked(readGitInfo).mockResolvedValue(
       details([remote, local("tracking", { upstream: remote.name })]),
     );

@@ -1,4 +1,4 @@
-import { input } from "../components/dialog";
+import { ask, input } from "../components/dialog";
 import { desktop } from "../core/bridge";
 import { notify, useApp } from "../store/store";
 import type { GitInfo, GitRepository } from "../types/types";
@@ -113,6 +113,13 @@ export async function switchBranch(
 ) {
   const valid = branchContext(repository);
   if (!valid()) {
+    return;
+  }
+  if (
+    (await ask("Switch branch?", `Switch to branch “${source.name}”?`, ["Switch Branch", "Cancel"])) !==
+      "Switch Branch" ||
+    !valid()
+  ) {
     return;
   }
   let info = await readGitInfo(repository);

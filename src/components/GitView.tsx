@@ -107,22 +107,22 @@ function GitRemoteAddress({
     >
       <strong title={remote}>{remote}</strong>
       <code title={address} aria-label={`${kind} URL`}>
-        {address}
+        {url ? (
+          <a
+            href={url}
+            className="text-link hover:underline focus-visible:underline"
+            aria-label={`Open ${remote} ${kind.toLowerCase()} URL`}
+            onClick={(event) => {
+              event.preventDefault();
+              void openUrl(url).catch(report);
+            }}
+          >
+            {address}
+          </a>
+        ) : (
+          address
+        )}
       </code>
-      <button
-        type="button"
-        className={`${actionButtonClass} compact`}
-        aria-label={`Open ${remote} ${kind.toLowerCase()} URL`}
-        disabled={!url}
-        title={url ?? "No supported web address for this remote URL."}
-        onClick={() => {
-          if (url) {
-            void openUrl(url).catch(report);
-          }
-        }}
-      >
-        Open
-      </button>
     </div>
   );
 }
