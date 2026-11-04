@@ -81,6 +81,7 @@ pub fn rg_path(app: &tauri::AppHandle) -> PathBuf {
 fn add_arguments(command: &mut Command, query: &Query) {
     command.args([
         "--json",
+        "--line-buffered",
         "--pcre2",
         "--multiline",
         "--line-number",
@@ -293,6 +294,29 @@ async fn send_batch(
     true
 }
 
+async fn read_stream_event(
+    reader: &mut (impl AsyncBufRead + Unpin),
+    task: &SearchTask,
+    channel: &Channel<SearchBatch>,
+    batch: &mut SearchBatch,
+    flush: &mut tokio::time::Interval,
+) -> Result<Option<Vec<u8>>> {
+    // Keep the read alive across flushes so partially received JSON is preserved.
+    let event = read_event(reader, task);
+    tokio::pin!(event);
+    loop {
+        tokio::select! {
+            next = &mut event => return next,
+            _ = flush.tick() => {
+                if !batch.matches.is_empty() && !send_batch(task, channel, batch).await {
+                    task.cancelled.store(true, Ordering::Release);
+                    return Ok(None);
+                }
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)] // One invocation shares the task's bounded output and cancellation state.
 async fn run_rg(
     app: &tauri::AppHandle,
@@ -342,8 +366,10 @@ async fn run_rg(
         String::from_utf8_lossy(&bytes).to_string()
     });
     let mut reader = BufReader::new(child.stdout.take().unwrap());
+    let mut flush = tokio::time::interval(Duration::from_millis(40));
+    flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
-        let next = match read_event(&mut reader, task).await {
+        let next = match read_stream_event(&mut reader, task, channel, batch, &mut flush).await {
             Ok(next) => next,
             Err(error) if error.code == "searchLimit" => {
                 batch.limited = true;
@@ -667,6 +693,54 @@ mod tests {
                 byte_position(text, start["end"].as_u64().unwrap() as usize, 4)
             );
         }
+    }
+
+    #[tokio::test]
+    async fn sparse_batches_flush_before_eof_without_losing_partial_events() {
+        let task = SearchTask {
+            cancelled: AtomicBool::new(false),
+            acknowledged: AtomicU64::new(0),
+        };
+        let (sent, mut received) = tokio::sync::mpsc::unbounded_channel();
+        let channel = Channel::new(move |message| {
+            sent.send(message.deserialize::<serde_json::Value>().unwrap())
+                .unwrap();
+            Ok(())
+        });
+        let value = serde_json::json!({"type":"match","data":{"lines":{"text":"a"},"line_number":1,"submatches":[{"start":0,"end":1,"match":{"text":"a"}}]}});
+        let mut batch = SearchBatch {
+            request_id: "stream".into(),
+            sequence: 1,
+            matches: parse_matches(&value, "a.txt", None, MAX_RESULTS).collect(),
+            done: false,
+            limited: false,
+            cancelled: false,
+            errors: vec![],
+        };
+        let (mut writer, input) = tokio::io::duplex(64);
+        let mut reader = BufReader::new(input);
+        let mut flush = tokio::time::interval(Duration::from_millis(40));
+        // Consume the immediate tick so this exercises a timed flush.
+        flush.tick().await;
+        writer.write_all(b"{\"type\":").await.unwrap();
+        {
+            let next = read_stream_event(&mut reader, &task, &channel, &mut batch, &mut flush);
+            tokio::pin!(next);
+            tokio::select! {
+                event = &mut next => panic!("read finished before the rest of the event: {event:?}"),
+                message = tokio::time::timeout(Duration::from_secs(2), received.recv()) => {
+                    let message = message.unwrap().unwrap();
+                    assert_eq!(message["matches"].as_array().unwrap().len(), 1);
+                    assert_eq!(message["sequence"], 1);
+                    assert_eq!(message["done"], false);
+                }
+            }
+            writer.write_all(b"\"end\"}\n").await.unwrap();
+            assert_eq!(next.await.unwrap().unwrap(), b"{\"type\":\"end\"}\n");
+        }
+        assert!(batch.matches.is_empty());
+        assert_eq!(batch.sequence, 2);
+        assert!(received.try_recv().is_err());
     }
 
     #[tokio::test]
