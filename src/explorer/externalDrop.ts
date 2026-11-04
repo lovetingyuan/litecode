@@ -21,7 +21,11 @@ export function externalDropDirectory(path: string | undefined, directory: boole
 
 type CopyServices = {
   plan: (index: number) => Promise<ExternalCopyPlan>;
-  confirm: (item: DropItem, plan: ExternalCopyPlan) => Promise<string | null>;
+  confirm: (
+    item: DropItem,
+    plan: ExternalCopyPlan,
+    copy: () => Promise<void>,
+  ) => Promise<string | null>;
   copy: (index: number, plan: ExternalCopyPlan) => Promise<{ from: string; to: string }>;
 };
 
@@ -48,8 +52,15 @@ export async function copyDroppedItems(
         return false;
       }
       let choice: string | null = "Copy";
+      let copied: CopyReport["copied"][number] | undefined;
       if (plan.existing !== null) {
-        choice = await services.confirm(item, plan);
+        choice = await services.confirm(item, plan, async () => {
+          copied = await services.copy(index, plan);
+        });
+        if (copied) {
+          report.copied.push(copied);
+          return true;
+        }
         if (cancelledDropChoice(signal, choice)) {
           return false;
         }

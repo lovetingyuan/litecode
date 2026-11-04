@@ -6,7 +6,11 @@ const mocks = vi.hoisted(() => ({
   ask: vi.fn(),
 }));
 vi.mock("./bridge", () => ({ call: mocks.call }));
-vi.mock("../components/dialog", () => ({ ask: mocks.ask }));
+vi.mock("../components/dialog", () => ({
+  ask: async (...args: Parameters<typeof import("../components/dialog").ask>) =>
+    completeDialogAction(await mocks.ask(...args), args[3]),
+}));
+import { completeDialogAction } from "../test/dialogActions";
 vi.mock("../store/store", () => ({ useApp: { getState: () => mocks.state } }));
 
 const denied = { code: "workspaceTrust", message: "Restricted Mode" };

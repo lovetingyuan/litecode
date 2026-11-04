@@ -1,13 +1,13 @@
 import { actionButtonClass } from "./ui";
 import workbenchStyles from "../styles/workbench.module.css";
 import gitStyles from "../styles/git.module.css";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { errorMessage } from "../core/bridge";
+import { call, errorMessage } from "../core/bridge";
 import { groupChanges } from "../git/changes";
-import { runGitOperation, selectedRepository } from "../git/git";
+import { gitContext, runGitOperation, selectedRepository } from "../git/git";
 import { notify, setApp, useApp } from "../store/store";
-import type { GitRepository } from "../types/types";
+import type { GitCommitDetails, GitInfo, GitRepository } from "../types/types";
 
 export function GitCommitDialog({
   repository,
@@ -19,6 +19,7 @@ export function GitCommitDialog({
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [amend, setAmend] = useState(false);
+  const [lastMessage, setLastMessage] = useState("Loading last commit message…");
   const working = useRef(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -32,6 +33,33 @@ export function GitCommitDialog({
     !busy &&
     !submitting;
   const commitLabel = amend ? "Amend Commit" : "Commit";
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    let current = true;
+    async function loadLastMessage() {
+      try {
+        const context = gitContext(repository.path);
+        const info = await call<GitInfo>("git_repository_info", context);
+        const details = info.head
+          ? await call<GitCommitDetails>("git_commit_details", { ...context, sha: info.head })
+          : null;
+        if (current) {
+          setLastMessage(details?.message || "No commits yet");
+        }
+      } catch (error) {
+        if (current) {
+          setLastMessage(`Unable to load last commit message: ${errorMessage(error)}`);
+        }
+      }
+    }
+    void loadLastMessage();
+    return () => {
+      current = false;
+    };
+  }, [open, repository.path, workspace]);
 
   async function commit() {
     if (
@@ -73,6 +101,7 @@ export function GitCommitDialog({
         if (!working.current) {
           if (next) {
             setAmend(false);
+            setLastMessage("Loading last commit message…");
           }
           setOpen(next);
         }
@@ -80,7 +109,7 @@ export function GitCommitDialog({
     >
       <Dialog.Trigger
         ref={trigger}
-        className={`${actionButtonClass} compact primary bg-focus text-foreground-strong rounded-[2px] py-[5px] px-[14px] ${workbenchStyles["primary"]}`}
+        className={`${actionButtonClass} compact primary bg-focus text-foreground-strong rounded-[2px] px-[14px] ${workbenchStyles["primary"]}`}
         disabled={!!grouped.conflicts.length || !!busy || submitting}
       >
         Commit
@@ -128,7 +157,10 @@ export function GitCommitDialog({
                 }
               }}
             />
-            <label className="inline-flex self-start items-center gap-2 mt-1 text-[12px] whitespace-nowrap cursor-pointer select-none">
+            <label
+              title={lastMessage}
+              className="inline-flex self-start items-center gap-2 mt-1 text-[12px] whitespace-nowrap cursor-pointer select-none"
+            >
               <input
                 type="checkbox"
                 className="w-3.5 h-3.5 shrink-0 m-0 p-0 accent-button"

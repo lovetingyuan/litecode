@@ -255,6 +255,23 @@ async function requestClose(ids: string[], tab: boolean) {
     useTerminal.getState().panes[target.id].attempt === target.attempt &&
     runtimes.get(target.id) === target.runtime &&
     target.runtime?.sessionId === target.sessionId;
+  const closeTargets = async () => {
+    for (const target of targets) {
+      if (!current(target)) {
+        continue;
+      }
+      if (target.sessionId) {
+        await call("terminal_close", { id: target.sessionId });
+      }
+      if (current(target)) {
+        // The backend has closed this session; disposal only releases local resources.
+        if (target.runtime) {
+          target.runtime.sessionId = undefined;
+        }
+        removeTerminal(target.id);
+      }
+    }
+  };
   try {
     const results = await Promise.all(
       targets.map(async (target) => {
@@ -313,6 +330,7 @@ async function requestClose(ids: string[], tab: boolean) {
           (await ask(`${action}?`, message, [action, "Cancel"], {
             defaultChoice: "Cancel",
             signal: controller.signal,
+            action: { choice: action, label: "Closing…", run: closeTargets },
           })) !== action
         ) {
           return;
@@ -320,8 +338,9 @@ async function requestClose(ids: string[], tab: boolean) {
       } finally {
         unsubscribe();
       }
+      return;
     }
-    targets.filter(current).forEach((target) => removeTerminal(target.id));
+    await closeTargets();
   } finally {
     closing = false;
   }

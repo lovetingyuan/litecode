@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const x = vi.hoisted(() => ({ call: vi.fn(), ask: vi.fn(), checkpoint: vi.fn(), notify: vi.fn() }));
 vi.mock("../core/bridge", () => ({ call: x.call, errorMessage: (e: Error) => e.message }));
-vi.mock("../components/dialog", () => ({ ask: x.ask }));
+vi.mock("../components/dialog", () => ({
+  ask: async (...args: Parameters<typeof import("../components/dialog").ask>) =>
+    completeDialogAction(await x.ask(...args), args[3]),
+}));
+import { completeDialogAction } from "../test/dialogActions";
 vi.mock("../editor/documents", () => ({
   checkpoint: x.checkpoint,
   models: new Map(),

@@ -6,7 +6,11 @@ vi.mock("../core/bridge", () => ({
   errorMessage: (e: Error) => e.message,
 }));
 vi.mock("../core/workspaceTrust", () => ({ trustedCall: vi.fn() }));
-vi.mock("../components/dialog", () => ({ ask: vi.fn() }));
+const dialogResponses = vi.hoisted(() => ({ ask: vi.fn() }));
+vi.mock("../components/dialog", () => ({
+  ask: async (...args: Parameters<typeof import("../components/dialog").ask>) =>
+    completeDialogAction(await dialogResponses.ask(...args), args[3]),
+}));
 vi.mock("../editor/documents", () => ({
   basename: (p: string) => p.split("/").pop(),
   join: (root: string, path: string) => `${root}/${path}`,
@@ -24,7 +28,8 @@ vi.mock("../explorer/workspaceTree", () => ({
 }));
 
 import { trustedCall } from "../core/workspaceTrust";
-import { ask } from "../components/dialog";
+import { completeDialogAction } from "../test/dialogActions";
+const { ask } = dialogResponses;
 import { patchDoc, save } from "../editor/documents";
 import { refreshGit } from "../explorer/workspaceGit";
 import { setApp, useApp } from "../store/store";
@@ -163,10 +168,12 @@ describe("Git operation protections", () => {
   it("requires confirmation before deleting and permits cancellation", async () => {
     setApp({ docs: {} });
     expect(await runGitOperation("C:/repo", { kind: "deleteBranch", branch: "other" })).toBe(false);
-    expect(ask).toHaveBeenCalledWith("Delete branch?", expect.stringContaining("other"), [
-      "Delete Branch",
-      "Cancel",
-    ]);
+    expect(ask).toHaveBeenCalledWith(
+      "Delete branch?",
+      expect.stringContaining("other"),
+      ["Delete Branch", "Cancel"],
+      expect.objectContaining({ action: expect.objectContaining({ choice: "Delete Branch" }) }),
+    );
     expect(trustedCall).not.toHaveBeenCalled();
     vi.mocked(ask).mockResolvedValue("Delete Branch");
     expect(await runGitOperation("C:/repo", { kind: "deleteBranch", branch: "other" })).toBe(true);

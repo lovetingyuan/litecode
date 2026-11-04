@@ -298,6 +298,21 @@ function SearchPanel({ id }: Readonly<{ id: string }>) {
     if (id !== primarySearchId || useApp.getState().replacementPhase) {
       return;
     }
+    const replace = async () => {
+      if (useApp.getState().root !== root || searchSession(id)?.query !== query) {
+        throw new Error("The search changed. Run the search again.");
+      }
+      const errors = await replaceMatches(matches, replacement, preserve, query, preview);
+      if (errors === null) {
+        return false;
+      }
+      if (errors?.length) {
+        throw new Error(errors.join("\n"));
+      }
+      if (!preview && useApp.getState().root === root && searchSession(id)?.query === query) {
+        await runSearch(query, id);
+      }
+    };
     if (
       !preview &&
       matches.length > 1 &&
@@ -305,24 +320,19 @@ function SearchPanel({ id }: Readonly<{ id: string }>) {
         "Replace search results?",
         `Replace ${matches.length} occurrence(s)? Closed files will be saved. Open editors keep unsaved changes. Use Undo Workspace Replacement to undo this operation.`,
         ["Replace", "Cancel"],
+        { action: { choice: "Replace", label: "Replacing…", retry: false, run: replace } },
       )) !== "Replace"
     ) {
+      return;
+    }
+    if (!preview && matches.length > 1) {
       return;
     }
     if (useApp.getState().root !== root || searchSession(id)?.query !== query) {
       return;
     }
     try {
-      const errors = await replaceMatches(matches, replacement, preserve, query, preview);
-      if (
-        !preview &&
-        errors !== null &&
-        !errors?.length &&
-        useApp.getState().root === root &&
-        searchSession(id)?.query === query
-      ) {
-        await runSearch(query, id);
-      }
+      await replace();
     } catch (e) {
       notify(errorMessage(e));
     }

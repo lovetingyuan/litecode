@@ -1,13 +1,25 @@
 import workbenchStyles from "../styles/workbench.module.css";
 import updateDialogStyles from "./UpdateDialog.module.css";
 import { Dialog } from "@base-ui/react/dialog";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { installUpdate, updateLocked, useUpdates } from "../core/updates";
 import { errorMessage } from "../core/bridge";
 import { actionButtonClass, Icon } from "./ui";
 
 const UpdateReleaseNotes = lazy(() => import("./UpdateReleaseNotes"));
+function installLabel(phase: string, portable: boolean, busy: boolean) {
+  if (phase === "checking") {
+    return "Checking…";
+  }
+  if (phase === "downloading") {
+    return "Downloading…";
+  }
+  if (busy) {
+    return "Installing…";
+  }
+  return portable ? "Open Release Downloads" : "Download and Install";
+}
 
 export function UpdateButton() {
   const version = useUpdates((s) => s.version);
@@ -27,7 +39,23 @@ export function UpdateButton() {
 
 export function UpdateDialog() {
   const s = useUpdates();
-  const busy = s.phase === "checking" || s.phase === "downloading" || updateLocked(s.phase);
+  const [installing, setInstalling] = useState(false);
+  const working = useRef(false);
+  const busy =
+    installing || s.phase === "checking" || s.phase === "downloading" || updateLocked(s.phase);
+  async function install() {
+    if (working.current || busy) {
+      return;
+    }
+    working.current = true;
+    setInstalling(true);
+    try {
+      await installUpdate();
+    } finally {
+      working.current = false;
+      setInstalling(false);
+    }
+  }
   const releaseUrl = `https://github.com/lovetingyuan/litecode/releases/tag/v${s.version}`;
   const openLink = (url: string) =>
     void openUrl(url).catch((error) => useUpdates.setState({ error: errorMessage(error) }));
@@ -63,7 +91,14 @@ export function UpdateDialog() {
   }
   return (
     <>
-      <Dialog.Root open={s.open} onOpenChange={(open) => useUpdates.setState({ open })}>
+      <Dialog.Root
+        open={s.open}
+        onOpenChange={(open) => {
+          if (!working.current && !busy) {
+            useUpdates.setState({ open });
+          }
+        }}
+      >
         <Dialog.Portal>
           <Dialog.Backdrop className="modal-backdrop fixed inset-0 bg-backdrop z-[150]" />
           <Dialog.Popup
@@ -113,12 +148,15 @@ export function UpdateDialog() {
                 <button
                   className={`${actionButtonClass} primary bg-focus text-foreground-strong rounded-[2px] py-[5px] px-[14px] ${workbenchStyles["primary"]}`}
                   disabled={busy}
-                  onClick={() => (s.portable ? openLink(releaseUrl) : void installUpdate())}
+                  onClick={() => (s.portable ? openLink(releaseUrl) : void install())}
                 >
-                  {s.portable ? "Open Release Downloads" : "Download and Install"}
+                  {busy && <Icon name="loading" className="animate-spin" />}
+                  {installLabel(s.phase, s.portable, busy)}
                 </button>
               )}
-              <Dialog.Close className={actionButtonClass}>Close</Dialog.Close>
+              <Dialog.Close className={actionButtonClass} disabled={busy}>
+                Close
+              </Dialog.Close>
             </div>
           </Dialog.Popup>
         </Dialog.Portal>

@@ -25,6 +25,7 @@ mod packages;
 mod quick_files;
 mod recovery;
 mod replacement;
+mod resource_usage;
 mod search;
 mod startup;
 mod state;
@@ -94,6 +95,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            app.manage(resource_usage::ResourceMonitor::default());
             let setup_started = std::time::Instant::now();
             startup::mark("setup-started", setup_started);
             app.manage(updates::Updates::new(app.handle()));
@@ -189,6 +191,9 @@ pub fn run() {
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window
+                    .state::<resource_usage::ResourceMonitor>()
+                    .close_window(window.label());
+                window
                     .state::<updates::Updates>()
                     .window_destroyed(window.label());
                 let state = window.state::<state::AppState>();
@@ -228,6 +233,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            resource_usage::get_app_resource_usage,
             logging::open_logs_directory,
             http_preview::html_preview_start,
             http_preview::html_preview_list,

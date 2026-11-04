@@ -74,22 +74,29 @@ export async function createBranch(repository: string, source?: GitBranch) {
   if (!valid()) {
     return;
   }
-  const name = await input(source ? `New branch from ${source.name}` : "New branch name");
-  if (!name || !valid()) {
-    return;
-  }
-  const info = await readGitInfo(repository);
-  if (!valid() || info.operation) {
-    return;
-  }
-  if (source && !info.branches.some((b) => branchReference(b) === branchReference(source))) {
-    notify("The source branch no longer exists. Refresh and try again.");
-    return;
-  }
-  await runGitOperation(repository, {
-    kind: "createBranch",
-    name,
-    ...(source ? { start: branchReference(source) } : {}),
+  await input(source ? `New branch from ${source.name}` : "New branch name", "", {
+    label: "Creating…",
+    run: async (name) => {
+      if (!valid()) {
+        throw new Error("The repository changed. Refresh and try again.");
+      }
+      const info = await readGitInfo(repository);
+      if (!valid() || info.operation) {
+        throw new Error("The repository changed. Refresh and try again.");
+      }
+      if (source && !info.branches.some((b) => branchReference(b) === branchReference(source))) {
+        throw new Error("The source branch no longer exists. Refresh and try again.");
+      }
+      if (
+        !(await runGitOperation(repository, {
+          kind: "createBranch",
+          name,
+          ...(source ? { start: branchReference(source) } : {}),
+        }))
+      ) {
+        throw new Error("Unable to create branch. Check the Git error and try again.");
+      }
+    },
   });
 }
 
@@ -143,16 +150,30 @@ export async function switchBranch(
   if (target.kind === "choose") {
     return chooseLocalBranch(target.branches, branch);
   }
-  let name: string | null = target.name;
+  const name = target.name;
   if (info.branches.some((b) => !b.remote && b.name === name)) {
-    name = await input(`Local branch ${name} already exists. New branch from ${branch.name}`);
-    if (!name || !valid()) {
-      return;
-    }
-    info = await readGitInfo(repository);
-    if (!valid() || info.operation) {
-      return;
-    }
+    await input(`Local branch ${name} already exists. New branch from ${branch.name}`, "", {
+      label: "Creating…",
+      run: async (nextName) => {
+        if (!valid()) {
+          throw new Error("The repository changed. Refresh and try again.");
+        }
+        info = await readGitInfo(repository);
+        if (!valid() || info.operation) {
+          throw new Error("The repository changed. Refresh and try again.");
+        }
+        if (
+          !(await runGitOperation(repository, {
+            kind: "createBranch",
+            name: nextName,
+            start: target.start,
+          }))
+        ) {
+          throw new Error("Unable to create branch. Check the Git error and try again.");
+        }
+      },
+    });
+    return;
   }
   await runGitOperation(repository, { kind: "createBranch", name, start: target.start });
 }

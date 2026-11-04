@@ -5,7 +5,7 @@ import { monaco } from "../editor/monaco";
 import { editorFontOptions } from "../editor/font";
 import { diffOptions } from "../editor/settings";
 import { useApp } from "../store/store";
-import { actionButtonClass, IconButton } from "./ui";
+import { actionButtonClass, Icon, IconButton } from "./ui";
 import { readConflictDiff, resolveConflict } from "../editor/documents";
 import { errorMessage } from "../core/bridge";
 import type { DiffRequest } from "../types/types";
@@ -13,6 +13,7 @@ import type { DiffRequest } from "../types/types";
 export function DiffViewer() {
   const [diff, setDiff] = useState<DiffRequest | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"reload" | "overwrite" | "refresh">("refresh");
   const [message, setMessage] = useState("");
   const working = useRef(false);
   const [host, setHost] = useState<HTMLDivElement | null>(null);
@@ -71,6 +72,7 @@ export function DiffViewer() {
     }
     working.current = true;
     setBusy(true);
+    setPendingAction(action ?? "refresh");
     setMessage("");
     try {
       if (action) {
@@ -158,21 +160,30 @@ export function DiffViewer() {
               aria-busy={busy}
             >
               <button className={actionButtonClass} disabled={busy} onClick={() => void choose()}>
-                Refresh Comparison
+                {busy && pendingAction === "refresh" && (
+                  <Icon name="loading" className="animate-spin" />
+                )}
+                {busy && pendingAction === "refresh" ? "Refreshing…" : "Refresh Comparison"}
               </button>
               <button
                 className={actionButtonClass}
                 disabled={busy || !!diff.error}
                 onClick={() => void choose("reload")}
               >
-                Use Disk Version
+                {busy && pendingAction === "reload" && (
+                  <Icon name="loading" className="animate-spin" />
+                )}
+                {busy && pendingAction === "reload" ? "Loading…" : "Use Disk Version"}
               </button>
               <button
                 className={actionButtonClass}
                 disabled={busy || !!diff.error}
                 onClick={() => void choose("overwrite")}
               >
-                Keep Current Version
+                {busy && pendingAction === "overwrite" && (
+                  <Icon name="loading" className="animate-spin" />
+                )}
+                {busy && pendingAction === "overwrite" ? "Saving…" : "Keep Current Version"}
               </button>
               <button className={actionButtonClass} disabled={busy} onClick={close}>
                 Cancel

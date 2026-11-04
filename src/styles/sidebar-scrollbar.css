@@ -1,3 +1,11 @@
+/* Register globally via App.css so the inherited color also animates in tree shadow roots.
+ * Native scrollbar pseudo-elements do not reliably animate their own background. */
+@property --lc-sidebar-scrollbar-color {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
 /* Also injected into the file tree's shadow root, including its gutter probe. */
 :is(
   .search-results,
@@ -8,6 +16,16 @@
 ) {
   scrollbar-width: auto;
   scrollbar-color: auto;
+  --lc-sidebar-scrollbar-color: transparent;
+  transition: --lc-sidebar-scrollbar-color 180ms ease;
+}
+:is(
+  .search-results,
+  .git-panel-content,
+  .git-changes-list,
+  [data-file-tree-virtualized-scroll]
+):hover {
+  --lc-sidebar-scrollbar-color: var(--lc-scrollbar-thumb);
 }
 :is(
   .search-results,
@@ -35,7 +53,7 @@
   [data-file-tree-virtualized-scroll],
   [data-file-tree-scrollbar-measure]
 )::-webkit-scrollbar-thumb {
-  background: var(--lc-scrollbar-thumb);
+  background: var(--lc-sidebar-scrollbar-color);
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 7px;
@@ -67,4 +85,16 @@
   [data-file-tree-scrollbar-measure]
 )::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(
+    .search-results,
+    .git-panel-content,
+    .git-changes-list,
+    [data-file-tree-virtualized-scroll],
+    [data-file-tree-scrollbar-measure]
+  ) {
+    transition: none;
+  }
 }

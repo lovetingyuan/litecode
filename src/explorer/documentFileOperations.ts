@@ -18,28 +18,35 @@ export async function deleteInternalFiles(paths: string[], onDeleted: (path: str
   const warning = documentsAtPaths(paths).some((doc) => doc.dirty)
     ? "\n\nUnsaved changes will be lost when these files are deleted."
     : "";
-  if (
-    (await ask("Move to Recycle Bin?", paths.map((path) => relative(path)).join("\n") + warning, [
-      "Move to Recycle Bin",
-      "Cancel",
-    ])) !== "Move to Recycle Bin"
-  ) {
-    return;
-  }
-  const release = await beginDocumentDelete(paths);
-  let failure: unknown;
-  try {
-    for (const path of paths) {
-      await call("file_operation", { operation: { kind: "delete", path } });
-      closeDeletedDocuments([path]);
-      onDeleted(path);
-    }
-  } catch (error) {
-    failure = error;
-    throw error;
-  } finally {
-    release(failure);
-  }
+  const remaining = new Set(paths);
+  await ask(
+    "Move to Recycle Bin?",
+    paths.map((path) => relative(path)).join("\n") + warning,
+    ["Move to Recycle Bin", "Cancel"],
+    {
+      action: {
+        choice: "Move to Recycle Bin",
+        label: "Deleting…",
+        run: async () => {
+          const release = await beginDocumentDelete([...remaining]);
+          let failure: unknown;
+          try {
+            for (const path of remaining) {
+              await call("file_operation", { operation: { kind: "delete", path } });
+              remaining.delete(path);
+              closeDeletedDocuments([path]);
+              onDeleted(path);
+            }
+          } catch (error) {
+            failure = error;
+            throw error;
+          } finally {
+            release(failure);
+          }
+        },
+      },
+    },
+  );
 }
 
 // A cut reserves the entire batch before any disk change. Keep the barrier until

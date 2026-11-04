@@ -21,7 +21,11 @@ vi.mock("../core/bridge", () => ({
   desktop: true,
   errorMessage: (e: { message: string }) => e.message,
 }));
-vi.mock("../components/dialog", () => ({ ask: vi.fn() }));
+const dialogResponses = vi.hoisted(() => ({ ask: vi.fn() }));
+vi.mock("../components/dialog", () => ({
+  ask: async (...args: Parameters<typeof import("../components/dialog").ask>) =>
+    completeDialogAction(await dialogResponses.ask(...args), args[3]),
+}));
 vi.mock("../components/Explorer", () => ({ refreshTree: vi.fn(), revealInTree: vi.fn() }));
 vi.mock("../core/workspaceTrust", () => ({
   prepareWorkspaceOpen: vi.fn(),
@@ -93,7 +97,8 @@ import {
   compareDisk,
   resolveConflict,
 } from "./documents";
-import { ask } from "../components/dialog";
+import { completeDialogAction } from "../test/dialogActions";
+const { ask } = dialogResponses;
 import { deleteInternalFiles, pasteInternalFiles } from "../explorer/documentFileOperations";
 import { createExplorerClipboard } from "../explorer/explorerClipboard";
 import { initialSearch, primarySearchId, setApp, useApp } from "../store/store";
@@ -239,7 +244,14 @@ describe("Elevated document saves", () => {
       "Administrator permission required",
       expect.stringContaining(useApp.getState().docs[id].path!),
       ["Save as Administrator", "Cancel"],
-      { defaultChoice: "Cancel" },
+      {
+        defaultChoice: "Cancel",
+        action: {
+          choice: "Save as Administrator",
+          label: "Saving…",
+          run: expect.any(Function),
+        },
+      },
     );
     expect(writes()).toHaveLength(2);
     expect(writes()[1]).toEqual({ ...writes()[0], elevate: true });
@@ -297,7 +309,10 @@ describe("Elevated document saves", () => {
       const { id, buffer } = addDocument();
       const answer = deferred<string>();
       requireElevation();
-      vi.mocked(ask).mockReturnValue(answer.promise);
+      vi.mocked(ask).mockImplementation(async () => {
+        await answer.promise;
+        return "Save as Administrator";
+      });
       const result = expect(save(id)).rejects.toMatchObject({ code: "stale" });
       await vi.waitFor(() => expect(ask).toHaveBeenCalled());
       if (change === "text") {

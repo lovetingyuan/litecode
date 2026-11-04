@@ -205,6 +205,10 @@
   background: transparent;
   justify-content: space-between;
 }
+.git-branch-row:hover,
+.git-branch-row:focus-within {
+  background: var(--lc-hover);
+}
 .git-branch-row > button:first-child {
   display: flex;
   align-items: center;
@@ -214,10 +218,12 @@
   min-width: 0;
   padding: 4px;
 }
+.git-branch-actions {
+  display: none;
+}
 .git-branch-row:hover :global(.git-branch-actions),
 .git-branch-row:focus-within :global(.git-branch-actions) {
-  opacity: 1;
-  pointer-events: auto;
+  display: flex;
 }
 .git-branch-actions :global(.icon-button) {
   width: 24px;
@@ -231,8 +237,9 @@
 .git-branch-row small {
   flex-shrink: 0;
 }
-.git-branch-row > button:first-child:hover:not(:disabled) {
-  background: var(--lc-hover);
+/* Keep the branch button transparent so the row shares one hover background, like commit files. */
+.git-branch-row > button:first-child:hover {
+  background: transparent;
 }
 .git-branch-row > button:first-child > span:nth-child(2) {
   overflow: hidden;

@@ -575,14 +575,23 @@ async function readOpeningDocument(path: string, options: OpenPathOptions, curre
     if (!current()) {
       throw new Error("The workspace changed before the file opened.");
     }
-    if (
-      (e as { code?: string }).code === "largeFile" &&
-      (await ask("Open large file?", errorMessage(e), ["Open Anyway", "Cancel"])) === "Open Anyway"
-    ) {
-      if (!current()) {
-        throw new Error("The workspace changed before the file opened.");
+    if (typeof e === "object" && e && "code" in e && e.code === "largeFile") {
+      let retry: string | undefined;
+      const choice = await ask("Open large file?", errorMessage(e), ["Open Anyway", "Cancel"], {
+        action: {
+          choice: "Open Anyway",
+          label: "Opening…",
+          run: async () => {
+            if (!current()) {
+              throw new Error("The workspace changed before the file opened.");
+            }
+            retry = await openPath(path, { ...options, force: true });
+          },
+        },
+      });
+      if (choice === "Open Anyway" && retry !== undefined) {
+        return { retry };
       }
-      return { retry: await openPath(path, { ...options, force: true }) };
     }
     if (["binary", "encoding"].includes((e as { code?: string }).code ?? "")) {
       kind = "binary";
@@ -946,10 +955,11 @@ function reloadSavedDocument(
   scheduleBackup();
 }
 
-async function selectSaveDestination(id: string) {
-  let path: string | null;
-  let revision: string | null;
-  path = await call<string | null>("pick_path", { kind: "save" });
+async function selectSaveDestination(
+  id: string,
+  replace: (path: string, revision: string) => Promise<void>,
+) {
+  const path = await call<string | null>("pick_path", { kind: "save" });
   if (!path) {
     return;
   }
@@ -962,19 +972,28 @@ async function selectSaveDestination(id: string) {
       "This destination is already open in another editor. Close that editor before using Save As.",
     );
   }
+  let disk: DiskDocument;
   try {
-    const disk = await call<DiskDocument>("read_document", { path, force: true });
-    if ((await ask("Replace existing file?", path, ["Replace", "Cancel"])) !== "Replace") {
-      return;
-    }
-    revision = disk.revision;
+    disk = await call<DiskDocument>("read_document", { path, force: true });
   } catch (e) {
-    if ((e as { code?: string }).code !== "notFound") {
-      throw e;
+    if (typeof e === "object" && e && "code" in e && e.code === "notFound") {
+      return { path, revision: null };
     }
-    revision = null;
+    throw e;
   }
-  return { path, revision };
+  const destination = path;
+  if (
+    (await ask("Replace existing file?", path, ["Replace", "Cancel"], {
+      action: {
+        choice: "Replace",
+        label: "Saving…",
+        run: () => replace(destination, disk.revision),
+      },
+    })) !== "Replace"
+  ) {
+    return;
+  }
+  return { path, revision: disk.revision, saved: true };
 }
 
 async function persistDocument(
@@ -1087,8 +1106,8 @@ async function saveDocument(
     return;
   }
   await queueDocumentOperation(id, async () => {
-    let doc = useApp.getState().docs[id];
-    let m = models.get(id);
+    const doc = useApp.getState().docs[id];
+    const m = models.get(id);
     if (resolution) {
       checkConflictContext(resolution.context);
     }
@@ -1118,27 +1137,45 @@ async function saveDocument(
       }
       revision = context.revision;
     }
+    const write = async (destination: string, expectedRevision: Doc["revision"]) => {
+      const currentDoc = useApp.getState().docs[id];
+      if (!currentDoc || models.get(id) !== m) {
+        throw new Error("The document changed before it could be saved.");
+      }
+      if (
+        !resolution &&
+        useApp.getState().settings["editor.formatOnSave"] === true &&
+        canFormat(currentDoc.language)
+      ) {
+        try {
+          await formatModel(m);
+        } catch (e) {
+          notify(`Formatting failed; saving the current buffer: ${errorMessage(e)}`);
+        }
+      }
+      await persistDocument(
+        id,
+        useApp.getState().docs[id],
+        m,
+        destination,
+        expectedRevision,
+        saveAs,
+        autoSaveMode,
+        resolution,
+      );
+    };
     if (!path || saveAs) {
-      const destination = await selectSaveDestination(id);
+      const destination = await selectSaveDestination(id, write);
       if (!destination) {
+        return;
+      }
+      if (destination.saved) {
         return;
       }
       path = destination.path;
       revision = destination.revision;
     }
-    if (
-      !resolution &&
-      useApp.getState().settings["editor.formatOnSave"] === true &&
-      canFormat(doc.language)
-    ) {
-      try {
-        await formatModel(m);
-      } catch (e) {
-        notify(`Formatting failed; saving the current buffer: ${errorMessage(e)}`);
-      }
-      doc = useApp.getState().docs[id];
-    }
-    await persistDocument(id, doc, m, path, revision, saveAs, autoSaveMode, resolution);
+    await write(path, revision);
   });
 }
 
@@ -1172,12 +1209,23 @@ export async function confirmDocumentClose(id: string): Promise<boolean> {
       `Save changes to ${doc.name}?`,
       "Your changes will be lost if you do not save them.",
       ["Save", "Don't Save", "Cancel"],
+      {
+        action: {
+          choice: "Save",
+          label: "Saving…",
+          run: async () => {
+            await save(id);
+            if (useApp.getState().docs[id]?.dirty || !useApp.getState().docs[id]?.path) {
+              return false;
+            }
+          },
+        },
+      },
     );
     if (!answer || answer === "Cancel") {
       return false;
     }
     if (answer === "Save") {
-      await save(id);
       if (useApp.getState().docs[id]?.dirty || !useApp.getState().docs[id]?.path) {
         return false;
       }

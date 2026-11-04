@@ -43,11 +43,16 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 vi.mock("../core/bridge", () => ({ desktop: true, call: vi.fn(), errorMessage: String }));
 vi.mock("../core/workspaceTrust", () => ({ trustedCall: vi.fn(), manageWorkspaceTrust: vi.fn() }));
-vi.mock("../components/dialog", () => ({ ask: vi.fn() }));
+const dialogResponses = vi.hoisted(() => ({ ask: vi.fn() }));
+vi.mock("../components/dialog", () => ({
+  ask: async (...args: Parameters<typeof import("../components/dialog").ask>) =>
+    completeDialogAction(await dialogResponses.ask(...args), args[3]),
+}));
 
 import { call } from "../core/bridge";
 import { trustedCall } from "../core/workspaceTrust";
-import { ask } from "../components/dialog";
+import { completeDialogAction } from "../test/dialogActions";
+const { ask } = dialogResponses;
 import { useApp } from "../store/store";
 import { addSplit, addTab, patchPane, useTerminal } from "./state";
 import {
@@ -143,6 +148,38 @@ describe("package terminal commands", () => {
 });
 
 describe("terminal close requests", () => {
+  it.each([false, true])(
+    "waits for backend closure and retains the pane on failure (%s)",
+    async (fails) => {
+      const id = await start();
+      const pending = deferred<void>();
+      vi.mocked(ask).mockResolvedValue("Close Terminal");
+      vi.mocked(call).mockImplementation(async (command) => {
+        if (command === "terminal_has_child_processes") {
+          return true;
+        }
+        if (command === "terminal_close") {
+          await pending.promise;
+          if (fails) {
+            throw new Error("Close failed");
+          }
+        }
+        return undefined;
+      });
+      const closing = closePane(id);
+      await vi.waitFor(() =>
+        expect(call).toHaveBeenCalledWith("terminal_close", { id: "session-1" }),
+      );
+      expect(hasPane(id)).toBe(true);
+      const result = fails
+        ? expect(closing).rejects.toThrow("Close failed")
+        : expect(closing).resolves.toBeUndefined();
+      pending.resolve();
+      await result;
+      expect(hasPane(id)).toBe(fails);
+    },
+  );
+
   it("waits for a starting shell before checking its child processes", async () => {
     const created = deferred<unknown>();
     vi.mocked(trustedCall).mockReturnValueOnce(created.promise as never);

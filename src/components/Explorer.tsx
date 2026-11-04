@@ -605,12 +605,12 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
                 drop.items,
                 {
                   plan: (index) => call<ExternalCopyPlan>("plan_external_copy", { ...args, index }),
-                  confirm: (_item, plan) =>
+                  confirm: (_item, plan, copy) =>
                     ask(
                       `Replace '${basename(plan.destination)}'?`,
                       `An item with this name already exists in ${pathTitle(args.targetDirectory)}.\n${plan.directory ? "The existing folder and all its contents will be replaced." : "Its existing contents will be replaced."}`,
                       ["Replace", "Skip", "Cancel"],
-                      { signal },
+                      { signal, action: { choice: "Replace", label: "Copying…", run: copy } },
                     ),
                   copy: async (index, plan) => {
                     executed = true;
@@ -733,46 +733,75 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
         return;
       }
       const question = moveQuestion(moves, base, event.target.directoryPath);
-      const choice = await ask(question.title, "", ["Move", "Cancel"], {
+      const remaining = new Set(planned.map((move) => move.from));
+      await ask(question.title, "", ["Move", "Cancel"], {
         items: question.items,
         signal: abort.signal,
+        action: {
+          choice: "Move",
+          label: "Moving…",
+          run: async () => {
+            if (abort.signal.aborted || rootRef.current !== base) {
+              throw new Error("The workspace changed. Try again.");
+            }
+            moveError = undefined;
+            const pending = planned.filter((move) => remaining.has(move.from));
+            const pendingArgs = moveArguments(base, pending, event.target.directoryPath);
+            const pendingMoves = await call<FileMove[]>("plan_file_moves", pendingArgs);
+            try {
+              moveExecuting.current = true;
+              releaseDocuments = await beginDocumentMove(pendingMoves);
+              if (abort.signal.aborted) {
+                return;
+              }
+              const report = await call<MoveReport>("move_files", pendingArgs);
+              for (const moved of report.moved) {
+                const from = relative(moved.from, base);
+                for (const source of remaining) {
+                  if (source.replace(/\/$/, "") === from) {
+                    remaining.delete(source);
+                  }
+                }
+              }
+              changedPaths = [
+                ...(changedPaths ?? []),
+                ...report.moved.flatMap((move) => [
+                  relative(move.from, base),
+                  relative(move.to, base),
+                ]),
+              ];
+              // Always rebind successful disk moves, including a partially failed batch.
+              await renameDocuments(report.moved);
+              if (!abort.signal.aborted && report.moved.length) {
+                const operations = report.moved.map((move) => {
+                  const from = relative(move.from, base);
+                  const directory =
+                    model.getItem(from)?.isDirectory() ??
+                    planned.some((p) => p.from === from + "/");
+                  return {
+                    type: "move" as const,
+                    from: from + (directory ? "/" : ""),
+                    to: relative(move.to, base) + (directory ? "/" : ""),
+                  };
+                });
+                pendingMoveSelection.current = operations.map((op) => op.to);
+                model.batch(operations);
+                revealPending.current = false;
+              }
+              if (report.failed.length) {
+                moveError = new Error(report.failed.map((failure) => failure.message).join("\n"));
+                throw moveError;
+              }
+            } catch (error) {
+              moveError = error;
+              throw error;
+            } finally {
+              releaseDocuments?.(moveError);
+              releaseDocuments = undefined;
+            }
+          },
+        },
       });
-      if (choice !== "Move" || abort.signal.aborted) {
-        return;
-      }
-      moveExecuting.current = true;
-      releaseDocuments = await beginDocumentMove(moves);
-      if (abort.signal.aborted) {
-        return;
-      }
-      const report = await call<MoveReport>("move_files", args);
-      changedPaths = report.moved.flatMap((move) => [
-        relative(move.from, base),
-        relative(move.to, base),
-      ]);
-      // Always rebind successful disk moves, including a partially failed batch.
-      await renameDocuments(report.moved);
-      if (!abort.signal.aborted && report.moved.length) {
-        const operations = report.moved.map((move) => {
-          const from = relative(move.from, base);
-          const directory =
-            model.getItem(from)?.isDirectory() ?? planned.some((p) => p.from === from + "/");
-          return {
-            type: "move" as const,
-            from: from + (directory ? "/" : ""),
-            to: relative(move.to, base) + (directory ? "/" : ""),
-          };
-        });
-        pendingMoveSelection.current = operations.map((op) => op.to);
-        model.batch(operations);
-        revealPending.current = false;
-      }
-      if (report.failed.length) {
-        moveError = new Error(report.failed.map((failure) => failure.message).join("\n"));
-        notify(
-          `Moved ${report.moved.length} item(s). The remaining items were not moved.\n${report.failed.map((f) => "".concat(relative(f.path, base), ": ").concat(f.message)).join("\n")}`,
-        );
-      }
     } catch (e) {
       moveError = e;
       if (!abort.signal.aborted) {
@@ -1419,7 +1448,15 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
                   key={kind}
                   disabled={
                     !context?.path &&
-                    ["cut", "copy", "fileName", "rename", "delete", "reveal"].includes(kind)
+                    [
+                      "cut",
+                      "copy",
+                      "fileName",
+                      "relativePath",
+                      "rename",
+                      "delete",
+                      "reveal",
+                    ].includes(kind)
                   }
                   onClick={() => void action(kind, context?.path ?? "")}
                 >

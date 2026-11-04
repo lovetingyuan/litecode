@@ -44,6 +44,7 @@ import {
   rememberWorkspaceTrust,
 } from "./workspaceTrust";
 import { checkForUpdates } from "./updates";
+import { ask } from "../components/dialog";
 import { matchesWhen, normalizeKey, resolveBinding } from "../utils/keybindings";
 import { completeSettings, parseConfiguration, updateSetting } from "../utils/settings";
 import { terminalSelections, useTerminal } from "../terminal/state";
@@ -644,6 +645,21 @@ export const commands: Command[] = [
       }
     },
   },
+  {
+    id: "workbench.action.quit",
+    label: "Exit",
+    menu: "File",
+    run: async () => {
+      const { getAllWindows, getCurrentWindow } = await import("@tauri-apps/api/window");
+      const current = getCurrentWindow();
+      const windows = await getAllWindows();
+      // Keep this window alive until every other window has received its close request.
+      await Promise.all(
+        windows.filter((window) => window.label !== current.label).map((window) => window.close()),
+      );
+      await current.close();
+    },
+  },
   { id: "undo", label: "Undo", key: "Ctrl+Z", menu: "Edit", run: trigger("undo") },
   { id: "redo", label: "Redo", key: "Ctrl+Y", menu: "Edit", run: trigger("redo") },
   {
@@ -935,10 +951,18 @@ export const commands: Command[] = [
     label: "About LiteCode",
     menu: "Help",
     run: () =>
-      setApp({
-        notice: `LiteCode ${__APP_VERSION__} · ${__GIT_HASH__}`,
-        noticeLink: "https://github.com/lovetingyuan/litecode",
-      }),
+      ask(
+        "About LiteCode",
+        `LiteCode ${__APP_VERSION__} · ${__GIT_HASH__}`,
+        ["Close"],
+        {
+          defaultChoice: "Close",
+          links: [
+            { label: "Homepage", url: "https://litecode.tingyuan.in" },
+            { label: "GitHub", url: "https://github.com/lovetingyuan/litecode" },
+          ],
+        },
+      ),
   },
   {
     id: "litecode.openLogsFolder",

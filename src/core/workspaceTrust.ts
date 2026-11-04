@@ -54,17 +54,25 @@ export async function manageWorkspaceTrust(root = useApp.getState().root) {
     "Workspace Trust",
     `Only trust folders from authors you trust. Terminals, language services and formatters can execute code from this folder.\n\n${root}`,
     ["Restricted Mode", "Trust Workspace", "Cancel"],
+    {
+      action: {
+        choice: ["Restricted Mode", "Trust Workspace"],
+        label: "Applying…",
+        run: async (choice) => {
+          if (useApp.getState().root !== root) {
+            throw new Error("The workspace changed. Try again.");
+          }
+          const trusted = choice === "Trust Workspace";
+          await call("set_workspace_trust", { expectedRoot: root, trusted });
+          rememberWorkspaceTrust(root, !trusted);
+        },
+      },
+    },
   );
   if (!choice || choice === "Cancel" || useApp.getState().root !== root) {
     return;
   }
   const trusted = choice === "Trust Workspace";
-  await call("set_workspace_trust", { expectedRoot: root, trusted });
-  if (trusted) {
-    restricted.delete(root);
-  } else {
-    restricted.add(root);
-  }
   return trusted;
 }
 
@@ -82,7 +90,19 @@ function requestTrust(root: string) {
       "Do you trust the authors of this folder?",
       `Terminals, language services and formatters can execute code from this folder. Restricted Mode keeps text editing available.\n\n${root}`,
       ["Restricted Mode", "Trust Workspace"],
-      { signal: controller.signal },
+      {
+        signal: controller.signal,
+        action: {
+          choice: "Trust Workspace",
+          label: "Applying…",
+          run: async () => {
+            if (controller.signal.aborted || useApp.getState().root !== root) {
+              return false;
+            }
+            await call("set_workspace_trust", { expectedRoot: root, trusted: true });
+          },
+        },
+      },
     );
     if (controller.signal.aborted || useApp.getState().root !== root) {
       return false;
@@ -91,7 +111,6 @@ function requestTrust(root: string) {
       restricted.add(root);
       return false;
     }
-    await call("set_workspace_trust", { expectedRoot: root, trusted: true });
     return true;
   })().finally(() => prompts.delete(root));
   prompts.set(root, { controller, pending });
@@ -110,7 +129,19 @@ function requestFormatterTrust(root: string | null, directory: string, path: unk
       "Trust formatters from this folder?",
       `Formatters and their configuration can execute code with your user permissions. Only approve folders from authors you trust. This permission lasts for this window and workspace context.\n\n${directory}`,
       ["Trust Formatters", "Cancel"],
-      { signal: controller.signal },
+      {
+        signal: controller.signal,
+        action: {
+          choice: "Trust Formatters",
+          label: "Applying…",
+          run: async () => {
+            if (controller.signal.aborted || useApp.getState().root !== root) {
+              return false;
+            }
+            await call("trust_formatter", { path: path ?? null, expectedRoot: root, directory });
+          },
+        },
+      },
     );
     if (
       choice !== "Trust Formatters" ||
@@ -119,7 +150,6 @@ function requestFormatterTrust(root: string | null, directory: string, path: unk
     ) {
       return false;
     }
-    await call("trust_formatter", { path: path ?? null, expectedRoot: root, directory });
     return !controller.signal.aborted && useApp.getState().root === root;
   })().finally(() => prompts.delete(key));
   prompts.set(key, { controller, pending });

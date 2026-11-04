@@ -551,7 +551,7 @@ export function GitView() {
                   return (
                     <div
                       key={`${b.remote}:${b.name}`}
-                      className={`git-branch-row flex items-center gap-[5px] min-h-[29px] ${gitStyles["git-branch-row"]}`}
+                      className={`git-branch-row flex items-center gap-[6px] min-h-[29px] ${gitStyles["git-branch-row"]}`}
                     >
                       <button
                         title={b.name}
@@ -565,7 +565,7 @@ export function GitView() {
                         {b.worktree && <small>worktree</small>}
                       </button>
                       <div
-                        className={`git-branch-actions flex items-center shrink-0 gap-[1px] opacity-[0] pointer-events-none ${gitStyles["git-branch-actions"]}`}
+                        className={`git-branch-actions flex items-center shrink-0 gap-[2px] ${gitStyles["git-branch-actions"]}`}
                       >
                         <IconButton
                           icon="add"

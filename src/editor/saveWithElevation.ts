@@ -18,11 +18,27 @@ export async function saveWithElevation(
     ) {
       throw error;
     }
+    let revision: string | undefined;
     const answer = await ask(
       "Administrator permission required",
       `Unable to save to:\n${request.path}\n\nSave this file as administrator? Windows will ask for permission.`,
       ["Save as Administrator", "Cancel"],
-      { defaultChoice: "Cancel" },
+      {
+        defaultChoice: "Cancel",
+        action: {
+          choice: "Save as Administrator",
+          label: "Saving…",
+          run: async () => {
+            if (!options.isCurrent()) {
+              throw {
+                code: "stale",
+                message: "The document changed while awaiting confirmation. Save again.",
+              };
+            }
+            revision = await call<string>("save_document", { ...request, elevate: true });
+          },
+        },
+      },
     );
     if (answer !== "Save as Administrator") {
       throw {
@@ -30,12 +46,12 @@ export async function saveWithElevation(
         message: "Administrator save cancelled. The file has not been saved.",
       };
     }
-    if (!options.isCurrent()) {
+    if (revision === undefined) {
       throw {
-        code: "stale",
-        message: "The document changed while awaiting confirmation. Save again.",
+        code: "io",
+        message: "The file has not been saved. Save again.",
       };
     }
-    return call<string>("save_document", { ...request, elevate: true });
+    return revision;
   }
 }

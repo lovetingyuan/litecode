@@ -178,7 +178,10 @@ export async function cancelGitOperation(repository: string): Promise<boolean> {
   return requestId ? call<boolean>("git_cancel", { requestId }) : false;
 }
 
-function confirmGitOperation(request: GitOperation): Promise<boolean> | null {
+function confirmGitOperation(
+  request: GitOperation,
+  run: () => Promise<void>,
+): Promise<boolean> | null {
   if (!["discard", "deleteBranch", "abort"].includes(request.kind)) {
     return null;
   }
@@ -189,7 +192,10 @@ function confirmGitOperation(request: GitOperation): Promise<boolean> | null {
           "Discard changes?",
           "Tracked files will be restored from the index, preserving staged changes. Untracked files will be moved to the Recycle Bin. Unsaved edits to these files will also be discarded.",
           ["Discard Changes", "Cancel"],
-          { items: request.files.map((f) => f.path) },
+          {
+            items: request.files.map((f) => f.path),
+            action: { choice: "Discard Changes", label: "Discarding…", run },
+          },
         )) !== "Discard Changes"
       ) {
         return false;
@@ -201,6 +207,7 @@ function confirmGitOperation(request: GitOperation): Promise<boolean> | null {
         "Delete branch?",
         `Delete local branch “${request.branch}”? Git will refuse if it is in use or not fully merged.`,
         ["Delete Branch", "Cancel"],
+        { action: { choice: "Delete Branch", label: "Deleting…", run } },
       )) !== "Delete Branch"
     ) {
       return false;
@@ -211,6 +218,7 @@ function confirmGitOperation(request: GitOperation): Promise<boolean> | null {
         "Abort operation?",
         "Abort the current merge or rebase and restore the pre-operation state?",
         ["Abort", "Cancel"],
+        { action: { choice: "Abort", label: "Aborting…", run } },
       )) !== "Abort"
     ) {
       return false;
@@ -220,31 +228,48 @@ function confirmGitOperation(request: GitOperation): Promise<boolean> | null {
   })();
 }
 
-async function saveBeforeGitOperation(dirty: Doc[], request: GitOperation) {
-  if (
+async function saveBeforeGitOperation(
+  dirty: Doc[],
+  request: GitOperation,
+  run: () => Promise<void>,
+) {
+  return (
     (await ask(
       "Save files before Git operation?",
       "Save the affected files before continuing.",
       ["Save and Continue", "Cancel"],
-      { items: dirty.map((d) => d.path!) },
-    )) !== "Save and Continue"
-  ) {
-    return false;
-  }
-  for (const doc of dirty) {
-    await save(doc.id);
-    if (useApp.getState().docs[doc.id]?.dirty) {
-      return false;
-    }
-  }
-  const confirmation = confirmGitOperation(request);
-  if (confirmation) {
-    return await confirmation;
-  }
-  return true;
+      {
+        items: dirty.map((d) => d.path!),
+        action: {
+          choice: "Save and Continue",
+          label: "Working…",
+          run: async () => {
+            for (const doc of dirty) {
+              await save(doc.id);
+              if (useApp.getState().docs[doc.id]?.dirty) {
+                throw new Error("The file has not been saved. Save again or cancel.");
+              }
+            }
+            const confirmation = confirmGitOperation(request, run);
+            if (confirmation) {
+              if (!(await confirmation)) {
+                throw new Error("Git operation cancelled.");
+              }
+            } else {
+              await run();
+            }
+          },
+        },
+      },
+    )) === "Save and Continue"
+  );
 }
 
-function prepareGitOperation(repository: string, request: GitOperation): Promise<boolean> | null {
+function prepareGitOperation(
+  repository: string,
+  request: GitOperation,
+  run: () => Promise<void>,
+): Promise<boolean> | null {
   const changesWorktree = ["pull", "switch", "createBranch", "continue", "abort"].includes(
     request.kind,
   );
@@ -261,9 +286,9 @@ function prepareGitOperation(repository: string, request: GitOperation): Promise
   );
 
   if (dirty.length) {
-    return saveBeforeGitOperation(dirty, request);
+    return saveBeforeGitOperation(dirty, request, run);
   }
-  return confirmGitOperation(request);
+  return confirmGitOperation(request, run);
 }
 
 function markDiscardedDocuments(
@@ -298,30 +323,36 @@ export async function runGitOperation(repository: string, request: GitOperation)
     return false;
   }
   let started = false;
+  let completed = false;
   const busy = request.kind === "pull" && request.rebase ? "pullRebase" : request.kind;
   setApp((s) => ({ gitBusy: { ...s.gitBusy, [repository]: busy } }));
   try {
-    const preparation = prepareGitOperation(repository, request);
-    if (preparation && !(await preparation)) {
-      return false;
+    const run = async () => {
+      if (
+        useApp.getState().root !== context.expectedRoot ||
+        (branchOperation && !validBranchContext())
+      ) {
+        throw new Error("The repository changed. Refresh and try again.");
+      }
+      const versions = new Map(
+        Object.values(useApp.getState().docs).map((doc) => [doc.id, doc.version]),
+      );
+      started = true;
+      const requestId = crypto.randomUUID();
+      activeGitOperations.set(repository, requestId);
+      await trustedCall<string>("git_operate", { ...context, requestId, request });
+      if (request.kind === "discard") {
+        markDiscardedDocuments(repository, request, versions);
+      }
+      completed = true;
+    };
+    const preparation = prepareGitOperation(repository, request, run);
+    if (preparation) {
+      await preparation;
+    } else {
+      await run();
     }
-    if (
-      useApp.getState().root !== context.expectedRoot ||
-      (branchOperation && !validBranchContext())
-    ) {
-      return false;
-    }
-    const versions = new Map(
-      Object.values(useApp.getState().docs).map((doc) => [doc.id, doc.version]),
-    );
-    started = true;
-    const requestId = crypto.randomUUID();
-    activeGitOperations.set(repository, requestId);
-    await trustedCall<string>("git_operate", { ...context, requestId, request });
-    if (request.kind === "discard") {
-      markDiscardedDocuments(repository, request, versions);
-    }
-    return true;
+    return completed;
   } catch (error) {
     if (useApp.getState().root === context.expectedRoot) {
       notify(errorMessage(error));

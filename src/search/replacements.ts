@@ -626,37 +626,40 @@ export function recoverInterruptedReplacements() {
   return serial(async () => {
     const records = await call<Recovery[]>("replacement_recovery");
     for (const record of records) {
-      const choice = await ask(
+      await ask(
         "Interrupted Workspace Replacement",
         "File snapshots and operation records have been preserved. Restoring the previous state will check for external file changes.",
         ["Later", "Restore Previous State", "Keep Current State"],
-        { items: record.paths, itemsLabel: "Affected files" },
+        {
+          items: record.paths,
+          itemsLabel: "Affected files",
+          action: {
+            choice: ["Restore Previous State", "Keep Current State"],
+            label: "Recovering…",
+            retry: false,
+            run: async (choice) => {
+              if (choice !== "Keep Current State") {
+                checkRoot(record.root);
+                restoreRecoveryBuffers(record);
+                await checkpoint();
+                checkBuffers(record.buffers, true, true);
+              }
+              const report = await call<Report>("recover_replacement", {
+                transactionId: record.transactionId,
+                keep: choice === "Keep Current State",
+              });
+              if (!report.complete) {
+                throw new Error(failure(report));
+              }
+              if (choice !== "Keep Current State") {
+                await finishRecoveredReplacement(record);
+              }
+              clearRecoveredReplacement(record, choice);
+              notify("Recovery record processed. Backups have been retained.");
+            },
+          },
+        },
       );
-      if (!choice || choice === "Later") {
-        continue;
-      }
-      try {
-        if (choice !== "Keep Current State") {
-          checkRoot(record.root);
-          restoreRecoveryBuffers(record);
-          await checkpoint();
-          checkBuffers(record.buffers, true, true);
-        }
-        const report = await call<Report>("recover_replacement", {
-          transactionId: record.transactionId,
-          keep: choice === "Keep Current State",
-        });
-        if (!report.complete) {
-          throw new Error(failure(report));
-        }
-        if (choice !== "Keep Current State") {
-          await finishRecoveredReplacement(record);
-        }
-        clearRecoveredReplacement(record, choice);
-        notify("Recovery record processed. Backups have been retained.");
-      } catch (error) {
-        notify(errorMessage(error) + "\nRecovery is incomplete. Backups have been retained.");
-      }
     }
   });
 }

@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitInfo, GitRepository } from "../types/types";
 
-vi.mock("../components/dialog", () => ({ input: vi.fn() }));
+const dialogResponses = vi.hoisted(() => ({ input: vi.fn() }));
+vi.mock("../components/dialog", () => ({
+  input: async (...args: Parameters<typeof import("../components/dialog").input>) => {
+    const value = await dialogResponses.input(...args);
+    if (value) {
+      await args[2]?.run(value);
+    }
+    return value;
+  },
+}));
 const environment = vi.hoisted(() => ({ desktop: true }));
 vi.mock("../core/bridge", () => environment);
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: vi.fn() }));
@@ -15,7 +24,7 @@ vi.mock("./git", () => ({
       .gitState.repositories?.find((r) => r.path === useApp.getState().gitRepository),
 }));
 
-import { input } from "../components/dialog";
+const { input } = dialogResponses;
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { setApp, useApp } from "../store/store";
 import { readGitInfo, runGitOperation } from "./git";
@@ -77,6 +86,7 @@ beforeEach(() => {
   });
   vi.mocked(readGitInfo).mockResolvedValue(details([local("main", { current: true }), remote]));
   vi.mocked(input).mockResolvedValue("child");
+  vi.mocked(runGitOperation).mockResolvedValue(true);
 });
 
 describe("branch targets", () => {
@@ -121,7 +131,11 @@ describe("branch operations", () => {
   it.each([local("feature/base"), remote])("creates and switches from $name", async (branch) => {
     vi.mocked(readGitInfo).mockResolvedValue(details([branch]));
     await createBranch(repository.path, branch);
-    expect(input).toHaveBeenCalledWith(`New branch from ${branch.name}`);
+    expect(input).toHaveBeenCalledWith(
+      `New branch from ${branch.name}`,
+      "",
+      expect.objectContaining({ label: "Creating…" }),
+    );
     expect(runGitOperation).toHaveBeenCalledWith(repository.path, {
       kind: "createBranch",
       name: "child",
@@ -158,7 +172,11 @@ describe("branch operations", () => {
   it("prompts for a different name when the local name belongs to another branch", async () => {
     vi.mocked(readGitInfo).mockResolvedValue(details([remote, local("feature/demo")]));
     await switchBranch(repository.path, remote, vi.fn());
-    expect(input).toHaveBeenCalledWith(expect.stringContaining("already exists"));
+    expect(input).toHaveBeenCalledWith(
+      expect.stringContaining("already exists"),
+      "",
+      expect.objectContaining({ label: "Creating…" }),
+    );
     expect(runGitOperation).toHaveBeenCalledWith(repository.path, {
       kind: "createBranch",
       name: "child",
@@ -242,15 +260,14 @@ describe("branch operations", () => {
         }
         return "child";
       });
-      await createBranch(repository.path, remote);
+      await expect(createBranch(repository.path, remote)).rejects.toThrow("repository changed");
       expect(runGitOperation).not.toHaveBeenCalled();
     },
   );
   it("rejects a deleted source after the name prompt", async () => {
     vi.mocked(readGitInfo).mockResolvedValue(details([]));
-    await createBranch(repository.path, remote);
+    await expect(createBranch(repository.path, remote)).rejects.toThrow("no longer exists");
     expect(runGitOperation).not.toHaveBeenCalled();
-    expect(useApp.getState().notice).toContain("no longer exists");
   });
   it("copies the full remote name and reports success", async () => {
     await copyBranchName(remote);

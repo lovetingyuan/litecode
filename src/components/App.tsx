@@ -45,6 +45,7 @@ import { rememberWorkspaceTrust } from "../core/workspaceTrust";
 import { isTextView } from "../utils/media";
 import { MediaStatus } from "./MediaStatus";
 import { HttpServiceStatus } from "./HttpServiceStatus";
+import { ResourceStatus } from "./ResourceStatus";
 import { GitLineStatus } from "./GitLineStatus";
 import { useExternalDrop } from "../hooks/useExternalDrop";
 import { recoverInterruptedReplacements } from "../search/replacements";
@@ -379,12 +380,7 @@ export default function App() {
         inert={openingWorkspace}
       >
         <div className="status-left flex items-stretch min-w-0">
-          <span
-            className={`remote-indicator flex items-center text-foreground-strong px-[10px] mr-[5px] ${import.meta.env.DEV ? "bg-remote-development" : "bg-button"}`}
-            title={import.meta.env.DEV ? "Local window (Development)" : "Local window"}
-          >
-            <Icon name="remote" />
-          </span>
+          <ResourceStatus />
           {s.root && (
             <Popover.Root key={s.root}>
               <Popover.Trigger
@@ -547,7 +543,7 @@ export default function App() {
             <UpdateButton />
           </div>
           <div
-            className={`title-layout ml-0 flex mr-2 ${workbenchStyles["title-layout"]}`}
+            className={`title-layout ml-0 flex gap-1 mr-2 ${workbenchStyles["title-layout"]}`}
             inert={openingWorkspace}
           >
             <IconButton
