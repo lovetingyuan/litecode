@@ -8,6 +8,7 @@
     "postinstall": "node tools/patch-trees-scroll.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:local": "tauri build --config \"{\\\"bundle\\\":{\\\"createUpdaterArtifacts\\\":false}}\"",
     "build:tools": "node tools/build-tools.mjs",
     "tauri": "tauri",
     "lint": "oxlint --deny-warnings . && eslint --max-warnings 0 .",

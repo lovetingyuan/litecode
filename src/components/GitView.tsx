@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
 } from "react";
 import { Allotment, type AllotmentHandle } from "allotment";
 import { FileTree, useFileTree } from "@pierre/trees/react";
@@ -155,6 +156,15 @@ export function GitView() {
   const [cancelling, setCancelling] = useState(false);
   useEffect(() => setCancelling(false), [busy, repositoryPath]);
   const [branchPending, setBranchPending] = useState(false);
+  const [branchSearch, setBranchSearch] = useState("");
+  const [branchSearchOpen, setBranchSearchOpen] = useState(false);
+  useEffect(() => {
+    setBranchSearch("");
+    setBranchSearchOpen(false);
+  }, [root, repositoryPath, git.session]);
+  const branchQuery = branchSearch.trim().toLowerCase();
+  const visibleBranches =
+    info?.branches.filter((branch) => branch.name.toLowerCase().includes(branchQuery)) ?? [];
   const branchWorking = useRef(false);
   useEffect(() => {
     if (repositoryPath && selected !== repositoryPath) {
@@ -294,6 +304,32 @@ export function GitView() {
       "Select Local Tracking Branch",
       branches.map((b) => ({ id: b.name, label: b.name, description: b.upstream ?? undefined })),
     );
+  function closeEmptyBranchSearch() {
+    if (!branchQuery) {
+      setBranchSearchOpen(false);
+    }
+  }
+  function handleBranchSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setBranchSearch("");
+    }
+  }
+  const branchSearchControl = branchSearchOpen ? (
+    <input
+      autoFocus
+      className="w-full max-w-48 h-6"
+      placeholder="Search branches"
+      aria-label="Search branches"
+      value={branchSearch}
+      onChange={(event) => setBranchSearch(event.target.value)}
+      onBlur={closeEmptyBranchSearch}
+      onKeyDown={handleBranchSearchKeyDown}
+    />
+  ) : (
+    <IconButton icon="search" label="Search branches" onClick={() => setBranchSearchOpen(true)} />
+  );
   function renderGitContent() {
     let content;
     if (!root) {
@@ -521,82 +557,93 @@ export function GitView() {
                   className={`git-section-heading flex shrink-0 items-center min-h-7 bg-sidebar ${gitStyles["git-section-heading"]}`}
                 >
                   <h3>Branches</h3>
-                  <IconButton
-                    icon="add"
-                    label="Create Branch"
-                    disabled={branchDisabled}
-                    onClick={() => void branchAction(() => createBranch(repository.path))}
-                  />
+                  <div className="flex flex-1 min-w-0 items-center justify-end gap-1 ml-2">
+                    {branchSearchControl}
+                    <IconButton
+                      icon="add"
+                      label="Create Branch"
+                      disabled={branchDisabled}
+                      onClick={() => void branchAction(() => createBranch(repository.path))}
+                    />
+                  </div>
                 </div>
                 {!info && (
                   <p className="muted text-muted" role="status">
                     Loading branches…
                   </p>
                 )}
-                {info?.branches.map((b) => {
-                  const target = branchSwitchTarget(b, info.branches);
-                  const switchDisabled = branchDisabled || target.kind === "blocked";
-                  const switchToBranch = () =>
-                    branchAction(() => switchBranch(repository.path, b, chooseBranch));
-                  let branchIcon;
-                  if (b.remote) {
-                    branchIcon = "cloud";
-                  } else {
-                    if (b.current) {
-                      branchIcon = "check";
+                {info && branchQuery && visibleBranches.length === 0 && (
+                  <p className="muted text-muted" role="status">
+                    No matching branches.
+                  </p>
+                )}
+                {info &&
+                  visibleBranches.map((b) => {
+                    const target = branchSwitchTarget(b, info.branches);
+                    const switchDisabled = branchDisabled || target.kind === "blocked";
+                    const switchToBranch = () =>
+                      branchAction(() => switchBranch(repository.path, b, chooseBranch));
+                    let branchIcon;
+                    if (b.remote) {
+                      branchIcon = "cloud";
                     } else {
-                      branchIcon = "git-branch";
+                      if (b.current) {
+                        branchIcon = "check";
+                      } else {
+                        branchIcon = b.worktree ? "worktree" : "git-branch";
+                      }
                     }
-                  }
-                  return (
-                    <div
-                      key={`${b.remote}:${b.name}`}
-                      className={`git-branch-row flex items-center gap-[6px] min-h-[29px] ${gitStyles["git-branch-row"]}`}
-                    >
-                      <button
-                        title={b.name}
-                        aria-label={b.name}
-                        aria-current={b.current ? "true" : undefined}
-                        disabled={switchDisabled}
-                        onClick={() => void switchToBranch()}
-                      >
-                        <Icon name={branchIcon} />
-                        <span>{b.name}</span>
-                        {b.worktree && <small>worktree</small>}
-                      </button>
+                    return (
                       <div
-                        className={`git-branch-actions flex items-center shrink-0 gap-[2px] ${gitStyles["git-branch-actions"]}`}
+                        key={`${b.remote}:${b.name}`}
+                        className={`git-branch-row flex items-center gap-[6px] min-h-[29px] ${gitStyles["git-branch-row"]}`}
                       >
-                        <IconButton
-                          icon="add"
-                          label={`Create Branch from ${b.name}`}
-                          disabled={branchDisabled}
-                          onClick={() => void branchAction(() => createBranch(repository.path, b))}
-                        />
-                        <IconButton
-                          icon="copy"
-                          label={`Copy Branch Name ${b.name}`}
-                          onClick={() => void copyBranchName(b).catch(report)}
-                        />
-                        {!b.remote && (
+                        <button
+                          title={b.name}
+                          aria-label={b.name}
+                          aria-current={b.current ? "true" : undefined}
+                          disabled={switchDisabled}
+                          onClick={() => void switchToBranch()}
+                        >
+                          <Icon name={branchIcon} />
+                          <span>{b.name}</span>
+                          {b.worktree && <small>worktree</small>}
+                        </button>
+                        <div
+                          className={`git-branch-actions flex items-center shrink-0 gap-[2px] ${gitStyles["git-branch-actions"]}`}
+                        >
                           <IconButton
-                            icon="trash"
-                            label={`Delete Branch ${b.name}`}
-                            disabled={branchDisabled || b.current || b.worktree}
+                            icon="add"
+                            label={`Create Branch from ${b.name}`}
+                            disabled={branchDisabled}
                             onClick={() =>
-                              void branchAction(() =>
-                                runGitOperation(repository.path, {
-                                  kind: "deleteBranch",
-                                  branch: b.name,
-                                }),
-                              )
+                              void branchAction(() => createBranch(repository.path, b))
                             }
                           />
-                        )}
+                          <IconButton
+                            icon="copy"
+                            label={`Copy Branch Name ${b.name}`}
+                            onClick={() => void copyBranchName(b).catch(report)}
+                          />
+                          {!b.remote && (
+                            <IconButton
+                              icon="trash"
+                              label={`Delete Branch ${b.name}`}
+                              disabled={branchDisabled || b.current || b.worktree}
+                              onClick={() =>
+                                void branchAction(() =>
+                                  runGitOperation(repository.path, {
+                                    kind: "deleteBranch",
+                                    branch: b.name,
+                                  }),
+                                )
+                              }
+                            />
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             )}
           </>
