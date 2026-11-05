@@ -21,9 +21,31 @@ import {
 import { monaco } from "../editor/monaco";
 import type { SearchMatch, DiskDocument, Query } from "../types/types";
 import { isTextDocument } from "../utils/media";
+import { cancelReplacementPlan } from "./replacements";
 
-export function focusSearch() {
-  setTimeout(() => window.dispatchEvent(new Event("focus-search")), 0);
+export function focusSearch(showDetails = false) {
+  setTimeout(
+    () => window.dispatchEvent(new CustomEvent("focus-search", { detail: showDetails })),
+    0,
+  );
+}
+
+export function findInFolder(path: string) {
+  const search = searchSession();
+  if (!useApp.getState().root || !search) {
+    return;
+  }
+  // Character classes keep literal glob characters portable to Windows globset.
+  const directory = path
+    .replace(/\/$/, "")
+    .replace(/[*?[\]{},\s]/g, "[$&]")
+    .replace(/^!/, "{!}");
+  if (search.id === primarySearchId) {
+    cancelReplacementPlan();
+  }
+  setApp({ sidebar: "search", view: "editor" });
+  void runSearch({ ...search.query, include: directory ? `${directory}/**` : "" }, search.id);
+  focusSearch(true);
 }
 
 export function activateSearchTab(id: string) {

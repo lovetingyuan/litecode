@@ -52,6 +52,7 @@ import {
   closeSearchTab,
   createSearchTab,
   createSearchEditor,
+  findInFolder,
   replaceMatches,
   runSearch,
 } from "../search/search";
@@ -127,6 +128,42 @@ function emit(job: ReturnType<typeof request>, patch: Partial<SearchBatch> = {})
 }
 
 describe("Search sessions", () => {
+  it.each([
+    ["", ""],
+    ["src/", "src/**"],
+    ["src/components/", "src/components/**"],
+    ["src/[a],{b}*/", "src/[[]a[]][,][{]b[}][*]/**"],
+    ["!important/", "{!}important/**"],
+    [" spaced folder/", "[ ]spaced[ ]folder/**"],
+  ])("sets a literal directory scope for %j without starting an empty search", (path, include) => {
+    setApp({ root: "C:/project" });
+    findInFolder(path);
+    expect(searchSession()?.query.include).toBe(include);
+    expect(useApp.getState().sidebar).toBe("search");
+    expect(x.call).not.toHaveBeenCalled();
+  });
+
+  it("reuses the active search and rejects old directory results while preserving options", async () => {
+    setApp({ root: "C:/project" });
+    await runSearch(query("primary"), primarySearchId);
+    const primary = searchSession(primarySearchId);
+    const second = createSearchTab();
+    const options = { ...query("needle"), include: "old/**", exclude: "*.json", openOnly: true };
+    await runSearch(options, second);
+    const old = request(1);
+    findInFolder("src/");
+    await vi.waitFor(() =>
+      expect(x.call.mock.calls.filter(([c]) => c === "search_start")).toHaveLength(3),
+    );
+    emit(old);
+    expect(searchSession(second)?.results).toEqual([]);
+    expect(searchSession(second)?.query).toEqual({ ...options, include: "src/**" });
+    expect(useApp.getState().activeSearchId).toBe(second);
+    expect(useApp.getState().searchSessions).toHaveLength(2);
+    expect(searchSession(primarySearchId)).toBe(primary);
+    expect(x.call).toHaveBeenCalledWith("search_cancel", { requestId: old.requestId });
+  });
+
   it("routes concurrent batches, errors and limits to their own session while sharing history", async () => {
     const second = createSearchTab();
     await runSearch(query("first"), primarySearchId);

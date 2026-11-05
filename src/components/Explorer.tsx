@@ -72,6 +72,7 @@ import {
 import { explorerDragType } from "../explorer/explorerDrag";
 import { deleteInternalFiles, pasteInternalFiles } from "../explorer/documentFileOperations";
 import { gitConflictDecoration } from "../utils/gitStatus";
+import { findInFolder } from "../search/search";
 
 export { refreshTree } from "../explorer/workspaceTree";
 function moveArguments(
@@ -124,6 +125,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
     anchor: ComponentProps<typeof Menu.Positioner>["anchor"];
     close?: (options?: { restoreFocus?: boolean }) => void;
   } | null>(null);
+  const menuReturnsFocus = useRef(true);
   const [directoryVersion, setDirectoryVersion] = useState(0);
   const [revealTarget, setRevealTarget] = useState<{
     path: string;
@@ -224,6 +226,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
             anchor: context.anchorElement,
             close: (options) => context.close(options),
           });
+          menuReturnsFocus.current = true;
         },
         onClose: () => setContext(null),
       },
@@ -687,6 +690,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
         DOMRect.fromRect({ x: event.clientX, y: event.clientY, width: 1, height: 1 }),
     };
     // Base UI accepts a virtual anchor for the tree's empty area and workspace heading.
+    menuReturnsFocus.current = true;
     setContext({ path: "", anchor });
   }
   function clipboardKey(event: KeyboardEvent<HTMLElement>, path: string) {
@@ -1139,8 +1143,15 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
     );
     const full = join(root, path);
     const changedPaths: string[] = [];
-    context?.close?.({ restoreFocus: !["rename", "newFile", "newFolder"].includes(kind) });
+    menuReturnsFocus.current = kind !== "findInFolder";
+    context?.close?.({
+      restoreFocus: !["rename", "newFile", "newFolder", "findInFolder"].includes(kind),
+    });
     setContext(null);
+    if (kind === "findInFolder") {
+      findInFolder(path);
+      return;
+    }
     if (kind === "newFile" || kind === "newFolder") {
       await startCreation(kind, path);
       return;
@@ -1420,7 +1431,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
         open={!!context}
         onOpenChange={(open) => {
           if (!open) {
-            context?.close?.();
+            context?.close?.({ restoreFocus: menuReturnsFocus.current });
             setContext(null);
           }
         }}
@@ -1428,6 +1439,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
         <Menu.Portal>
           <Menu.Positioner className="z-90" anchor={context?.anchor} side="right" align="start">
             <Menu.Popup
+              finalFocus={() => menuReturnsFocus.current}
               className={`context-menu bg-editor text-foreground p-1 border border-strong rounded-[5px] min-w-[210px] z-[90] ${workbenchStyles["context-menu"]}`}
               data-file-tree-context-menu-root="true"
             >
@@ -1435,6 +1447,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
                 ["newFile", "New File…"],
                 ["newFolder", "New Folder…"],
                 ["reveal", "Reveal in File Explorer"],
+                ["findInFolder", "Find in Folder…"],
                 ["cut", "Cut"],
                 ["copy", "Copy"],
                 ["paste", "Paste"],
@@ -1443,26 +1456,31 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
                 ["relativePath", "Copy Relative Path"],
                 ["rename", "Rename…"],
                 ["delete", "Delete"],
-              ].map(([kind, label]) => (
-                <Menu.Item
-                  key={kind}
-                  disabled={
-                    !context?.path &&
-                    [
-                      "cut",
-                      "copy",
-                      "fileName",
-                      "relativePath",
-                      "rename",
-                      "delete",
-                      "reveal",
-                    ].includes(kind)
-                  }
-                  onClick={() => void action(kind, context?.path ?? "")}
-                >
-                  {label}
-                </Menu.Item>
-              ))}
+              ]
+                .filter(
+                  ([kind]) =>
+                    kind !== "findInFolder" || !context?.path || context.path.endsWith("/"),
+                )
+                .map(([kind, label]) => (
+                  <Menu.Item
+                    key={kind}
+                    disabled={
+                      !context?.path &&
+                      [
+                        "cut",
+                        "copy",
+                        "fileName",
+                        "relativePath",
+                        "rename",
+                        "delete",
+                        "reveal",
+                      ].includes(kind)
+                    }
+                    onClick={() => void action(kind, context?.path ?? "")}
+                  >
+                    {label}
+                  </Menu.Item>
+                ))}
             </Menu.Popup>
           </Menu.Positioner>
         </Menu.Portal>

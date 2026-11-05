@@ -114,14 +114,25 @@ fn split_globs(value: &str) -> Vec<&str> {
     let mut depth = 0_u32;
     let mut start = 0;
     let mut escaped = false;
+    let mut class_start = None;
     let mut result = vec![];
     for (i, ch) in value.char_indices() {
+        if let Some(first) = class_start {
+            if ch == ']' && i > first {
+                class_start = None;
+            }
+            continue;
+        }
         if escaped {
             escaped = false;
             continue;
         }
         match ch {
             '\\' => escaped = true,
+            '[' => {
+                let first = i + 1;
+                class_start = Some(first + usize::from(value[first..].starts_with(['!', '^'])));
+            }
             '{' => depth += 1,
             '}' => depth = depth.saturating_sub(1),
             ',' if depth == 0 => {
@@ -782,5 +793,26 @@ mod tests {
             split_globs("**/*.{ts,tsx}, src/{a,b}/** , *.json"),
             vec!["**/*.{ts,tsx}", "src/{a,b}/**", "*.json"]
         );
+    }
+
+    #[test]
+    fn folder_globs_keep_literal_characters_and_match_only_descendants() {
+        for (pattern, directory) in [
+            ("src/**", "src"),
+            ("src/[[]a[]][,][{]b[}][*]/**", "src/[a],{b}*"),
+            ("[}]a[,]b/**", "}a,b"),
+            ("{!}important/**", "!important"),
+            ("src/[?]/**", "src/?"),
+            ("[ ]spaced[ ]folder/**", " spaced folder"),
+        ] {
+            let list = format!("{pattern}, *.json");
+            assert_eq!(split_globs(&list), vec![pattern, "*.json"]);
+            let glob = globset::Glob::new(pattern).unwrap().compile_matcher();
+            assert!(glob.is_match(format!("{directory}/file.ts")));
+            assert!(glob.is_match(format!("{directory}/nested/file.ts")));
+            assert!(!glob.is_match(format!("other/{directory}/file.ts")));
+            assert!(!glob.is_match(format!("{directory}-other/file.ts")));
+        }
+        assert_eq!(split_globs("[!],]/**, *.ts"), vec!["[!],]/**", "*.ts"]);
     }
 }

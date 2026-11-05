@@ -178,9 +178,13 @@ function SearchPanel({ id }: Readonly<{ id: string }>) {
   const pendingSearch = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(pendingSearch.current), []);
   useEffect(() => {
-    const focus = () => {
+    const focus = (event: Event) => {
       if (useApp.getState().activeSearchId !== id) {
         return;
+      }
+      if (event instanceof CustomEvent && event.detail === true) {
+        setDetails(true);
+        resetSelection();
       }
       input.current?.focus();
       input.current?.select();
