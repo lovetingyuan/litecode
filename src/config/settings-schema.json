@@ -255,7 +255,7 @@
         "**/.DS_Store": true,
         "**/Thumbs.db": true
       },
-      "description": "File exclusion globs inherited by Ctrl+P. true enables a rule; false disables it. Supports when conditions for sibling files. Currently does not filter the file tree."
+      "description": "File exclusion globs inherited by Ctrl+P and full-text search. true enables a rule; false disables it. Supports when conditions for sibling files. Search applies these rules when Use Exclude Settings and Ignore Files is enabled. Currently does not filter the file tree."
     },
     "search.exclude": {
       "type": "object",
@@ -271,22 +271,22 @@
         ]
       },
       "default": { "**/node_modules": true, "**/bower_components": true, "**/*.code-search": true },
-      "description": "Ctrl+P exclusion globs, inheriting and overriding files.exclude. false disables the matching rule. Excluding open files requires matching their absolute paths, such as **/node_modules/**. Full-text search uses the search panel's exclusion patterns."
+      "description": "Search exclusion globs, inheriting and overriding files.exclude. false disables the matching rule. Full-text search applies these rules to disk and opened files when Use Exclude Settings and Ignore Files is enabled, even with files to include. Ctrl+P matches opened files directly; excluding them requires a matching path such as **/node_modules/**."
     },
     "search.useIgnoreFiles": {
       "type": "boolean",
       "default": true,
-      "description": "Apply workspace .gitignore and .ignore files to Ctrl+P."
+      "description": "Apply workspace ignore files to Ctrl+P and full-text search. Full-text search also requires Use Exclude Settings and Ignore Files."
     },
     "search.useGlobalIgnoreFiles": {
       "type": "boolean",
       "default": false,
-      "description": "Apply global Git ignore files to Ctrl+P. Requires search.useIgnoreFiles."
+      "description": "Apply global Git ignore files to Ctrl+P and full-text search. Requires search.useIgnoreFiles; full-text search also requires Use Exclude Settings and Ignore Files."
     },
     "search.useParentIgnoreFiles": {
       "type": "boolean",
       "default": false,
-      "description": "Apply ignore files from workspace parent directories to Ctrl+P. Requires search.useIgnoreFiles."
+      "description": "Apply ignore files from workspace parent directories to Ctrl+P and full-text search. Requires search.useIgnoreFiles; full-text search also requires Use Exclude Settings and Ignore Files."
     },
     "search.followSymlinks": {
       "type": "boolean",

@@ -1,11 +1,17 @@
+mod paths;
+#[cfg(test)]
+#[path = "search/scope_tests.rs"]
+mod scope_tests;
+
 use crate::sync::MutexExt;
 use crate::{
     error::{AppError, Result},
     state::{AppState, Mirror, SearchTask},
 };
+use paths::{CandidateFiles, PathBatch, PathFilter};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -87,7 +93,7 @@ fn add_arguments(command: &mut Command, query: &Query) {
         "--line-number",
         "--hidden",
         "--color=never",
-        "--glob=!.git",
+        "--no-config",
         "--max-filesize=20M",
     ]);
     if !query.case_sensitive {
@@ -101,12 +107,6 @@ fn add_arguments(command: &mut Command, query: &Query) {
     }
     if let Some(encoding) = &query.encoding {
         command.args(["--encoding", encoding]);
-    }
-    for glob in split_globs(&query.include) {
-        command.arg("--glob").arg(glob);
-    }
-    for glob in split_globs(&query.exclude) {
-        command.arg("--glob").arg(format!("!{glob}"));
     }
 }
 
@@ -249,6 +249,14 @@ async fn read_event(
     reader: &mut (impl AsyncBufRead + Unpin),
     task: &SearchTask,
 ) -> Result<Option<Vec<u8>>> {
+    read_record(reader, task, b'\n').await
+}
+
+async fn read_record(
+    reader: &mut (impl AsyncBufRead + Unpin),
+    task: &SearchTask,
+    delimiter: u8,
+) -> Result<Option<Vec<u8>>> {
     let mut bytes = vec![];
     loop {
         if task.cancelled.load(Ordering::Acquire) {
@@ -256,7 +264,7 @@ async fn read_event(
         }
         let mut bounded = (&mut *reader).take((MAX_EVENT_BYTES + 1 - bytes.len()) as u64);
         let read = tokio::select! {
-            read = bounded.read_until(b'\n', &mut bytes) => read?,
+            read = bounded.read_until(delimiter, &mut bytes) => read?,
             _ = tokio::time::sleep(Duration::from_millis(40)) => continue,
         };
         if bytes.len() > MAX_EVENT_BYTES {
@@ -265,7 +273,7 @@ async fn read_event(
                 "A search result exceeded 8 MiB. Narrow the query or exclude files with very long lines.",
             ));
         }
-        if read == 0 || bytes.last() == Some(&b'\n') {
+        if read == 0 || bytes.last() == Some(&delimiter) {
             return Ok((!bytes.is_empty()).then_some(bytes));
         }
     }
@@ -328,139 +336,268 @@ async fn read_stream_event(
     }
 }
 
-#[allow(clippy::too_many_arguments)] // One invocation shares the task's bounded output and cancellation state.
-async fn run_rg(
-    app: &tauri::AppHandle,
-    root: Option<&PathBuf>,
-    query: &Query,
-    mirror: Option<&Mirror>,
-    overlay: &HashSet<String>,
-    allowed: Option<&HashSet<String>>,
-    task: &SearchTask,
-    channel: &Channel<SearchBatch>,
-    batch: &mut SearchBatch,
-    count: &mut usize,
-) -> Result<()> {
-    let mut command = Command::new(rg_path(app));
-    add_arguments(&mut command, query);
-    command.arg("--").arg(crate::replacement::pattern(query));
-    if let Some(root) = root {
-        command.current_dir(root);
+struct SearchRun<'a> {
+    rg: &'a Path,
+    query: &'a Query,
+    task: &'a SearchTask,
+    channel: &'a Channel<SearchBatch>,
+    batch: &'a mut SearchBatch,
+    count: usize,
+}
+
+impl SearchRun<'_> {
+    fn command(&self) -> Command {
+        let mut command = Command::new(self.rg);
+        add_arguments(&mut command, self.query);
+        command
+            .arg("--")
+            .arg(crate::replacement::pattern(self.query));
+        command
     }
-    command.arg(if mirror.is_some() { "-" } else { "." });
-    command
-        .kill_on_drop(true)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    #[cfg(windows)]
-    command.creation_flags(0x08000000);
-    let mut child = command.spawn().map_err(|e| {
-        AppError::new(
-            "searchTool",
-            format!("Cannot start bundled ripgrep with PCRE2: {e}"),
-        )
-    })?;
-    if let Some(mirror) = mirror {
-        let mut stdin = child.stdin.take().unwrap();
-        let text = mirror.text.clone();
-        tokio::spawn(async move {
-            let _ = stdin.write_all(text.as_bytes()).await;
-        });
-    } else {
-        drop(child.stdin.take());
-    }
-    let stderr = child.stderr.take().unwrap();
-    let error_reader = tokio::spawn(async move {
-        let mut bytes = vec![];
-        let _ = stderr.take(16384).read_to_end(&mut bytes).await;
-        String::from_utf8_lossy(&bytes).to_string()
-    });
-    let mut reader = BufReader::new(child.stdout.take().unwrap());
-    let mut flush = tokio::time::interval(Duration::from_millis(40));
-    flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    loop {
-        let next = match read_stream_event(&mut reader, task, channel, batch, &mut flush).await {
-            Ok(next) => next,
-            Err(error) if error.code == "searchLimit" => {
-                batch.limited = true;
-                batch.errors.push(error.message);
-                let _ = child.kill().await;
-                break;
-            }
-            Err(error) => return Err(error),
-        };
-        if task.cancelled.load(Ordering::Acquire) {
-            let _ = child.kill().await;
-            break;
+
+    async fn run_rg(
+        &mut self,
+        root: Option<&Path>,
+        mirror: Option<&Mirror>,
+        files: &[String],
+    ) -> Result<()> {
+        let mut command = self.command();
+        if let Some(root) = root {
+            command.current_dir(root);
         }
-        let Some(line) = next else { break };
-        let value: serde_json::Value = serde_json::from_slice(&line)?;
-        let relative = value["data"]["path"]["text"]
-            .as_str()
-            .unwrap_or("")
-            .trim_start_matches(".\\")
-            .trim_start_matches("./");
-        let path = if let Some(m) = mirror {
-            m.path.clone().unwrap_or(m.id.clone())
+        if mirror.is_some() {
+            command.arg("-");
+        } else if files.is_empty() {
+            return Ok(());
         } else {
-            root.unwrap().join(relative).to_string_lossy().into_owned()
-        };
-        if mirror.is_none()
-            && (overlay.contains(&normalized(&path))
-                || allowed.is_some_and(|a| !a.contains(&normalized(&path))))
-        {
-            continue;
+            command.args(files);
         }
-        let matches = parse_matches(&value, &path, mirror, MAX_RESULTS.saturating_sub(*count));
-        for m in matches {
+        let Self {
+            task,
+            channel,
+            batch,
+            count,
+            ..
+        } = self;
+        command
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let mut child = command.spawn().map_err(|e| {
+            AppError::new(
+                "searchTool",
+                format!("Cannot start bundled ripgrep with PCRE2: {e}"),
+            )
+        })?;
+        if let Some(mirror) = mirror {
+            let mut stdin = child.stdin.take().unwrap();
+            let text = mirror.text.clone();
+            tokio::spawn(async move {
+                let _ = stdin.write_all(text.as_bytes()).await;
+            });
+        } else {
+            drop(child.stdin.take());
+        }
+        let stderr = child.stderr.take().unwrap();
+        let error_reader = tokio::spawn(async move {
+            let mut bytes = vec![];
+            let _ = stderr.take(16384).read_to_end(&mut bytes).await;
+            String::from_utf8_lossy(&bytes).to_string()
+        });
+        let mut reader = BufReader::new(child.stdout.take().unwrap());
+        let mut flush = tokio::time::interval(Duration::from_millis(40));
+        flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            let next = match read_stream_event(&mut reader, task, channel, batch, &mut flush).await
+            {
+                Ok(next) => next,
+                Err(error) if error.code == "searchLimit" => {
+                    batch.limited = true;
+                    batch.errors.push(error.message);
+                    let _ = child.kill().await;
+                    break;
+                }
+                Err(error) => return Err(error),
+            };
             if task.cancelled.load(Ordering::Acquire) {
                 let _ = child.kill().await;
                 break;
             }
-            *count += 1;
-            batch.matches.push(m);
-            if *count >= MAX_RESULTS {
-                batch.limited = true;
-                let _ = child.kill().await;
+            let Some(line) = next else { break };
+            let value: serde_json::Value = serde_json::from_slice(&line)?;
+            let relative = value["data"]["path"]["text"]
+                .as_str()
+                .unwrap_or("")
+                .trim_start_matches(".\\")
+                .trim_start_matches("./");
+            let path = if let Some(m) = mirror {
+                m.path.clone().unwrap_or(m.id.clone())
+            } else {
+                root.unwrap().join(relative).to_string_lossy().into_owned()
+            };
+            let matches = parse_matches(&value, &path, mirror, MAX_RESULTS.saturating_sub(*count));
+            for m in matches {
+                if task.cancelled.load(Ordering::Acquire) {
+                    let _ = child.kill().await;
+                    break;
+                }
+                *count += 1;
+                batch.matches.push(m);
+                if *count >= MAX_RESULTS {
+                    batch.limited = true;
+                    let _ = child.kill().await;
+                    break;
+                }
+                if batch.matches.len() >= 64 && !send_batch(task, channel, batch).await {
+                    task.cancelled.store(true, Ordering::Release);
+                    let _ = child.kill().await;
+                    return Ok(());
+                }
+            }
+            if batch.limited {
                 break;
             }
-            if batch.matches.len() >= 64 && !send_batch(task, channel, batch).await {
-                let _ = child.kill().await;
-                return Ok(());
+        }
+        let status = child.wait().await?;
+        let stderr = error_reader.await.unwrap_or_default();
+        if status.code().is_some_and(|c| c > 1)
+            && !task.cancelled.load(Ordering::Acquire)
+            && !batch.limited
+        {
+            batch.errors.push(if stderr.is_empty() {
+                format!("ripgrep exited with {status}")
+            } else {
+                stderr
+            });
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)] // Each scan shares one query's scope, documents, and streaming state.
+    async fn scan(
+        &mut self,
+        root: &Path,
+        filter_root: Option<&Path>,
+        filter: &PathFilter,
+        settings: &serde_json::Value,
+        documents: &HashMap<String, &Mirror>,
+        allowed: Option<&HashSet<String>>,
+        disk: bool,
+    ) -> Result<()> {
+        if self.task.cancelled.load(Ordering::Acquire) || self.batch.limited {
+            return Ok(());
+        }
+        let settings = paths::enumeration_settings(self.query, settings);
+        let mut candidates = CandidateFiles::start(self.rg, root, &settings)?;
+        let mut files = PathBatch::new(&self.command());
+        while !self.task.cancelled.load(Ordering::Acquire) && !self.batch.limited {
+            let Some(relative) = candidates.next(self.task).await? else {
+                break;
+            };
+            let path = root.join(&relative);
+            let key = normalized(&path.to_string_lossy());
+            if allowed.is_some_and(|a| !a.contains(&key)) || !filter.accepts(&path, filter_root)? {
+                continue;
+            }
+            if let Some(mirror) = documents.get(&key) {
+                self.run_rg(Some(root), Some(mirror), &[]).await?;
+            } else if disk {
+                // Prefix prevents a file named '-' from being interpreted as stdin.
+                let relative = format!("./{relative}");
+                if !files.fits(&relative) {
+                    self.run_rg(Some(root), None, &files.paths).await?;
+                    files.clear();
+                    if self.task.cancelled.load(Ordering::Acquire) || self.batch.limited {
+                        break;
+                    }
+                }
+                files.push(relative)?;
             }
         }
-        if batch.limited {
-            break;
+        if !self.task.cancelled.load(Ordering::Acquire) && !self.batch.limited {
+            self.run_rg(Some(root), None, &files.paths).await?;
         }
+        Ok(())
     }
-    let status = child.wait().await?;
-    let stderr = error_reader.await.unwrap_or_default();
-    if status.code().is_some_and(|c| c > 1)
-        && !task.cancelled.load(Ordering::Acquire)
-        && !batch.limited
-    {
-        batch.errors.push(if stderr.is_empty() {
-            format!("ripgrep exited with {status}")
-        } else {
-            stderr
-        });
-    }
-    Ok(())
-}
 
-fn buffer_included(query: &Query, path: &str) -> bool {
-    fn matches(patterns: &str, path: &str) -> bool {
-        split_globs(patterns).into_iter().any(|p| {
-            globset::Glob::new(p).is_ok_and(|g| {
-                g.compile_matcher().is_match(path)
-                    || g.compile_matcher()
-                        .is_match(PathBuf::from(path).file_name().unwrap_or_default())
-            })
-        })
+    async fn search(
+        &mut self,
+        root: Option<&Path>,
+        documents: &[Mirror],
+        settings: &serde_json::Value,
+        allowed: Option<&HashSet<String>>,
+    ) -> Result<()> {
+        // Validate even when the scope contains no files to pass to ripgrep.
+        pcre2::bytes::RegexBuilder::new()
+            .utf(true)
+            .ucp(true)
+            .multi_line(true)
+            .caseless(!self.query.case_sensitive)
+            .build(&crate::replacement::pattern(self.query))
+            .map_err(|e| AppError::new("regex", e.to_string()))?;
+        let filter = PathFilter::new(self.query, settings)?;
+        let documents_by_path: HashMap<_, _> = documents
+            .iter()
+            .filter_map(|m| m.path.as_deref().map(|p| (normalized(p), m)))
+            .collect();
+        if let Some(root) = root
+            && (!self.query.open_only || !documents_by_path.is_empty())
+        {
+            self.scan(
+                root,
+                Some(root),
+                &filter,
+                settings,
+                &documents_by_path,
+                allowed,
+                !self.query.open_only,
+            )
+            .await?;
+        }
+        // Outside-workspace tabs retain their existing scope, without searching other disk files.
+        let external_roots: BTreeSet<_> = documents
+            .iter()
+            .filter_map(|m| m.path.as_deref())
+            .filter(|p| root.is_none_or(|r| !crate::file_moves::within(Path::new(p), r)))
+            .filter_map(|p| Path::new(p).parent().map(Path::to_path_buf))
+            .collect();
+        for external in external_roots {
+            if self.task.cancelled.load(Ordering::Acquire) || self.batch.limited {
+                break;
+            }
+            let external_documents = documents_by_path
+                .iter()
+                .filter(|(_, m)| {
+                    m.path
+                        .as_ref()
+                        .is_some_and(|p| Path::new(p).parent() == Some(external.as_path()))
+                })
+                .map(|(path, mirror)| (path.clone(), *mirror))
+                .collect();
+            self.scan(
+                &external,
+                root,
+                &filter,
+                settings,
+                &external_documents,
+                allowed,
+                false,
+            )
+            .await?;
+        }
+        for mirror in documents.iter().filter(|m| m.path.is_none()) {
+            if self.task.cancelled.load(Ordering::Acquire) || self.batch.limited {
+                break;
+            }
+            if allowed.is_none() && filter.accepts(Path::new(&mirror.id), None)? {
+                self.run_rg(root, Some(mirror), &[]).await?;
+            }
+        }
+        Ok(())
     }
-    (query.include.trim().is_empty() || matches(&query.include, path))
-        && !matches(&query.exclude, path)
 }
 
 #[tauri::command]
@@ -510,6 +647,7 @@ pub async fn search_start(
         tasks.insert(task_key.clone(), task.clone());
     }
     let app = window.app_handle().clone();
+    let settings_path = state.data_dir.join("settings.json");
     tauri::async_runtime::spawn(async move {
         let mut batch = SearchBatch {
             request_id,
@@ -520,10 +658,6 @@ pub async fn search_start(
             cancelled: false,
             errors: vec![],
         };
-        let overlay = documents
-            .iter()
-            .filter_map(|m| m.path.as_deref().map(normalized))
-            .collect();
         let allowed = if query.changed_only {
             let result = if let Some(root) = root.clone() {
                 let repositories = repositories.clone();
@@ -546,57 +680,39 @@ pub async fn search_start(
         } else {
             None
         };
-        let mut count = 0;
-        if !query.open_only
-            && let Some(root) = &root
-            && let Err(e) = run_rg(
-                &app,
-                Some(root),
-                &query,
-                None,
-                &overlay,
-                allowed.as_ref(),
-                &task,
-                &on_batch,
-                &mut batch,
-                &mut count,
-            )
-            .await
-        {
-            batch.errors.push(e.message);
-        }
-        for mirror in documents {
-            if task.cancelled.load(Ordering::Acquire) || batch.limited {
-                break;
+        let settings_root = root.clone();
+        let settings = tauri::async_runtime::spawn_blocking(move || {
+            let mut warnings = vec![];
+            let settings = crate::configuration::load_settings(
+                &settings_path,
+                settings_root.as_deref(),
+                &mut warnings,
+            );
+            (settings, warnings)
+        })
+        .await;
+        match settings {
+            Ok((settings, warnings)) => {
+                batch.errors.extend(warnings);
+                let rg = rg_path(&app);
+                let mut run = SearchRun {
+                    rg: &rg,
+                    query: &query,
+                    task: &task,
+                    channel: &on_batch,
+                    batch: &mut batch,
+                    count: 0,
+                };
+                if let Err(e) = run
+                    .search(root.as_deref(), &documents, &settings, allowed.as_ref())
+                    .await
+                {
+                    batch.errors.push(e.message);
+                }
             }
-            let path = mirror.path.as_deref().unwrap_or(&mirror.id);
-            let relative = root
-                .as_ref()
-                .and_then(|r| Path::new(path).strip_prefix(r).ok())
-                .map(|p| p.to_string_lossy().replace('\\', "/"));
-            if !buffer_included(&query, relative.as_deref().unwrap_or(path))
-                || allowed
-                    .as_ref()
-                    .is_some_and(|a| !a.contains(&normalized(path)))
-            {
-                continue;
-            }
-            if let Err(e) = run_rg(
-                &app,
-                root.as_ref(),
-                &query,
-                Some(&mirror),
-                &overlay,
-                None,
-                &task,
-                &on_batch,
-                &mut batch,
-                &mut count,
-            )
-            .await
-            {
-                batch.errors.push(e.message);
-            }
+            Err(error) => batch
+                .errors
+                .push(format!("Cannot load search settings: {error}")),
         }
         batch.done = true;
         batch.cancelled = task.cancelled.load(Ordering::Acquire);

@@ -17,6 +17,7 @@ import {
   cancelReplacementPlan,
   closeSearchTab,
   createSearchTab,
+  folderSearchPattern,
   openMatch,
   replaceMatches,
   runSearch,
@@ -831,7 +832,7 @@ function SearchPanel({ id }: Readonly<{ id: string }>) {
                     Copy All
                   </button>
                   <button onClick={() => revealInTree(path)}>Reveal in Explorer</button>
-                  <button onClick={() => update({ include: `${folder}/**` })}>
+                  <button onClick={() => update({ include: folderSearchPattern(folder) })}>
                     Restrict Search to Folder
                   </button>
                   {row.kind !== "folder" && (

@@ -130,11 +130,13 @@ function emit(job: ReturnType<typeof request>, patch: Partial<SearchBatch> = {})
 describe("Search sessions", () => {
   it.each([
     ["", ""],
-    ["src/", "src/**"],
-    ["src/components/", "src/components/**"],
-    ["src/[a],{b}*/", "src/[[]a[]][,][{]b[}][*]/**"],
-    ["!important/", "{!}important/**"],
-    [" spaced folder/", "[ ]spaced[ ]folder/**"],
+    ["src/", "./src/**"],
+    ["src/components/", "./src/components/**"],
+    ["src/[a],{b}*/", "./src/[[]a[]][,][{]b[}][*]/**"],
+    ["!important/", "./{!}important/**"],
+    [" spaced folder/", "./[ ]spaced[ ]folder/**"],
+    ["src\\components\\", "./src/components/**"],
+    ["./src/", "./src/**"],
   ])("sets a literal directory scope for %j without starting an empty search", (path, include) => {
     setApp({ root: "C:/project" });
     findInFolder(path);
@@ -157,7 +159,7 @@ describe("Search sessions", () => {
     );
     emit(old);
     expect(searchSession(second)?.results).toEqual([]);
-    expect(searchSession(second)?.query).toEqual({ ...options, include: "src/**" });
+    expect(searchSession(second)?.query).toEqual({ ...options, include: "./src/**" });
     expect(useApp.getState().activeSearchId).toBe(second);
     expect(useApp.getState().searchSessions).toHaveLength(2);
     expect(searchSession(primarySearchId)).toBe(primary);

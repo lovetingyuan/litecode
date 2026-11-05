@@ -340,6 +340,7 @@ pub(crate) fn create_editor_window(
         .min_inner_size(700.0, 420.0)
         .decorations(false)
         .disable_drag_drop_handler()
+        .general_autofill_enabled(false)
         .build()
         .map_err(|e| AppError::new("window", e.to_string()))?;
         #[cfg(windows)]

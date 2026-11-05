@@ -16,7 +16,7 @@ pub struct QuickFilePaths {
     excludes: serde_json::Map<String, Value>,
 }
 
-fn exclusion_rules(settings: &Value) -> serde_json::Map<String, Value> {
+pub(crate) fn exclusion_rules(settings: &Value) -> serde_json::Map<String, Value> {
     let mut excludes = serde_json::Map::new();
     for key in ["files.exclude", "search.exclude"] {
         if let Some(rules) = settings[key].as_object() {
@@ -26,7 +26,7 @@ fn exclusion_rules(settings: &Value) -> serde_json::Map<String, Value> {
     excludes
 }
 
-fn arguments(settings: &Value) -> Vec<String> {
+pub(crate) fn arguments(settings: &Value) -> Vec<String> {
     let mut args: Vec<String> = [
         "--files",
         "--null",

@@ -30,21 +30,30 @@ export function focusSearch(showDetails = false) {
   );
 }
 
+export function folderSearchPattern(path: string) {
+  // Character classes keep literal glob characters portable to Windows globset.
+  const directory = path
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/$/, "")
+    .replace(/[*?[\]{},\s]/g, "[$&]")
+    .replace(/^!/, "{!}");
+  if (!directory) {
+    return "";
+  }
+  return /^(?:[a-z]:\/|\/)/i.test(directory) ? `${directory}/**` : `./${directory}/**`;
+}
+
 export function findInFolder(path: string) {
   const search = searchSession();
   if (!useApp.getState().root || !search) {
     return;
   }
-  // Character classes keep literal glob characters portable to Windows globset.
-  const directory = path
-    .replace(/\/$/, "")
-    .replace(/[*?[\]{},\s]/g, "[$&]")
-    .replace(/^!/, "{!}");
   if (search.id === primarySearchId) {
     cancelReplacementPlan();
   }
   setApp({ sidebar: "search", view: "editor" });
-  void runSearch({ ...search.query, include: directory ? `${directory}/**` : "" }, search.id);
+  void runSearch({ ...search.query, include: folderSearchPattern(path) }, search.id);
   focusSearch(true);
 }
 
