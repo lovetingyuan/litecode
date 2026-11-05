@@ -34,15 +34,19 @@ enum Request {
 
 fn arguments(args: impl IntoIterator<Item = OsString>) -> std::io::Result<Request> {
     let mut args = args.into_iter();
-    if args.next().as_deref() != Some(std::ffi::OsStr::new("--open-path")) {
+    let Some(first) = args.next() else {
         return Ok(Request::NewWindow);
+    };
+    // Explorer drops and Open With pass the path without --open-path.
+    let path = if first == "--open-path" {
+        args.next()
+    } else {
+        Some(first)
     }
-    let path = args
-        .next()
-        .filter(|path| !path.is_empty())
-        .ok_or_else(|| std::io::Error::other("--open-path requires a file or directory path"))?;
+    .filter(|path| !path.is_empty())
+    .ok_or_else(|| std::io::Error::other("Expected a file or directory path"))?;
     if args.next().is_some() {
-        return Err(std::io::Error::other("Expected one path after --open-path"));
+        return Err(std::io::Error::other("Expected one file or directory path"));
     }
     let path = std::path::absolute(PathBuf::from(path))?;
     if path.as_os_str().encode_wide().count() * 2 > MAX_PATH_BYTES {
@@ -427,13 +431,19 @@ mod tests {
             r"C:\项目 with spaces\a.txt",
             r"C:\.",
             r"\\server\share\项目\.",
+            r"relative folder\中文.txt",
         ] {
-            let request = arguments(["--open-path".into(), path.into()]).unwrap();
-            assert_eq!(request, Request::Open(std::path::absolute(path).unwrap()));
+            for args in [vec![path.into()], vec!["--open-path".into(), path.into()]] {
+                let request = arguments(args).unwrap();
+                assert_eq!(request, Request::Open(std::path::absolute(path).unwrap()));
+            }
         }
+        assert!(arguments(["".into()]).is_err());
+        assert!(arguments(["C:\\one".into(), "C:\\two".into()]).is_err());
         assert!(arguments(["--open-path".into()]).is_err());
         assert!(arguments(["--open-path".into(), "".into()]).is_err());
         assert!(arguments(["--open-path".into(), "C:\\one".into(), "C:\\two".into()]).is_err());
+        assert!(arguments([format!("C:\\{}", "a".repeat(MAX_PATH_BYTES)).into()]).is_err());
         assert!(
             arguments([
                 "--open-path".into(),

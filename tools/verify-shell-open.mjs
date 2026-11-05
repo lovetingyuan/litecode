@@ -94,10 +94,11 @@ function stop() {
   for (const child of children) {
     if (child.exitCode === null && child.pid) {
       try {
-        execFileSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
-          windowsHide: true,
-          stdio: "ignore",
-        });
+        execFileSync(
+          path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe"),
+          ["/PID", String(child.pid), "/T", "/F"],
+          { windowsHide: true, stdio: "ignore" },
+        );
       } catch {
         // A forwarded process may exit between checking exitCode and taskkill.
       }
@@ -164,19 +165,25 @@ async function verifyPreserved() {
     assert.equal(await readFile(name, "utf8"), contents);
   }
 }
-async function openFolder(port, target, count) {
+async function openFolder(port, target, count, args = ["--open-path", target]) {
   const existing = new Set(pages());
-  await exited(launch(["--open-path", target], port));
+  await exited(launch(args, port));
   await ready(count);
   const page = pages().find((entry) => !existing.has(entry));
   assert(page, "No new target window");
   await verifyFolder(page, target);
   return page;
 }
+async function verifyFile(page) {
+  await page
+    .locator(".editor-tab")
+    .filter({ hasText: path.basename(file) })
+    .waitFor();
+}
 async function verifyFolder(page, target) {
   await page.getByRole("button", { name: "Restricted Mode", exact: true }).click();
   const resolved = path.resolve(target);
-  const name = path.basename(resolved) || path.parse(resolved).root.replace(/[\\/]+$/, "");
+  const name = path.basename(resolved) || path.parse(resolved).root.slice(0, -1);
   await waitFor(async () => {
     const title = await page.evaluate(() =>
       window.__TAURI_INTERNALS__.invoke("plugin:window|title"),
@@ -189,10 +196,7 @@ try {
   const port = await start(["--open-path", file]);
   const labels = await ready(1);
   assert(!labels.includes("main"));
-  await pages()[0]
-    .locator(".editor-tab")
-    .filter({ hasText: path.basename(file) })
-    .waitFor();
+  await verifyFile(pages()[0]);
   await verifyPreserved();
   check("Cold file open creates one target window and preserves historical sessions and bodies");
 
@@ -204,15 +208,44 @@ try {
   const root = path.parse(folder).root;
   await openFolder(port, root + ".", 4);
   check("Drive-root background argument opens exactly one root window");
-  await exited(launch([], port));
+
+  const existing = new Set(pages());
+  await exited(launch([path.relative(app, file)], port));
   await ready(5);
+  const filePage = pages().find((page) => !existing.has(page));
+  assert(filePage, "No new file window");
+  await verifyFile(filePage);
+  check("Forwarded positional file path resolves against the sender's working directory");
+  await openFolder(port, folder, 6, [folder]);
+  check("Forwarded positional folder path opens exactly one target window");
+
+  await exited(launch([], port));
+  await ready(7);
   check("Launching normally into an existing instance adds one empty window");
   await delay(1000);
-  await ready(5);
+  await ready(7);
   await verifyPreserved();
   check(
     "Initial request is not replayed and recovery remains untouched after consecutive requests",
   );
+
+  stop();
+  await browser.close();
+  browser = undefined;
+  await start([file]);
+  assert(!(await ready(1)).includes("main"));
+  await verifyFile(pages()[0]);
+  await verifyPreserved();
+  check("Cold positional file open creates only its target and defers recovery");
+
+  stop();
+  await browser.close();
+  browser = undefined;
+  await start([folder]);
+  assert(!(await ready(1)).includes("main"));
+  await verifyFolder(pages()[0], folder);
+  await verifyPreserved();
+  check("Cold positional folder open creates only its target and defers recovery");
 
   stop();
   await browser.close();
