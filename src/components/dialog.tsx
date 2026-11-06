@@ -177,7 +177,7 @@ export function DialogHost() {
             </>
           )}
           <Dialog.Title>{request?.title}</Dialog.Title>
-          <Dialog.Description>{request?.message}</Dialog.Description>
+          <Dialog.Description className="select-text">{request?.message}</Dialog.Description>
           {(validationError || request?.error) && (
             <p id="dialog-input-error" role="alert" className="mt-4 text-error">
               {validationError || request?.error}

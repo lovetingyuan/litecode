@@ -122,7 +122,7 @@ export function GitCommitDialog({
           finalFocus={trigger}
         >
           <Dialog.Title>Commit Changes</Dialog.Title>
-          <Dialog.Description>
+          <Dialog.Description className="select-text">
             {repository.name} — {repository.branch ?? "No commits yet"}
             {repository.detached ? " (detached)" : ""}
           </Dialog.Description>

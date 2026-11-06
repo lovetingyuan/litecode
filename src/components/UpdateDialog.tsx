@@ -105,7 +105,7 @@ export function UpdateDialog() {
             className={`modal-panel fixed top-[50%] left-[50%] bg-widget border border-strong rounded-[6px] w-120 max-w-[90vw] p-6 z-[151] ${workbenchStyles["modal-panel"]} update-panel w-140 max-h-[85vh] overflow-y-auto ${updateDialogStyles["update-panel"]}`}
           >
             <Dialog.Title>LiteCode Updates</Dialog.Title>
-            <Dialog.Description className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <Dialog.Description className="flex flex-wrap items-baseline gap-x-4 gap-y-1 select-text">
               <span>
                 {s.currentVersion ? `Current version: ${s.currentVersion}` : "Application updates"}
               </span>
@@ -127,7 +127,9 @@ export function UpdateDialog() {
                 <h3 className="font-semibold mb-2">What’s new in {s.version}</h3>
                 {s.open && (
                   <Suspense fallback={<p role="status">Loading release notes…</p>}>
-                    <UpdateReleaseNotes notes={s.notes} openLink={openLink} />
+                    <div className="select-text">
+                      <UpdateReleaseNotes notes={s.notes} openLink={openLink} />
+                    </div>
                   </Suspense>
                 )}
               </section>

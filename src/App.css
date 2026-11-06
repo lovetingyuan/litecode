@@ -140,6 +140,21 @@
     overflow: hidden;
   }
 
+  /* Desktop UI labels, including portals under body, must not enter browser selections. */
+  body {
+    user-select: none;
+  }
+
+  /* Editable text and diagnostic messages remain available for copying. */
+  input,
+  textarea,
+  [contenteditable=""],
+  [contenteditable="true"],
+  [contenteditable="plaintext-only"],
+  [role="alert"]:not(.update-lock) {
+    user-select: text;
+  }
+
   button,
   input,
   textarea,

@@ -395,7 +395,7 @@ function TerminalPane({ id, visible }: Readonly<{ id: string; visible: boolean }
             className={`terminal-exit absolute z-[7] bottom-0 left-0 right-0 flex gap-3 items-center justify-between py-2 px-3 bg-widget border-t border-t-strong ${terminalStyles["terminal-exit"]}`}
             role="status"
           >
-            <span>{pane.error}</span>
+            <span className="select-text">{pane.error}</span>
             <button onClick={() => safe(restartPane(id))}>
               {pane.errorCode === "workspaceTrust"
                 ? "Trust Workspace and Retry"

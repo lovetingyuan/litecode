@@ -1,3 +1,4 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { call, desktop, errorMessage } from "./bridge";
 import { logError } from "./logging";
 import { activeDoc, useApp, setApp, notify, primarySearchId } from "../store/store";
@@ -941,6 +942,12 @@ export const commands: Command[] = [
   },
   { id: "litecode.setLanguage", label: "Change Language Mode", run: changeLanguage },
   {
+    id: "litecode.feedback",
+    label: "Feedback",
+    menu: "Help",
+    run: () => openUrl("https://github.com/lovetingyuan/litecode/issues/new"),
+  },
+  {
     id: "litecode.checkForUpdates",
     label: "Check for Updates…",
     menu: "Help",
@@ -994,7 +1001,8 @@ export function keyContext(target: HTMLElement, editorContext?: EditorContext) {
   const current = editorTarget(editorContext);
   const doc = current?.doc;
   const typing =
-    ["INPUT", "TEXTAREA"].includes(target.tagName) && !target.closest(".monaco-editor");
+    (["INPUT", "TEXTAREA"].includes(target.tagName) || target.isContentEditable) &&
+    !target.closest(".monaco-editor");
   return {
     terminalFocus: !!target.closest(".terminal-pane"),
     terminalHasSelection: terminalSelections.has(
@@ -1081,6 +1089,18 @@ function blockWorkspaceKeys(e: KeyboardEvent) {
   }
 }
 
+function blockPageSelection(e: KeyboardEvent, target: HTMLElement, key: string) {
+  // Block browser page selection even in dialogs; keep dispatching custom bindings below.
+  if (
+    key === "Ctrl+A" &&
+    !e.isComposing &&
+    !target.isContentEditable &&
+    !target.closest("input, textarea, .monaco-editor, .xterm")
+  ) {
+    e.preventDefault();
+  }
+}
+
 function runTerminalShortcut(
   e: KeyboardEvent,
   defaults: ReturnType<typeof defaultBindings>,
@@ -1145,6 +1165,12 @@ export function installKeys() {
     if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
       return;
     }
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const key = eventKey(e);
+    blockPageSelection(e, target, key);
     if (useApp.getState().openingWorkspace !== null) {
       blockWorkspaceKeys(e);
       return;
@@ -1157,12 +1183,9 @@ export function installKeys() {
       chord = "";
       return;
     }
-    const target = e.target as HTMLElement;
-    const typing =
-      ["INPUT", "TEXTAREA"].includes(target.tagName) && !target.closest(".monaco-editor");
-    const key = eventKey(e);
     const state = useApp.getState();
     const context = keyContext(target);
+    const typing = context.inputFocus;
     const sequence = normalizeKey(chord ? `${chord} ${key}` : key);
     const binding = resolveBinding(state.keybindings, sequence, context);
     const defaults = defaultBindings(context);

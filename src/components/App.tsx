@@ -731,7 +731,7 @@ export default function App() {
               {fatal ? (
                 <>
                   <Icon name="error" />
-                  <p>{fatal}</p>
+                  <p className="select-text">{fatal}</p>
                   <button onClick={() => location.reload()}>Reload</button>
                 </>
               ) : (
@@ -772,7 +772,7 @@ export default function App() {
             role="status"
           >
             <Icon name="info" />
-            <p>
+            <p className="select-text">
               {s.notice}
               {s.noticeLink &&
                 [
