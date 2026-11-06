@@ -5,6 +5,7 @@ import type { FileMove } from "./explorerMove";
 function fixture() {
   let snapshot: FileClipboard = { sequence: 1, paths: ["C:/external/a.txt"] };
   const services = {
+    onCutPathsChange: vi.fn<(paths: string[]) => void>(),
     read: vi.fn(async () => snapshot),
     copyExternal: vi.fn(async () => ({
       copied: [{ from: "C:/external/a.txt", to: "C:/project/a.txt" }],
@@ -88,6 +89,10 @@ describe("Explorer file clipboard", () => {
       failed: [{ path: "C:/project/folder/", message: "busy" }],
     });
     const report = await clipboard.paste("C:/project", "C:/project/target", signal);
+    expect(services.onCutPathsChange).toHaveBeenLastCalledWith([
+      "C:/project/folder/",
+      "C:/project/folder/a.txt",
+    ]);
     expect(report?.copied).toEqual([{ from: "C:/project/b.txt", to: "C:/project/target/b.txt" }]);
     expect(report?.failed).toHaveLength(1);
     expect(services.pasteInternal).toHaveBeenCalledExactlyOnceWith(
@@ -100,6 +105,7 @@ describe("Explorer file clipboard", () => {
     );
     await clipboard.paste("C:/project", "C:/project/target", signal);
     expect(services.pasteInternal).toHaveBeenCalledTimes(2);
+    expect(services.onCutPathsChange).toHaveBeenLastCalledWith([]);
     expect(services.pasteInternal).toHaveBeenLastCalledWith(
       [{ from: "C:/project/folder/", to: "C:/project/target/folder" }],
       true,
@@ -145,6 +151,42 @@ describe("Explorer file clipboard", () => {
     await clipboard.paste("C:/project", "C:/project", signal);
     expect(services.pasteInternal).not.toHaveBeenCalled();
     expect(services.copyExternal).toHaveBeenCalledWith(1, "C:/project", "C:/project");
+  });
+  it("clears cut decorations when replaced by copy or a changed native clipboard", async () => {
+    const { clipboard, services, signal, change } = fixture();
+    const paths = ["C:/project/a.txt"];
+    await clipboard.remember(paths, true);
+    expect(services.onCutPathsChange).toHaveBeenLastCalledWith(paths);
+    await clipboard.remember(paths, false);
+    expect(services.onCutPathsChange).toHaveBeenLastCalledWith([]);
+    await clipboard.remember(paths, true);
+    change({ sequence: 2, paths: [] });
+    await clipboard.paste("C:/project", "C:/project/target", signal);
+    expect(services.onCutPathsChange).toHaveBeenLastCalledWith([]);
+  });
+  it("finishes cuts pasted into their current directory without disk operations or failures", async () => {
+    const { clipboard, services, signal } = fixture();
+    await clipboard.remember(
+      ["C:/project/a.txt", "C:/project/folder/", "C:/project/folder/b.txt"],
+      true,
+    );
+    expect(await clipboard.paste("C:/project", "C:/project", signal)).toEqual({
+      copied: [],
+      failed: [],
+    });
+    expect(services.pasteInternal).not.toHaveBeenCalled();
+    expect(services.onCutPathsChange).toHaveBeenLastCalledWith([]);
+  });
+  it("moves other cut items while skipping items already in the destination", async () => {
+    const { clipboard, services, signal } = fixture();
+    await clipboard.remember(["C:/project/a.txt", "C:/project/sub/b.txt"], true);
+    await clipboard.paste("C:/project", "C:/project", signal);
+    expect(services.pasteInternal).toHaveBeenCalledExactlyOnceWith(
+      [{ from: "C:/project/sub/b.txt", to: "C:/project/b.txt" }],
+      true,
+      signal,
+    );
+    expect(services.onCutPathsChange).toHaveBeenLastCalledWith([]);
   });
   it("resolves folder, file, root, and empty-tree paste targets", () => {
     expect(pasteDirectory("folder/", true)).toBe("folder");

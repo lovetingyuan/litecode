@@ -153,6 +153,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
   const draggedPaths = useRef<readonly string[]>([]);
   const pendingMoveSelection = useRef<string[] | null>(null);
   const [rootDropTarget, setRootDropTarget] = useState(false);
+  const [cutPaths, setCutPaths] = useState<string[]>([]);
   const { model } = useFileTree({
     preparedInput: preparePresortedFileTreeInput([]),
     flattenEmptyDirectories: false,
@@ -463,11 +464,36 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
     }
   }
   const clipboardRef = useRef<ReturnType<typeof createExplorerClipboard> | null>(null);
+  useEffect(() => {
+    const shadow = model.getFileTreeContainer()?.shadowRoot;
+    if (!shadow || !root || !cutPaths.length) {
+      return;
+    }
+    const selectors = cutPaths.flatMap((path) => {
+      if (!normalize(path).startsWith(normalize(root).replace(/\/$/, "") + "/")) {
+        return [];
+      }
+      const item = relative(path, root).replace(/\/$/, "");
+      return [
+        `[data-item-path="${CSS.escape(item)}"]`,
+        `[data-item-path^="${CSS.escape(item + "/")}"]`,
+      ];
+    });
+    if (!selectors.length) {
+      return;
+    }
+    const style = document.createElement("style");
+    // Dim row contents inside the shadow root, preserving selection and focus backgrounds.
+    style.textContent = `:is(${selectors.join(",")}) > :is([data-item-section="icon"], [data-item-section="content"], [data-item-section="git"], [data-item-section="decoration"]){opacity:0.5}`;
+    shadow.append(style);
+    return () => style.remove();
+  }, [cutPaths, root, expanded, model]);
   useLayoutEffect(() => {
     if (clipboardRef.current) {
       return;
     }
     clipboardRef.current = createExplorerClipboard({
+      onCutPathsChange: setCutPaths,
       read: () =>
         desktop
           ? call<FileClipboard>("read_file_clipboard")

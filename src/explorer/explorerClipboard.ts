@@ -7,6 +7,7 @@ export type CopyReport = {
 };
 type InternalClipboard = FileClipboard & { cut: boolean };
 type ClipboardServices = {
+  onCutPathsChange?: (paths: string[]) => void;
   read: () => Promise<FileClipboard>;
   copyExternal: (sequence: number, root: string, directory: string) => Promise<CopyReport>;
   pasteInternal: (moves: FileMove[], cut: boolean, signal: AbortSignal) => Promise<CopyReport>;
@@ -33,17 +34,21 @@ export function isEditableTreeEvent(event: { composedPath(): EventTarget[] }) {
 
 export function createExplorerClipboard(services: ClipboardServices) {
   let internal: InternalClipboard | null = null;
+  function setInternal(value: InternalClipboard | null) {
+    internal = value;
+    services.onCutPathsChange?.(value?.cut ? value.paths : []);
+  }
   let revision = 0;
   let remembering = Promise.resolve();
   return {
     remember(paths: string[], cut: boolean) {
       const request = ++revision;
-      internal = null;
+      setInternal(null);
       remembering = services
         .read()
         .then((snapshot) => {
           if (request === revision) {
-            internal = { paths: [...new Set(paths)], cut, sequence: snapshot.sequence };
+            setInternal({ paths: [...new Set(paths)], cut, sequence: snapshot.sequence });
           }
         })
         .finally(() => {
@@ -64,7 +69,7 @@ export function createExplorerClipboard(services: ClipboardServices) {
         return null;
       }
       if (internal && internal.sequence !== snapshot.sequence) {
-        internal = null;
+        setInternal(null);
       }
       const source = internal ?? { ...snapshot, cut: false };
       const paths = [...new Set(source.paths)];
@@ -82,7 +87,7 @@ export function createExplorerClipboard(services: ClipboardServices) {
         return null;
       }
       if (current.sequence !== snapshot.sequence) {
-        internal = null;
+        setInternal(null);
         throw new Error("The clipboard changed; paste the files again");
       }
       const sources = paths.filter(
@@ -95,17 +100,23 @@ export function createExplorerClipboard(services: ClipboardServices) {
         from: path,
         to: directory.replace(/\/$/, "") + "/" + path.replace(/\/$/, "").split("/").pop()!,
       }));
-      const report = await services.pasteInternal(moves, source.cut, signal);
+      const unchanged = moves.filter(
+        (move) => source.cut && move.from.replace(/\/$/, "") === move.to,
+      );
+      const pending = moves.filter((move) => !unchanged.includes(move));
+      const report = pending.length
+        ? await services.pasteInternal(pending, source.cut, signal)
+        : { copied: [], failed: [] };
       // Keep failed cut sources available for retry; completed moves must not run again.
       if (source.cut && request === revision) {
-        const completed = report.copied.map((item) => item.from);
+        const completed = [...report.copied, ...unchanged].map((item) => item.from);
         const remaining = paths.filter(
           (path) =>
             !completed.some(
               (parent) => path === parent || path.startsWith(parent.replace(/\/$/, "") + "/"),
             ),
         );
-        internal = remaining.length ? { ...source, paths: remaining } : null;
+        setInternal(remaining.length ? { ...source, paths: remaining } : null);
       }
       return report;
     },
