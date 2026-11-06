@@ -40,7 +40,6 @@ import {
 } from "../git/branches";
 import {
   changePaths,
-  cancelGitOperation,
   openGitDiff,
   openGitSource,
   readGitInfo,
@@ -152,8 +151,16 @@ export function GitView() {
       : null;
   const currentInfo = details?.snapshot === git && !busy ? info : null;
   const [refreshing, setRefreshing] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
-  useEffect(() => setCancelling(false), [busy, repositoryPath]);
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
+  const syncGeneration = useRef(0);
+  const syncSuccessTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useLayoutEffect(() => {
+    setSyncSuccess(null);
+    return () => {
+      syncGeneration.current += 1;
+      clearTimeout(syncSuccessTimer.current);
+    };
+  }, [root, repositoryPath, git.session]);
   const [branchPending, setBranchPending] = useState(false);
   const [switchingBranch, setSwitchingBranch] = useState<string | null>(null);
   const [branchSearch, setBranchSearch] = useState("");
@@ -239,10 +246,20 @@ export function GitView() {
       });
     });
   }
+  function finishSync(completed: boolean, kind: string, generation: number) {
+    if (!completed || generation !== syncGeneration.current) {
+      return;
+    }
+    setSyncSuccess(kind);
+    syncSuccessTimer.current = setTimeout(() => setSyncSuccess(null), 1500);
+  }
   async function sync(kind: "fetch" | "pull" | "pullRebase" | "push") {
     if (!repository || !info || !currentInfo || busy) {
       return;
     }
+    const generation = ++syncGeneration.current;
+    clearTimeout(syncSuccessTimer.current);
+    setSyncSuccess(null);
     let request: GitOperation;
     if (kind === "fetch" || (kind === "push" && !info.upstream)) {
       const remote =
@@ -281,7 +298,10 @@ export function GitView() {
     } else {
       request = { kind: "push" };
     }
-    await runGitOperation(repository.path, request);
+    if (generation !== syncGeneration.current) {
+      return;
+    }
+    finishSync(await runGitOperation(repository.path, request), kind, generation);
   }
   async function branchAction(action: () => Promise<unknown>, branch: string | null = null) {
     if (branchWorking.current) {
@@ -442,11 +462,13 @@ export function GitView() {
               <button
                 className={`${actionButtonClass} compact`}
                 aria-label="Fetch"
+                data-success={syncSuccess === "fetch"}
                 aria-busy={busy === "fetch"}
                 disabled={!!busy || !currentInfo}
                 onClick={() => void sync("fetch").catch(report)}
               >
                 <span className="git-sync-label">Fetch</span>
+                {syncSuccess === "fetch" && <Icon name="check" className="git-sync-success" />}
                 {busy === "fetch" && (
                   <span
                     className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
@@ -457,11 +479,13 @@ export function GitView() {
               <button
                 className={`${actionButtonClass} compact`}
                 aria-label="Pull"
+                data-success={syncSuccess === "pull"}
                 aria-busy={busy === "pull"}
                 disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
                 onClick={() => void sync("pull").catch(report)}
               >
                 <span className="git-sync-label">Pull</span>
+                {syncSuccess === "pull" && <Icon name="check" className="git-sync-success" />}
                 {busy === "pull" && (
                   <span
                     className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
@@ -472,11 +496,13 @@ export function GitView() {
               <button
                 className={`${actionButtonClass} compact`}
                 aria-label="Pull (Rebase)"
+                data-success={syncSuccess === "pullRebase"}
                 aria-busy={busy === "pullRebase"}
                 disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
                 onClick={() => void sync("pullRebase").catch(report)}
               >
                 <span className="git-sync-label">Pull (Rebase)</span>
+                {syncSuccess === "pullRebase" && <Icon name="check" className="git-sync-success" />}
                 {busy === "pullRebase" && (
                   <span
                     className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
@@ -487,11 +513,13 @@ export function GitView() {
               <button
                 className={`${actionButtonClass} compact`}
                 aria-label="Push"
+                data-success={syncSuccess === "push"}
                 aria-busy={busy === "push"}
                 disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
                 onClick={() => void sync("push").catch(report)}
               >
                 <span className="git-sync-label">Push</span>
+                {syncSuccess === "push" && <Icon name="check" className="git-sync-success" />}
                 {busy === "push" && (
                   <span
                     className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
@@ -685,18 +713,6 @@ export function GitView() {
     return content;
   }
   const content = renderGitContent();
-  let operationStatus;
-  if (cancelling) {
-    operationStatus = "Cancelling Git operation…";
-  } else {
-    let operationStatusPart2;
-    if (busy === "pullRebase") {
-      operationStatusPart2 = "pull (rebase)";
-    } else {
-      operationStatusPart2 = busy;
-    }
-    operationStatus = `Git ${operationStatusPart2} in progress…`;
-  }
   return (
     <section
       className={`view flex flex-col h-full min-h-0 overflow-hidden search-view text-[15px] bg-sidebar text-foreground ${searchStyles["search-view"]} git-view min-h-0 overflow-hidden ${gitStyles["git-view"]}`}
@@ -723,36 +739,11 @@ export function GitView() {
           />
         </div>
       </div>
-      {repository && busy && ["fetch", "push", "pull", "pullRebase"].includes(busy) && (
-        <div
-          className="git-operation-status flex flex-wrap items-center justify-between gap-[0.5rem] py-[0.5rem] px-[1rem]"
-          role="status"
-          aria-live="polite"
-        >
-          <span>{operationStatus}</span>
-          <button
-            type="button"
-            className={`${actionButtonClass} compact`}
-            disabled={cancelling}
-            onClick={() => {
-              setCancelling(true);
-              void cancelGitOperation(repository.path)
-                .then((cancelled) => {
-                  if (!cancelled) {
-                    setCancelling(false);
-                  }
-                })
-                .catch((error) => {
-                  setCancelling(false);
-                  report(error);
-                });
-            }}
-          >
-            Cancel Git operation
-          </button>
-        </div>
-      )}
       {content}
+      <span className="sr-only" role="status" aria-live="polite">
+        {syncSuccess &&
+          `${syncSuccess === "pullRebase" ? "Pull (Rebase)" : syncSuccess.charAt(0).toUpperCase() + syncSuccess.slice(1)} completed successfully.`}
+      </span>
       {git.warnings.length > 0 && (
         <button
           className={`inline-warning py-[5px] px-[18px] leading-[18px] m-0 text-[12px] text-warning ${workbenchStyles["inline-warning"]}`}

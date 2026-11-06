@@ -65,8 +65,13 @@
 .git-sync-actions :global(.action-button)[aria-busy="true"] {
   opacity: 1;
 }
-.git-sync-actions :global(.action-button)[aria-busy="true"] :global(.git-sync-label) {
+.git-sync-actions :global(.action-button)[aria-busy="true"] :global(.git-sync-label),
+.git-sync-actions :global(.action-button)[data-success="true"] :global(.git-sync-label) {
   visibility: hidden;
+}
+.git-sync-actions :global(.git-sync-success) {
+  color: var(--lc-git-added);
+  place-self: center;
 }
 .git-sync-actions :global(.spinner) {
   width: 12px;
