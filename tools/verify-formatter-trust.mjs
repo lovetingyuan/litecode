@@ -1,11 +1,11 @@
-// Requires a Debug build and installed Language Tools (or PRETTIER_DIR).
+// Requires a Debug build, npm run build:tools, Node.js and rustfmt.
 // All application data, code execution markers and trust decisions are isolated.
 import assert from "node:assert/strict";
-import { copyFile, cp, mkdir, readFile, writeFile, access, unlink } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 
-const run = path.resolve(".verification", `formatter-trust-${Date.now()}`);
+const run = path.resolve("tmp", ".verification", `formatter-trust-${Date.now()}`);
 const app = path.join(run, "app");
 const data = path.join(app, "data");
 const loose = path.join(run, "loose");
@@ -13,27 +13,41 @@ const workspace = path.join(run, "workspace");
 const file = path.join(loose, "a.html");
 const marker = path.join(run, "script-executed");
 const configMarker = path.join(run, "config-executed");
-const prettier =
-  process.env.PRETTIER_DIR ??
-  path.join(process.env.APPDATA, "com.tingyuan.litecode/tools/languages/node_modules/prettier");
 const js = JSON.stringify;
 const exists = (filename) =>
   access(filename).then(
     () => true,
     () => false,
   );
+// Only this isolated app loses PATH-based Node; positive cases use nodePath.
+const runtimeEnv = { ...process.env };
+for (const key of Object.keys(runtimeEnv).filter((key) => key.toUpperCase() === "PATH")) {
+  const directories = [];
+  for (const directory of runtimeEnv[key].split(path.delimiter)) {
+    if (
+      !(await exists(path.join(directory, "node.exe"))) &&
+      !(await exists(path.join(directory, "node")))
+    ) {
+      directories.push(directory);
+    }
+  }
+  runtimeEnv[key] = directories.join(path.delimiter);
+}
 for (const folder of [data, loose, workspace, path.join(loose, "node_modules/prettier/bin")]) {
   await mkdir(folder, { recursive: true });
 }
 await copyFile("src-tauri/target/debug/litecode.exe", path.join(app, "LiteCode.exe"));
-await cp(prettier, path.join(data, "tools/languages/node_modules/prettier"), { recursive: true });
-for (const name of ["oxfmt", "tinypool", "@oxfmt"]) {
-  await cp(
-    path.join(path.dirname(prettier), name),
-    path.join(data, "tools/languages/node_modules", name),
-    { recursive: true },
-  );
-}
+await cp("src-tauri/tools/formatters", path.join(app, "tools/formatters"), { recursive: true });
+await writeFile(
+  path.join(loose, "node_modules/prettier/package.json"),
+  js({ bin: "bin/prettier.cjs" }),
+);
+// Keep real project tools within this fixture; a later case checks an outside source.
+await cp(
+  "src-tauri/tools/formatters/node_modules/prettier",
+  path.join(workspace, "node_modules/prettier"),
+  { recursive: true },
+);
 await writeFile(file, "<p>original</p>");
 await writeFile(path.join(workspace, "a.html"), "<div><p>text</p></div>");
 await writeFile(
@@ -103,7 +117,7 @@ try {
     windowsHide: true,
     stdio: "ignore",
     env: {
-      ...process.env,
+      ...runtimeEnv,
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: "--remote-debugging-port=9236",
       WEBVIEW2_USER_DATA_FOLDER: path.join(run, "webview"),
     },
@@ -272,7 +286,7 @@ try {
   assert.match(formatted, /\n {4}<p>/);
   assert.equal(await exists(configMarker), true);
   checks.push(
-    "Installed Prettier loads an ancestor configuration only after that source is approved and formats correctly",
+    "Project Prettier loads an ancestor configuration only after that source is approved and formats correctly",
   );
   await writeFile(
     path.join(workspace, "package.json"),
@@ -286,52 +300,114 @@ try {
     "Explicit Prettier configuration preserves package.json settings and nearest-config precedence",
   );
 
+  const jsoncFile = path.join(workspace, "tsconfig.json");
+  const jsoncInput = '{// keep this comment\n"compilerOptions":{"strict":true,},}';
+  await writeFile(jsoncFile, jsoncInput);
   await writeFile(
-    path.join(data, "settings.json"),
-    js({
-      "files.autoSave": "off",
-      "litecode.nodePath": process.execPath,
-      "editor.defaultFormatter": "oxc.oxc-vscode",
-    }),
+    path.join(workspace, ".editorconfig"),
+    "root = true\n[*]\nindent_style = space\nindent_size = 4\nend_of_line = crlf\n",
   );
-  const typescript = path.join(workspace, "a.ts");
-  await writeFile(typescript, "const x=1");
-  let oxfmt = await evaluate(
-    `audit.invoke('format_document',{path:${js(typescript)},text:'const x=1',language:'typescript'})`,
+  await writeFile(path.join(workspace, "package.json"), js({ prettier: { tabWidth: 2 } }));
+  const jsoncOutput = await evaluate(
+    `audit.invoke('format_document',{path:${js(jsoncFile)},text:${js(jsoncInput)},language:'jsonc'})`,
   );
-  assert.match(oxfmt, /const x = 1/);
-  await writeFile(path.join(workspace, "oxfmt.config.ts"), "export default {semi:false};");
-  oxfmt = await evaluate(
-    `audit.invoke('format_document',{path:${js(typescript)},text:'const x=1;',language:'typescript'})`,
+  assert.match(jsoncOutput, /\r\n {2}"compilerOptions"/);
+  assert.ok(jsoncOutput.includes("// keep this comment"));
+  await evaluate(
+    `(async()=>{audit.jsoncId=await audit.docs.openPath(${js(jsoncFile)},{pinned:true})})()`,
   );
-  assert.doesNotMatch(oxfmt, /;/);
-  await unlink(path.join(workspace, "oxfmt.config.ts"));
+  await waitFor(
+    () => evaluate(`audit.docs.editor()?.getModel()===audit.docs.models.get(audit.jsoncId)`),
+    "JSONC model attached",
+  );
+  const manual = await evaluate(`(async()=>{
+    await audit.docs.editor().getAction('editor.action.formatDocument').run();
+    const m=audit.docs.models.get(audit.jsoncId);const formatted=m.getValue();
+    await m.undo();return {formatted,undo:m.getValue()};
+  })()`);
+  assert.equal(manual.formatted, jsoncOutput);
+  assert.equal(manual.undo, jsoncInput);
+  await evaluate(`(async()=>{
+    audit.store.setApp({settings:{...audit.store.useApp.getState().settings,'editor.formatOnSave':true}});
+    await audit.docs.save(audit.jsoncId);
+  })()`);
+  assert.equal(await readFile(jsoncFile, "utf8"), jsoncOutput);
   await writeFile(
-    path.join(data, "settings.json"),
-    js({
-      "files.autoSave": "off",
-      "litecode.nodePath": process.execPath,
-      "editor.defaultFormatter": "oxc.oxc-vscode",
-      "oxfmt.path": process.execPath,
-    }),
+    path.join(workspace, "package.json"),
+    js({ prettier: { plugins: ["./missing-plugin.mjs"] } }),
   );
-  const executableError = await evaluate(
-    `audit.invoke('format_document',{path:${js(typescript)},text:'const x=1',language:'typescript'}).catch(e=>e)`,
+  const failed = await evaluate(`(async()=>{
+    const m=audit.docs.models.get(audit.jsoncId);const before=m.getValue();
+    const error=await audit.languages.formatModel(m).then(()=>null,e=>e);
+    return {before,after:m.getValue(),error};
+  })()`);
+  assert.equal(failed.error.code, "formatter");
+  assert.equal(failed.after, failed.before);
+  await writeFile(path.join(workspace, "package.json"), '{"private":true}');
+  const editorConfigOnly = await evaluate(
+    `audit.invoke('format_document',{path:${js(jsoncFile)},text:${js(jsoncInput)},language:'jsonc'})`,
   );
-  assert.equal(executableError.code, "formatterTrust");
-  assert.equal(path.resolve(executableError.trustPath), path.dirname(process.execPath));
+  // The outer Prettier config supplies tabWidth=4, and EditorConfig supplies CRLF.
+  assert.match(editorConfigOnly, /\r\n {4}"compilerOptions"/);
   checks.push(
-    "A configured formatter executable outside the workspace needs its own source approval",
+    "Manual JSONC formatting and format on save honor project options and EOL, undo restores the buffer, and plugin errors preserve it",
   );
+
+  const outside = path.join(run, "outside-prettier.cjs");
+  await writeFile(outside, "throw new Error('must not execute');");
+  await writeFile(path.join(workspace, "node_modules/prettier/package.json"), js({ bin: outside }));
+  // The earlier config grant covers run, so use a fresh context to check tool trust.
+  await evaluate(
+    `audit.invoke('set_workspace_trust',{expectedRoot:audit.store.useApp.getState().root,trusted:false})`,
+  );
+  await evaluate(
+    `audit.invoke('set_workspace_trust',{expectedRoot:audit.store.useApp.getState().root,trusted:true})`,
+  );
+  const freshError = await evaluate(
+    `audit.invoke('format_document',{path:${js(inside)},text:'<p>text</p>',language:'html'}).catch(e=>e)`,
+  );
+  assert.equal(freshError.code, "formatterTrust");
+  assert.equal(path.resolve(freshError.trustPath), run);
+  checks.push("A project Prettier executable outside the workspace needs its own source approval");
   const rust = path.join(workspace, "a.rs");
   await writeFile(rust, "fn main(){let x=1;}");
   const rustfmt = await evaluate(
     `audit.invoke('format_document',{path:${js(rust)},text:'fn main(){let x=1;}',language:'rust'})`,
   );
   assert.match(rustfmt, /let x = 1;/);
-  checks.push(
-    "Real Oxfmt accepts both the pinned empty default and TypeScript config; Rustfmt accepts the pinned empty default",
+  checks.push("Rustfmt still accepts the pinned empty default");
+
+  // Use an existing external JSON file without writing outside tmp or inheriting
+  // this repository's dev Prettier through the fixture's ancestor directories.
+  const npmManifest = path.join(path.dirname(process.execPath), "node_modules/npm/package.json");
+  await access(npmManifest);
+  for (let directory = path.dirname(npmManifest); ; directory = path.dirname(directory)) {
+    assert.equal(await exists(path.join(directory, "node_modules/prettier")), false);
+    if (directory === path.dirname(directory)) {
+      break;
+    }
+  }
+  await evaluate(`(async()=>{
+    await audit.invoke('explicit_open',{path:${js(npmManifest)}});
+    await audit.invoke('trust_formatter',{path:${js(npmManifest)},expectedRoot:audit.store.useApp.getState().root,directory:${js(path.dirname(npmManifest))}});
+  })()`);
+  const originalManifest = await readFile(npmManifest, "utf8");
+  const bundled = await evaluate(
+    `audit.invoke('format_document',{path:${js(npmManifest)},text:${js(originalManifest)},language:'json'})`,
   );
+  assert.deepEqual(JSON.parse(bundled), JSON.parse(originalManifest));
+  assert.equal(await readFile(npmManifest, "utf8"), originalManifest);
+  assert.equal(await exists(path.join(data, "tools/languages")), false);
+  await writeFile(path.join(data, "settings.json"), js({ "litecode.nodePath": null }));
+  const missingNode = await evaluate(
+    `audit.invoke('format_document',{path:${js(npmManifest)},text:'{}',language:'json'}).catch(e=>e)`,
+  );
+  assert.equal(missingNode.code, "missingTool", js(missingNode));
+  assert.match(missingNode.message, /Node.js is required for formatting/);
+  checks.push(
+    "Packaged Prettier works without project Prettier or Language Tools, and missing Node.js reports an actionable error",
+  );
+  await evaluate(`audit.languages.stopLanguages()`);
   assert.deepEqual(consoleErrors, []);
   const screenshot = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(path.join(run, "verified.png"), Buffer.from(screenshot.data, "base64"));

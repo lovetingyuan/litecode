@@ -43,9 +43,9 @@ Run `npm ci` first. Desktop development requires Node.js 24+, Rust, and the Wind
 | `npm run test:e2e`       | Run desktop verification with the debug app built and Vite running.            |
 | `npm run release`        | Run the signed release workflow; see [release instructions](docs/releases.md). |
 
-`build:tools` packages the Web, TypeScript, and Vue language services and the Oxfmt npm formatter, including its HTML support. Tauri runs it automatically before development and builds; run `npm run build:tools` manually when rebuilding tools for a direct Cargo build. `postinstall` applies the required Trees scroll patch automatically after installing dependencies.
+`build:tools` packages the Web, TypeScript, and Vue language services and Prettier, including its configuration loaders and language plugins. Tauri runs it automatically before development and builds; run `npm run build:tools` manually when rebuilding tools for a direct Cargo build. `postinstall` applies the required Trees scroll patch automatically after installing dependencies.
 
-HTML and Markdown support document formatting and `editor.formatOnSave` through bundled Oxfmt. A compatible Node.js installation is required; Prettier and Language Tools do not need to be installed separately unless selected by project configuration. Markdown formatting collapses extra blank lines between paragraphs while preserving necessary spacing and literal code-block content.
+Supported non-Rust files, including HTML, Markdown and JSONC, use the nearest project Prettier or bundled Prettier for document formatting and `editor.formatOnSave`. Node.js is required, but Prettier and Language Tools do not need to be installed separately. Prettier configuration overrides `.editorconfig`; unspecified options use Prettier defaults. Project plugins must be installed by the project. Invalid configurations or missing plugins report an error without replacing the buffer. Rust continues to use rustfmt. The repository's `npm run format` still uses Oxfmt.
 
 Debug builds use the `dev` subdirectory of the normal application data directory, so the development app and installed release can run together with separate settings and recovery sessions. Each data directory retains its own single-instance protection. An existing `data` directory beside the executable still takes precedence for portable mode.
 

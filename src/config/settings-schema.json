@@ -215,7 +215,7 @@
     "editor.formatOnSave": {
       "type": "boolean",
       "default": false,
-      "description": "Format documents on save. HTML, Markdown, and other supported files use bundled Oxfmt and require Node.js; Rust requires rustfmt. Project configuration can select other formatters."
+      "description": "Format documents on save. Supported non-Rust files use project Prettier or bundled Prettier and require Node.js. Prettier configuration overrides EditorConfig. Rust requires rustfmt."
     },
     "files.autoSave": {
       "enum": ["off", "afterDelay", "onFocusChange", "onWindowChange"],
@@ -306,11 +306,6 @@
       "type": ["string", "null"],
       "default": null,
       "description": "Path to the rust-analyzer executable. null searches PATH for the project's Rust toolchain."
-    },
-    "oxfmt.path": {
-      "type": ["string", "null"],
-      "default": null,
-      "description": "Path to the Oxfmt executable. null tries the project, bundled Oxfmt, Oxfmt installed by the app, then PATH. The bundled npm version supports HTML and requires Node.js; standalone binaries do not support HTML."
     },
     "editor.lineNumbers": {
       "enum": ["off", "on", "relative", "interval"],

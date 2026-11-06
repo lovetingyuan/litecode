@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { mkdir, copyFile, cp, readFile } from "node:fs/promises";
+import { mkdir, copyFile, cp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 await mkdir("src-tauri/tools", { recursive: true });
@@ -28,7 +28,6 @@ async function copyPackage(
   name,
   from = path.resolve("package.json"),
   destination = "src-tauri/tools/typescript/node_modules",
-  optional = false,
 ) {
   const require = createRequire(from);
   const directory = require.resolve
@@ -42,11 +41,12 @@ async function copyPackage(
       }
     });
   if (!directory) {
-    if (optional) return;
     throw new Error(`Cannot package ${name} from ${from}`);
   }
   const key = path.join(destination, path.relative(path.resolve("node_modules"), directory));
-  if (copied.has(key)) return;
+  if (copied.has(key)) {
+    return;
+  }
   copied.add(key);
   const relative = path.relative(path.resolve("node_modules"), directory);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -65,12 +65,12 @@ for (const name of ["typescript-language-server", "typescript", "@vue/language-s
   await copyPackage(name);
 }
 
-// Keep Oxfmt's bundled Prettier modules and platform binding: the standalone
-// binary cannot format HTML. Node.js is resolved by the application at runtime.
-const formatters = "src-tauri/tools/formatters/node_modules";
-const oxfmtManifest = path.resolve("node_modules/oxfmt/package.json");
-await copyPackage("oxfmt", undefined, formatters);
-const oxfmt = JSON.parse(await readFile(oxfmtManifest, "utf8"));
-for (const name of Object.keys(oxfmt.optionalDependencies ?? {})) {
-  await copyPackage(name, oxfmtManifest, formatters, true);
+// Replace the entire generated formatter directory so older builds cannot ship Oxfmt.
+const formatters = path.resolve("src-tauri/tools/formatters");
+const tools = path.resolve("src-tauri/tools");
+if (path.dirname(formatters) !== tools) {
+  throw new Error(`Formatter resources are outside the tools directory: ${formatters}`);
 }
+await rm(formatters, { recursive: true, force: true });
+// Keep Prettier's config loaders and language plugins intact; Node.js is resolved at runtime.
+await copyPackage("prettier", undefined, path.join(formatters, "node_modules"));

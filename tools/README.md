@@ -5,7 +5,7 @@ still be a manual verification entry point.
 
 | Files                                                           | Purpose                                                                                                                                               |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `build-tools.mjs`, `web-language-server.mjs`, `languages/`      | Build and package language services; used by Tauri development and builds.                                                                            |
+| `build-tools.mjs`, `web-language-server.mjs`, `languages/`      | Build and package language services and Prettier; used by Tauri development and builds.                                                               |
 | `patch-trees-*.mjs`, `trees/`                                   | Apply the pinned Trees dependency patches during installation and Vite startup; includes inline editing tests and compatibility with earlier patches. |
 | `release.mjs`, `release.test.mjs`, `setup-updater.mjs`          | Signed release workflow, its unit tests, and updater key setup. See [release instructions](../docs/releases.md).                                      |
 | `package-portable.mjs`                                          | Package the portable app and installer; imported by the release workflow. ZIP creation uses Windows `tar.exe`.                                        |
@@ -24,6 +24,10 @@ are imported helpers, not standalone checks.
 Updated verification scripts write disposable fixtures and evidence under `tmp/verification/`.
 Older scripts may still use `.verification/`; published historical evidence remains in
 `docs/verification/`.
+
+After `npm run build:tools`, run `node tools/verify-formatting.mjs` to check the bundled
+Prettier CLI and project configuration precedence. `verify-formatter-trust.mjs` also
+requires a Debug desktop build and exercises native formatter authorization.
 
 ## Test policy
 

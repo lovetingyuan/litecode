@@ -164,7 +164,7 @@ function settingGroup(key: string) {
   if (prefix === "terminal") {
     return 4;
   }
-  if (["typescript", "rust-analyzer", "oxfmt", "litecode"].includes(prefix)) {
+  if (["typescript", "rust-analyzer", "litecode"].includes(prefix)) {
     return 5;
   }
   return 6;

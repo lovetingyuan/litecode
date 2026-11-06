@@ -142,20 +142,23 @@ it("formats an untitled Markdown document through the native formatter", async (
   });
 });
 
-it.each([true, false])(
-  "formats JSONC with the model's insertSpaces=%s and line endings",
-  async (insertSpaces) => {
-    const { formatModelText } = await import("./languages");
-    const text = await formatModelText({
-      getLanguageId: () => "jsonc",
-      getValue: () => '{"x":{"value":1}}',
-      getOptions: () => ({ tabSize: 2, insertSpaces }),
-      getEOL: () => "\r\n",
-    } as unknown as editor.ITextModel);
-    expect(text).toContain(insertSpaces ? '\r\n  "x": {' : '\r\n\t"x": {');
-    expect(text).toContain(insertSpaces ? '\r\n    "value": 1' : '\r\n\t\t"value": 1');
-  },
-);
+it("routes JSONC through the native formatter and propagates configuration failures", async () => {
+  const { formatModelText } = await import("./languages");
+  const input = '{// comment\n"value":1,}';
+  // Only the methods read by formatModelText are needed in this formatter boundary test.
+  const model = {
+    getLanguageId: () => "jsonc",
+    getValue: () => input,
+  } as unknown as editor.ITextModel;
+  const error = { code: "formatter", message: "Invalid Prettier configuration" };
+  mocks.call.mockRejectedValueOnce(error);
+  await expect(formatModelText(model)).rejects.toBe(error);
+  expect(mocks.call).toHaveBeenCalledWith("format_document", {
+    path: null,
+    text: input,
+    language: "jsonc",
+  });
+});
 
 it("reinitializes services with the new workspace after stopping the old clients", async () => {
   const { ensureLanguage, stopLanguages, languageReport } = await import("./languages");

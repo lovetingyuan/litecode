@@ -93,7 +93,7 @@ pub async fn trust_formatter(
 ) -> Result<()> {
     crate::state::blocking(window, move |window, state| {
         grant(
-            &state,
+            state,
             window.label(),
             path.as_deref(),
             expected_root.as_deref(),
@@ -106,6 +106,8 @@ pub async fn trust_formatter(
 // Resolve configuration without executing project code, then pin this exact file
 // on the CLI so the formatter cannot discover a different, unchecked ancestor.
 pub fn find_config(path: &Path, names: &[&str], prettier: bool) -> Result<Option<PathBuf>> {
+    static PRETTIER_FIELD: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"(?m)^prettier\s*:").unwrap());
     for directory in path.parent().unwrap().ancestors() {
         if prettier {
             let package = directory.join("package.json");
@@ -117,11 +119,7 @@ pub fn find_config(path: &Path, names: &[&str], prettier: bool) -> Result<Option
                 return Ok(Some(package));
             }
             let package = directory.join("package.yaml");
-            if package.is_file()
-                && regex::Regex::new(r"(?m)^prettier\s*:")
-                    .unwrap()
-                    .is_match(&fs::read_to_string(&package)?)
-            {
+            if package.is_file() && PRETTIER_FIELD.is_match(&fs::read_to_string(&package)?) {
                 return Ok(Some(package));
             }
         }
@@ -155,12 +153,42 @@ pub const PRETTIER_CONFIGS: &[&str] = &[
     "prettier.config.cts",
     ".prettierrc.toml",
 ];
-pub const OXFMT_CONFIGS: &[&str] = &[
-    ".oxfmtrc.json",
-    ".oxfmtrc.jsonc",
-    "oxfmt.config.ts",
-    "oxfmt.config.mts",
-];
+
+pub fn find_prettier(path: &Path) -> Result<Option<PathBuf>> {
+    for directory in path.parent().unwrap().ancestors() {
+        let package = directory.join("node_modules/prettier");
+        match fs::symlink_metadata(&package) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.into()),
+            Ok(_) => {}
+        }
+        let resolve = || -> std::result::Result<PathBuf, String> {
+            let bytes = fs::read(package.join("package.json")).map_err(|e| e.to_string())?;
+            let manifest: serde_json::Value =
+                serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            // Prettier versions use either a bin string or a named bin entry.
+            let bin = manifest["bin"]
+                .as_str()
+                .or_else(|| manifest["bin"]["prettier"].as_str())
+                .ok_or("The package does not declare a Prettier CLI.")?;
+            let script = package.join(bin);
+            if !script.is_file() {
+                return Err(format!("The Prettier CLI is missing: {}", script.display()));
+            }
+            Ok(script)
+        };
+        return resolve().map(Some).map_err(|error| {
+            AppError::new(
+                "formatter",
+                format!(
+                    "Cannot load project Prettier at {}: {error}",
+                    package.display()
+                ),
+            )
+        });
+    }
+    Ok(None)
+}
 
 #[cfg(test)]
 mod tests {
@@ -354,13 +382,30 @@ mod tests {
             find_config(&file, PRETTIER_CONFIGS, true).unwrap(),
             Some(package)
         );
-        assert!(find_config(&file, OXFMT_CONFIGS, false).unwrap().is_none());
-        let oxfmt = nested.join("oxfmt.config.mts");
-        fs::write(&oxfmt, "throw new Error('must not execute')").unwrap();
-        assert_eq!(
-            find_config(&file, OXFMT_CONFIGS, false).unwrap(),
-            Some(oxfmt)
-        );
+    }
+
+    #[test]
+    fn nearest_project_prettier_wins_and_broken_packages_do_not_fall_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("packages/app");
+        fs::create_dir_all(&nested).unwrap();
+        let file = nested.join("a.ts");
+        for (directory, bin) in [
+            (dir.path(), r#""bin":"bin/prettier.cjs""#),
+            (nested.as_path(), r#""bin":{"prettier":"bin/prettier.cjs"}"#),
+        ] {
+            let package = directory.join("node_modules/prettier");
+            fs::create_dir_all(package.join("bin")).unwrap();
+            fs::write(package.join("package.json"), format!("{{{bin}}}")).unwrap();
+            let script = package.join("bin/prettier.cjs");
+            fs::write(&script, "throw new Error('must not execute')").unwrap();
+            assert_eq!(find_prettier(&file).unwrap(), Some(script));
+        }
+        let package = nested.join("node_modules/prettier");
+        fs::remove_file(package.join("bin/prettier.cjs")).unwrap();
+        assert_eq!(find_prettier(&file).unwrap_err().code, "formatter");
+        fs::write(package.join("package.json"), "invalid").unwrap();
+        assert_eq!(find_prettier(&file).unwrap_err().code, "formatter");
     }
 
     #[cfg(windows)]

@@ -22,7 +22,6 @@ import { monaco } from "./monaco";
 import { models, openPath, normalize, visiblePath, checkpoint } from "./documents";
 import type { DiskDocument } from "../types/types";
 import { settingsSchema } from "../utils/settings";
-import { applyEdits, format } from "jsonc-parser";
 import { cancelWorkspaceTrustPrompt, trustedCall } from "../core/workspaceTrust";
 
 class IpcReader extends AbstractMessageReader {
@@ -169,7 +168,7 @@ export function initializeLanguages() {
             notify("The document changed during formatting; stale edits were discarded.");
             return [];
           }
-          return [{ range: m.getFullModelRange(), text }];
+          return [{ range: m.getFullModelRange(), text, eol: formattedEndOfLine(text) }];
         } catch (e) {
           notify(errorMessage(e));
           return [];
@@ -180,22 +179,23 @@ export function initializeLanguages() {
 }
 
 export async function formatModelText(m: monaco.editor.ITextModel, language = m.getLanguageId()) {
-  if (language === "jsonc") {
-    return applyEdits(
-      m.getValue(),
-      format(m.getValue(), undefined, {
-        insertSpaces: m.getOptions().insertSpaces,
-        tabSize: m.getOptions().tabSize,
-        eol: m.getEOL(),
-      }),
-    );
-  }
   const doc = Object.values(useApp.getState().docs).find((d) => models.get(d.id) === m);
   return trustedCall<string>("format_document", {
     path: doc?.path ?? null,
     text: m.getValue(),
     language,
   });
+}
+
+// Monaco normalizes replacement text to the model's EOL unless it is changed explicitly.
+function formattedEndOfLine(text: string) {
+  const newline = /\r?\n/.exec(text)?.[0];
+  if (newline === undefined) {
+    return undefined;
+  }
+  return newline === "\r\n"
+    ? monaco.editor.EndOfLineSequence.CRLF
+    : monaco.editor.EndOfLineSequence.LF;
 }
 
 export async function formatModel(m: monaco.editor.ITextModel) {
@@ -207,6 +207,10 @@ export async function formatModel(m: monaco.editor.ITextModel) {
   if (m.getValue() !== text) {
     m.pushStackElement();
     m.pushEditOperations([], [{ range: m.getFullModelRange(), text }], () => null);
+    const eol = formattedEndOfLine(text);
+    if (eol !== undefined) {
+      m.pushEOL(eol);
+    }
     m.pushStackElement();
   }
 }
