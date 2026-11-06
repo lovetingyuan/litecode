@@ -3,7 +3,7 @@ import * as monaco from "monaco-editor";
 import EditorWorker from "@codingame/monaco-vscode-api/workers/editor.worker?worker";
 import { MonacoVscodeApiWrapper } from "monaco-languageclient/vscodeApiWrapper";
 import getLanguagesServiceOverride from "@codingame/monaco-vscode-languages-service-override";
-import "./editor-features";
+import { configureFormatting } from "./editor-features";
 import { editorFontOptions } from "./font";
 import { markdownSyntax } from "./markdownSyntax";
 import { vueSyntax } from "./vueSyntax";
@@ -30,6 +30,7 @@ export function initializeEditor(): Promise<void> {
       },
     });
     await startupStep("vscode-services-started", () => wrapper.start());
+    configureFormatting();
     await startupStep("syntaxes-registered", registerSyntaxes);
     monaco.editor.defineTheme("dark-modern", editorTheme());
     monaco.editor.setTheme("dark-modern");

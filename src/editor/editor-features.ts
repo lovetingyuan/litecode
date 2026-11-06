@@ -20,3 +20,38 @@ import "@codingame/monaco-vscode-api/vscode/vs/editor/contrib/smartSelect/browse
 import "@codingame/monaco-vscode-api/vscode/vs/editor/contrib/inlayHints/browser/inlayHintsContribution";
 import "@codingame/monaco-vscode-api/vscode/vs/editor/contrib/semanticTokens/browser/viewportSemanticTokens";
 import "@codingame/monaco-vscode-api/vscode/vs/editor/contrib/wordHighlighter/browser/wordHighlighter";
+import { EditorExtensionsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/editorExtensions";
+import { FormattingConflicts } from "@codingame/monaco-vscode-api/vscode/vs/editor/contrib/format/browser/format";
+import {
+  MenuId,
+  MenuRegistry,
+} from "@codingame/monaco-vscode-api/vscode/vs/platform/actions/common/actions";
+import { ContextKeyExpr } from "@codingame/monaco-vscode-api/vscode/vs/platform/contextkey/common/contextkey";
+
+export function configureFormatting() {
+  // LiteCode chooses formatters automatically; VS Code's extension picker is unsupported.
+  const formatterActions = new Set([
+    "editor.action.formatDocument.multiple",
+    "editor.action.formatSelection.multiple",
+  ]);
+  const actions = EditorExtensionsRegistry.getEditorActions();
+  // The registry exposes an iterable, backed by its mutable action array.
+  if (Array.isArray(actions)) {
+    for (let i = actions.length - 1; i >= 0; i--) {
+      if (formatterActions.has(actions[i].id)) {
+        actions.splice(i, 1);
+      }
+    }
+  }
+  for (const menu of [MenuId.EditorContext, MenuId.CommandPalette]) {
+    for (const item of MenuRegistry.getMenuItems(menu)) {
+      if ("command" in item && formatterActions.has(item.command.id)) {
+        item.when = ContextKeyExpr.false();
+      }
+    }
+  }
+  FormattingConflicts.setFormatterSelector(
+    async (providers) =>
+      providers.find((provider) => provider.displayName === "LiteCode") ?? providers[0],
+  );
+}

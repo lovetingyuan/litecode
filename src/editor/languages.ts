@@ -160,6 +160,7 @@ export function initializeLanguages() {
   });
   for (const language of formattingLanguages) {
     monaco.languages.registerDocumentFormattingEditProvider(language, {
+      displayName: "LiteCode",
       async provideDocumentFormattingEdits(m, _options, token) {
         const version = m.getVersionId();
         try {
