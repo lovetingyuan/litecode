@@ -138,6 +138,10 @@
   outline: 1px solid var(--lc-focus);
   outline-offset: -1px;
 }
+/* Reduce the tree's default level gap to keep deeply nested Git changes compact. */
+.git-view :global(.git-file-tree) {
+  --trees-level-gap-override: 2px;
+}
 .git-file-row {
   padding: 0 9px 0 16px;
 }

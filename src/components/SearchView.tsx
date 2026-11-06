@@ -164,7 +164,7 @@ function SearchPanel({ id }: Readonly<{ id: string }>) {
   const [replace, setReplace] = useState(false);
   const [replacement, setReplacement] = useState("");
   const [preserve, setPreserve] = useState(false);
-  const [details, setDetails] = useState(false);
+  const [details, setDetails] = useState(Boolean(query.include || query.exclude));
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const [listMode, setListMode] = useState(true);
   const [scroll, setScroll] = useState(0);
