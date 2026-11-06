@@ -18,6 +18,7 @@ useApp.subscribe((state, previous) => {
     setApp({
       treeRoot: null,
       gitState: { root: null, session: null, git: [], branch: null, tracking: null, warnings: [] },
+      gitInfoVersion: 0,
       fileIndexVersion: state.fileIndexVersion + 1,
       workspaceEpoch: state.workspaceEpoch + 1,
     });
@@ -84,7 +85,11 @@ export async function refreshTree(changedPaths?: readonly string[]): Promise<voi
     setApp({ treeRoot: cache.root });
   }
   if (!cache.disposed) {
-    void refreshGit(cache);
+    void refreshGit(
+      cache,
+      false,
+      !changedPaths || changedPaths.some((path) => /(^|[\\/])\.git([\\/]|$)/i.test(path)),
+    );
   }
 }
 function invalidateDescendants(cache: DirectoryCache, path: string, affected: Set<string>) {
@@ -156,7 +161,12 @@ export async function handleWorkspaceChanges(event: WorkspaceChanges): Promise<b
   const affected = changedDirectories(cache, event, structural);
   await Promise.all([...affected].map((directory) => cache.load(directory)));
   if (event.gitChanged && !cache.disposed) {
-    void refreshGit(cache);
+    const infoChanged =
+      event.rescan ||
+      !!event.gitPaths?.length ||
+      !event.changes.length ||
+      event.changes.some(({ path }) => /(^|[\\/])\.git([\\/]|$)/i.test(path));
+    void refreshGit(cache, false, infoChanged);
   }
   return !cache.disposed;
 }

@@ -129,27 +129,42 @@ function GitRemoteAddress({
 export function GitView() {
   const root = useApp((s) => s.root);
   const git = useApp((s) => s.gitState);
+  const infoVersion = useApp((s) => s.gitInfoVersion);
   const selected = useApp((s) => s.gitRepository);
   const tab = useApp((s) => s.gitTab);
   const layout = useApp((s) => s.gitLayout);
   const active = useApp((s) => s.sidebar === "git" && s.view === "editor");
   const repository = selectedRepository();
   const repositoryPath = repository?.path;
+  const branch = repository?.branch;
+  const detached = repository?.detached;
+  const operation = repository?.operation;
   const busy = useApp((s) => (repository ? s.gitBusy[repository.path] : undefined));
   const [details, setDetails] = useState<{
     path: string;
     root: string | null;
-    snapshot: typeof git;
+    session: typeof git.session;
+    version: number;
+    branch: typeof branch;
+    detached: typeof detached;
+    operation: typeof operation;
     info: GitInfo;
   } | null>(null);
   const info =
     details &&
     details.path === repositoryPath &&
     details.root === root &&
-    details.snapshot.session === git.session
+    details.session === git.session
       ? details.info
       : null;
-  const currentInfo = details?.snapshot === git && !busy ? info : null;
+  const currentInfo =
+    details?.version === infoVersion &&
+    details.branch === branch &&
+    details.detached === detached &&
+    details.operation === operation &&
+    !busy
+      ? info
+      : null;
   const [refreshing, setRefreshing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
   const syncGeneration = useRef(0);
@@ -187,7 +202,16 @@ export function GitView() {
     void readGitInfo(repositoryPath)
       .then((result) => {
         if (!cancelled) {
-          setDetails({ path: repositoryPath, root, snapshot: git, info: result });
+          setDetails({
+            path: repositoryPath,
+            root,
+            session: git.session,
+            version: infoVersion,
+            branch,
+            detached,
+            operation,
+            info: result,
+          });
         }
       })
       .catch((e) => {
@@ -198,7 +222,7 @@ export function GitView() {
     return () => {
       cancelled = true;
     };
-  }, [active, repositoryPath, root, git, busy]);
+  }, [active, repositoryPath, root, git.session, infoVersion, branch, detached, operation, busy]);
 
   async function refresh() {
     setRefreshing(true);
@@ -453,7 +477,7 @@ export function GitView() {
                 {repository.branch ?? "No commits yet"}
                 {repository.detached ? " (detached)" : ""}
               </strong>
-              <span>{branchDifference(currentInfo, repository)}</span>
+              <span>{branchDifference(info, repository)}</span>
             </div>
             <div
               className={`git-sync-actions flex flex-wrap gap-[5px] ${gitStyles["git-sync-actions"]}`}
@@ -770,6 +794,7 @@ function GitChangePanes({
   const layout = useRef<AllotmentHandle>(null);
   const weights = useRef<PaneWeights>({});
   const sizes = useRef<number[]>([]);
+  const appliedSizes = useRef<number[]>([]);
   const [height, setHeight] = useState(0);
   const [collapsed, setCollapsed] = useState<Partial<Record<ChangeGroup, boolean>>>({});
   const [actions, setActions] = useState<Partial<Record<ChangeGroup, boolean>>>({});
@@ -815,7 +840,18 @@ function GitChangePanes({
   }, []);
   useLayoutEffect(() => {
     weights.current = addPaneWeights(panes, weights.current);
-    layout.current?.resize(changePaneSizes(panes, weights.current, height));
+    const next = changePaneSizes(panes, weights.current, height);
+    if (!layout.current) {
+      appliedSizes.current = [];
+      return;
+    }
+    if (
+      next.length !== appliedSizes.current.length ||
+      next.some((size, index) => size !== appliedSizes.current[index])
+    ) {
+      appliedSizes.current = next;
+      layout.current.resize(next);
+    }
   }, [panes, height]);
   return (
     <div
@@ -834,6 +870,7 @@ function GitChangePanes({
           }}
           onCommit={() => {
             weights.current = resizedPaneWeights(panes, weights.current, sizes.current);
+            appliedSizes.current = changePaneSizes(panes, weights.current, height);
           }}
         >
           {panes.map((pane) => (
@@ -1140,8 +1177,16 @@ function GitChangesTree(
     },
     unsafeCSS: sidebarScrollbarCSS,
   });
+  const treePaths = useRef(changes.map((change) => change.path));
   useEffect(() => {
-    model.resetPaths(changes.map((c) => c.path));
+    const paths = changes.map((change) => change.path);
+    if (
+      paths.length !== treePaths.current.length ||
+      paths.some((path, index) => path !== treePaths.current[index])
+    ) {
+      treePaths.current = paths;
+      model.resetPaths(paths);
+    }
     model.setGitStatus(
       changes.map((c) => ({
         path: c.path,

@@ -55,15 +55,74 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 describe("Workspace directory integration", () => {
+  it.each([
+    { path: "output.log", metadata: false },
+    { path: ".gitignore", metadata: false },
+    { path: ".git/HEAD", metadata: true },
+    { path: "nested/.git/config", metadata: true },
+  ])("classifies Git refreshes for $path", async ({ path, metadata }) => {
+    setApp({ root: "C:/project" });
+    const current = workspaceDirectories()!;
+    current.session = 1;
+    const version = useApp.getState().gitInfoVersion;
+    vi.mocked(call).mockResolvedValue({
+      root: "C:/project",
+      session: 1,
+      git: [],
+      branch: "main",
+      tracking: null,
+      warnings: [],
+    });
+    await handleWorkspaceChanges({
+      root: current.root,
+      session: 1,
+      changes: [{ path, structural: false }],
+      rescan: false,
+      gitChanged: true,
+    });
+    await vi.waitFor(() => expect(useApp.getState().gitState.branch).toBe("main"));
+    expect(useApp.getState().gitInfoVersion).toBe(version + Number(metadata));
+  });
+  it.each([
+    { changes: [], rescan: false },
+    { changes: [{ path: "a.txt", structural: false }], rescan: true },
+    {
+      changes: [{ path: "a.txt", structural: false }],
+      rescan: false,
+      gitPaths: ["C:/repo/.git/HEAD"],
+    },
+  ])(
+    "invalidates info for metadata outside the workspace or uncertain events: %j",
+    async (event) => {
+      setApp({ root: "C:/project" });
+      workspaceDirectories()!.session = 1;
+      vi.mocked(call).mockImplementation(async (command) =>
+        command === "workspace_git_status"
+          ? {
+              root: "C:/project",
+              session: 1,
+              git: [],
+              branch: "main",
+              tracking: null,
+              warnings: [],
+            }
+          : { root: "C:/project", session: 1, directory: "", paths: [], warnings: [] },
+      );
+      await handleWorkspaceChanges({ root: "C:/project", session: 1, gitChanged: true, ...event });
+      await vi.waitFor(() => expect(useApp.getState().gitInfoVersion).toBe(1));
+    },
+  );
   it("distinguishes a workspace reopened at the same path after rapid switches", () => {
     setApp({ root: "C:/project" });
     const previous = workspaceDirectories()!;
     const epoch = useApp.getState().workspaceEpoch;
     setApp({ root: "C:/other" });
+    setApp({ gitInfoVersion: 4 });
     setApp({ root: "C:/project" });
     expect(previous.disposed).toBe(true);
     expect(workspaceDirectories()).not.toBe(previous);
     expect(useApp.getState().workspaceEpoch).toBe(epoch + 2);
+    expect(useApp.getState().gitInfoVersion).toBe(0);
   });
   it("loads root and expanded folders only, preserving cached repeated expansion", async () => {
     const { model, reads } = fixture();

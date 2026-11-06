@@ -54,6 +54,7 @@ type State = {
   view: "editor" | "terminal";
   sidebarWidth: number;
   gitState: GitSnapshot;
+  gitInfoVersion: number;
   fileIndexVersion: number;
   workspaceEpoch: number;
   treeRoot: string | null;
@@ -109,6 +110,7 @@ export const useApp = create<State>((set) => ({
   view: "editor",
   sidebarWidth: 260,
   gitState: { root: null, session: null, git: [], branch: null, tracking: null, warnings: [] },
+  gitInfoVersion: 0,
   fileIndexVersion: 0,
   workspaceEpoch: 0,
   treeRoot: null,
