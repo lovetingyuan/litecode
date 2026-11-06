@@ -1,5 +1,15 @@
 import workbenchStyles from "../styles/workbench.module.css";
+import fileIconStyles from "./FileIcon.module.css";
+import { createFileTreeIconResolver, getBuiltInSpriteSheet } from "@pierre/trees";
+import { treeIcons } from "../explorer/treeIcons";
 import type { ButtonHTMLAttributes } from "react";
+
+const fileIconResolver = createFileTreeIconResolver(treeIcons);
+// Only bundled SVG definitions are injected; file paths are never used as markup.
+const fileIconSprite = {
+  __html: getBuiltInSpriteSheet(treeIcons.set ?? "complete") + (treeIcons.spriteSheet ?? ""),
+};
+
 // Shared button geometry and states stay consistent across dialogs and toolbars.
 export const actionButtonClass = `action-button inline-flex items-center justify-center shrink-0 gap-[6px] h-8 py-0 px-3 border border-strong rounded-[3px] [&.primary]:rounded-[2px] bg-button-secondary text-foreground text-[13px] font-semibold whitespace-nowrap ${workbenchStyles["action-button"]}`;
 
@@ -11,21 +21,33 @@ export function Icon({ name, className = "" }: Readonly<{ name: string; classNam
     />
   );
 }
-export function FileIcon({ language }: Readonly<{ language: string }>) {
-  const icons: Record<string, [string, string]> = {
-    typescript: ["symbol-color", "text-file-typescript"],
-    javascript: ["symbol-color", "text-file-javascript"],
-    rust: ["settings-gear", "text-file-rust"],
-    json: ["json", "text-file-json"],
-    css: ["symbol-color", "text-file-css"],
-    html: ["code", "text-file-html"],
-    markdown: ["markdown", "text-file-markdown"],
-  };
-  const [name, className] = icons[language.replace(/react$/, "")] ?? ["file", "text-file-default"];
+export function FileIconSprite() {
   return (
-    <span className={className}>
-      <Icon name={name} />
-    </span>
+    <span
+      className="absolute size-0 overflow-hidden pointer-events-none"
+      aria-hidden="true"
+      dangerouslySetInnerHTML={fileIconSprite}
+    />
+  );
+}
+
+export function FileIcon({ path }: Readonly<{ path: string }>) {
+  const icon = fileIconResolver.resolveIcon("file-tree-icon-file", path.replace(/\\/g, "/"));
+  return (
+    <svg
+      className={`inline-block size-[18px] shrink-0 align-middle ${fileIconStyles["file-icon"]}`}
+      data-icon-name={icon.name}
+      data-icon-token={icon.token}
+      style={{ color: `var(--trees-file-icon-color-${icon.token ?? "default"})` }}
+      viewBox={icon.viewBox ?? `0 0 ${icon.width ?? 16} ${icon.height ?? 16}`}
+      width={18}
+      height={18}
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <use href={`#${icon.name.replace(/^#/, "")}`} />
+    </svg>
   );
 }
 export function IconButton({

@@ -3,6 +3,7 @@ import { desktop } from "../core/bridge";
 import { notify, useApp } from "../store/store";
 import type { GitInfo, GitRepository } from "../types/types";
 import { gitContext, readGitInfo, runGitOperation, selectedRepository } from "./git";
+import { validateBranchName } from "./branchName";
 
 export type GitBranch = GitInfo["branches"][number];
 type SwitchTarget =
@@ -76,6 +77,7 @@ export async function createBranch(repository: string, source?: GitBranch) {
   }
   await input(source ? `New branch from ${source.name}` : "New branch name", "", {
     label: "Creating…",
+    validate: validateBranchName,
     run: async (name) => {
       if (!valid()) {
         throw new Error("The repository changed. Refresh and try again.");
@@ -116,8 +118,10 @@ export async function switchBranch(
     return;
   }
   if (
-    (await ask("Switch branch?", `Switch to branch “${source.name}”?`, ["Switch Branch", "Cancel"])) !==
-      "Switch Branch" ||
+    (await ask("Switch branch?", `Switch to branch “${source.name}”?`, [
+      "Switch Branch",
+      "Cancel",
+    ])) !== "Switch Branch" ||
     !valid()
   ) {
     return;
@@ -161,6 +165,7 @@ export async function switchBranch(
   if (info.branches.some((b) => !b.remote && b.name === name)) {
     await input(`Local branch ${name} already exists. New branch from ${branch.name}`, "", {
       label: "Creating…",
+      validate: validateBranchName,
       run: async (nextName) => {
         if (!valid()) {
           throw new Error("The repository changed. Refresh and try again.");

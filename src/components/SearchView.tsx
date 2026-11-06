@@ -23,12 +23,11 @@ import {
   runSearch,
 } from "../search/search";
 import { basename, relative, splitGroup } from "../editor/documents";
-import { Icon, IconButton } from "./ui";
+import { FileIcon, Icon, IconButton } from "./ui";
 import { errorMessage, desktop } from "../core/bridge";
 import { ask } from "./dialog";
 import { revealInTree } from "./Explorer";
-import { EditorTabsScrollbar, FileIcon } from "./EditorGroup";
-import { languageFor } from "../editor/monaco";
+import { EditorTabsScrollbar } from "./EditorGroup";
 import { searchPreview } from "../utils/searchPreview";
 import {
   buildSearchResults,
@@ -734,7 +733,7 @@ function SearchPanel({ id }: Readonly<{ id: string }>) {
                     <Icon name={collapsed.has(row.path) ? "chevron-right" : "chevron-down"} />
                     {row.kind === "file" && (
                       <span className="result-file-icon">
-                        <FileIcon language={languageFor(row.path)} />
+                        <FileIcon path={row.path} />
                       </span>
                     )}
                     <span className="result-filename" title={row.name}>

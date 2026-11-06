@@ -123,12 +123,17 @@ export async function input(
     title,
     value,
     choices: ["OK", "Cancel"],
+    validate: action?.validate,
     action: action && {
       choice: "OK",
       label: action.label,
       run: async (_choice, text) => {
         if (!text?.trim()) {
           throw new Error("Enter a value.");
+        }
+        const error = action.validate?.(text.trim());
+        if (error) {
+          throw new Error(error);
         }
         await action.run(text.trim());
       },
@@ -140,6 +145,9 @@ export function DialogHost() {
   const request = useDialog((s) => s.request);
   const defaultButton = useRef<HTMLButtonElement>(null);
   const submitChoice = request?.defaultChoice ?? request?.choices[0];
+  const value = request?.value?.trim();
+  const validationError = value ? request?.validate?.(value) : undefined;
+  const submitDisabled = (value !== undefined && !value) || !!validationError;
   return (
     <Dialog.Root
       open={!!request}
@@ -170,9 +178,9 @@ export function DialogHost() {
           )}
           <Dialog.Title>{request?.title}</Dialog.Title>
           <Dialog.Description>{request?.message}</Dialog.Description>
-          {request?.error && (
-            <p role="alert" className="mt-4 text-error">
-              {request.error}
+          {(validationError || request?.error) && (
+            <p id="dialog-input-error" role="alert" className="mt-4 text-error">
+              {validationError || request?.error}
             </p>
           )}
           {request?.links && (
@@ -204,6 +212,9 @@ export function DialogHost() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (submitDisabled) {
+                return;
+              }
               const text = new FormData(e.currentTarget).get("value");
               request?.resolve(
                 submitChoice ?? request.choices[0],
@@ -216,6 +227,11 @@ export function DialogHost() {
                 name="value"
                 key={request.title}
                 defaultValue={request.value}
+                onChange={(event) => updateRequest({ value: event.target.value, error: undefined })}
+                aria-invalid={!!validationError || undefined}
+                aria-describedby={
+                  validationError || request.error ? "dialog-input-error" : undefined
+                }
                 disabled={!!request.working}
                 autoFocus
                 aria-label={request.title}
@@ -240,6 +256,7 @@ export function DialogHost() {
                   key={choice}
                   disabled={
                     !!request.working ||
+                    (choice === submitChoice && submitDisabled) ||
                     (!!request.error &&
                       request.action?.retry === false &&
                       (typeof request.action.choice === "string"

@@ -12,9 +12,14 @@ export type DialogOptions = {
   defaultChoice?: string;
   action?: DialogAction;
   links?: { label: string; url: string }[];
+  validate?: (value: string) => string | undefined;
 };
 
-export type InputAction = { label: string; run: (value: string) => Promise<void> };
+export type InputAction = {
+  label: string;
+  run: (value: string) => Promise<void>;
+  validate?: (value: string) => string | undefined;
+};
 
 export type DialogRequest = Omit<DialogOptions, "signal"> & {
   title: string;

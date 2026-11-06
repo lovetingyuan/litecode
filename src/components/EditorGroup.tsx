@@ -39,7 +39,6 @@ import { Menu } from "@base-ui/react/menu";
 import { splitDirections } from "../core/commands";
 import { errorMessage, call, channel } from "../core/bridge";
 import { FileIcon, Icon, IconButton } from "./ui";
-export { FileIcon } from "./ui";
 import { createSearchEditor } from "../search/search";
 import { EditorTabMenu } from "./EditorTabMenu";
 import type { Doc, Group, Query, SearchMatch } from "../types/types";
@@ -391,7 +390,7 @@ export function EditorGroup({ group }: Readonly<{ group: Group }>) {
                     }
                   }}
                 >
-                  <FileIcon language={tab.language} />
+                  <FileIcon path={tab.path ?? tab.name} />
                   <span
                     className={`editor-tab-label ${editorStyles["editor-tab-label"]}${isGitIgnored(tab.path, root, treeRoot, git) ? " ignored" : ""}${tab.deleted ? " deleted-file-name text-git-ignored line-through" : ""}`}
                   >

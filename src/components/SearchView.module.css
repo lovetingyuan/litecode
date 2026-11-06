@@ -227,7 +227,7 @@
 .search-view :global(.result-file-icon) {
   display: flex;
   align-items: center;
-  width: 16px;
+  width: 18px;
   flex-shrink: 0;
 }
 .search-view :global(.result-filename) {

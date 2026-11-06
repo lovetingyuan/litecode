@@ -49,7 +49,6 @@ import {
   selectedRepository,
 } from "../git/git";
 import { filesUnder, groupChanges, visibleRange, type ChangeGroup } from "../git/changes";
-import { languageFor } from "../editor/monaco";
 import type { GitChange, GitInfo, GitOperation, GitRepository } from "../types/types";
 import sidebarScrollbarCSS from "../styles/sidebar-scrollbar.css?raw";
 
@@ -156,6 +155,7 @@ export function GitView() {
   const [cancelling, setCancelling] = useState(false);
   useEffect(() => setCancelling(false), [busy, repositoryPath]);
   const [branchPending, setBranchPending] = useState(false);
+  const [switchingBranch, setSwitchingBranch] = useState<string | null>(null);
   const [branchSearch, setBranchSearch] = useState("");
   const [branchSearchOpen, setBranchSearchOpen] = useState(false);
   useEffect(() => {
@@ -282,12 +282,13 @@ export function GitView() {
     }
     await runGitOperation(repository.path, request);
   }
-  async function branchAction(action: () => Promise<unknown>) {
+  async function branchAction(action: () => Promise<unknown>, branch: string | null = null) {
     if (branchWorking.current) {
       return;
     }
     branchWorking.current = true;
     setBranchPending(true);
+    setSwitchingBranch(branch);
     try {
       await action();
     } catch (error) {
@@ -295,6 +296,7 @@ export function GitView() {
     } finally {
       branchWorking.current = false;
       setBranchPending(false);
+      setSwitchingBranch(null);
     }
   }
   const branchDisabled =
@@ -579,10 +581,12 @@ export function GitView() {
                 )}
                 {info &&
                   visibleBranches.map((b) => {
+                    const branchKey = `${repository.path}:${b.remote}:${b.name}`;
+                    const switching = switchingBranch === branchKey;
                     const target = branchSwitchTarget(b, info.branches);
                     const switchDisabled = branchDisabled || target.kind === "blocked";
                     const switchToBranch = () =>
-                      branchAction(() => switchBranch(repository.path, b, chooseBranch));
+                      branchAction(() => switchBranch(repository.path, b, chooseBranch), branchKey);
                     let branchIcon;
                     if (b.remote) {
                       branchIcon = "cloud";
@@ -602,6 +606,7 @@ export function GitView() {
                           title={b.name}
                           aria-label={b.name}
                           aria-current={b.current ? "true" : undefined}
+                          aria-busy={switching}
                           disabled={switchDisabled}
                           onClick={() => void switchToBranch()}
                         >
@@ -641,6 +646,14 @@ export function GitView() {
                             />
                           )}
                         </div>
+                        {switching && (
+                          <span role="status" aria-label={`Switching to ${b.name}`}>
+                            <span
+                              className={`spinner block w-3 h-3 shrink-0 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
+                              aria-hidden="true"
+                            />
+                          </span>
+                        )}
                       </div>
                     );
                   })}
@@ -1069,7 +1082,7 @@ function GitChangesList(props: Readonly<ChangesProps>) {
                 void openGitDiff(repository, change, kind === "staged", true).catch(report)
               }
             >
-              <FileIcon language={languageFor(change.path)} />
+              <FileIcon path={change.path} />
               <span
                 className={`git-file-name shrink-0 max-w-[70%] overflow-hidden text-ellipsis whitespace-nowrap ${gitStyles["git-file-name"]}${status === "D" ? " deleted" : ""}`}
               >

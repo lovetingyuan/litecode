@@ -53,7 +53,7 @@ export function EditorBreadcrumbs({ doc, group }: Readonly<{ doc: Doc; group: Gr
             const deleted = !!doc.deleted && index === segments.length - 1;
             const content = (
               <>
-                {index === segments.length - 1 && <FileIcon language={doc.language} />}
+                {index === segments.length - 1 && <FileIcon path={doc.path ?? doc.name} />}
                 <span
                   className={
                     deleted ? "deleted-file-name text-git-ignored line-through" : undefined

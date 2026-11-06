@@ -18,9 +18,7 @@ import { useQuickFiles } from "../hooks/useQuickFiles";
 import { quickFileSettingsKey } from "../utils/quickFileFilters";
 import { call, channel, errorMessage } from "../core/bridge";
 import { runSearch, openMatch } from "../search/search";
-import { FileIcon } from "./EditorGroup";
-import { languageFor } from "../editor/monaco";
-import { Icon } from "./ui";
+import { FileIcon, Icon } from "./ui";
 import { symbols, type SymbolItem } from "../editor/languages";
 import type { SearchBatch, SearchMatch } from "../types/types";
 
@@ -577,7 +575,7 @@ const QuickResults = memo(function QuickResults({
       onClick={() => void onChoose(i)}
     >
       {item.path ? (
-        <FileIcon language={languageFor(item.path)} />
+        <FileIcon path={item.path} />
       ) : (
         <Icon name={command ? "terminal" : "arrow-right"} />
       )}
