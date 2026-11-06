@@ -374,6 +374,10 @@ export default function App() {
     }
   }
   function renderStatusBar() {
+    const tracking = s.gitState.tracking;
+    const trackingDescription = tracking
+      ? `; ${tracking.upstream}: ${tracking.behind} commits behind, ${tracking.ahead} commits ahead`
+      : "";
     return (
       <footer
         className={`statusbar h-[22px] min-h-[22px] flex justify-between bg-sidebar border-t border-t-panel text-[12px] select-none ${workbenchStyles["statusbar"]}`}
@@ -431,8 +435,8 @@ export default function App() {
             <button
               type="button"
               className={`status-item ${workbenchStyles["status-item"]}`}
-              title="Current Git branch"
-              aria-label={`Show Git Repository: ${s.gitState.branch}`}
+              title={`Current Git branch: ${s.gitState.branch}${trackingDescription}`}
+              aria-label={`Show Git Repository: ${s.gitState.branch}${trackingDescription}`}
               onClick={() => {
                 setApp({ view: "editor", sidebar: "git", gitTab: "info" });
                 scheduleBackup();
@@ -440,6 +444,11 @@ export default function App() {
             >
               <Icon name="source-control" />
               {s.gitState.branch}
+              {tracking && (
+                <span>
+                  ↓{tracking.behind} ↑{tracking.ahead}
+                </span>
+              )}
             </button>
           )}
           <button

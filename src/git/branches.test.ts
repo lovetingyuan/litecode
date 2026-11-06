@@ -79,6 +79,7 @@ beforeEach(() => {
     gitState: {
       root: "C:/repo",
       session: 1,
+      tracking: null,
       branch: "main",
       git: [],
       warnings: [],

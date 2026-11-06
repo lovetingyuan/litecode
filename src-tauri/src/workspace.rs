@@ -101,6 +101,7 @@ pub struct GitSnapshot {
     pub session: u64,
     pub git: Vec<GitEntry>,
     pub branch: Option<String>,
+    pub tracking: Option<crate::git::Tracking>,
     pub warnings: Vec<String>,
     pub repositories: Vec<crate::git::Snapshot>,
 }
@@ -204,6 +205,7 @@ pub fn git_snapshot(root: &Path, index: &RepositoryIndex, session: u64) -> Resul
         session,
         git: vec![],
         branch: None,
+        tracking: None,
         warnings: vec![],
         repositories: vec![],
     };
@@ -214,6 +216,7 @@ pub fn git_snapshot(root: &Path, index: &RepositoryIndex, session: u64) -> Resul
                 .insert(std::fs::canonicalize(workdir).unwrap_or_else(|_| workdir.to_path_buf()));
         }
         snapshot.branch = crate::git::current_branch(&repo);
+        snapshot.tracking = crate::git::tracking(&repo);
     }
     for repo_path in repositories {
         let version = *index

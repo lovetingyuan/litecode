@@ -108,7 +108,7 @@ export const useApp = create<State>((set) => ({
   gitMessages: {},
   view: "editor",
   sidebarWidth: 260,
-  gitState: { root: null, session: null, git: [], branch: null, warnings: [] },
+  gitState: { root: null, session: null, git: [], branch: null, tracking: null, warnings: [] },
   fileIndexVersion: 0,
   workspaceEpoch: 0,
   treeRoot: null,

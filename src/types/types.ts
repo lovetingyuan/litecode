@@ -121,6 +121,7 @@ export type GitSnapshot = {
   session: number | null;
   git: GitEntry[];
   branch: string | null;
+  tracking: { upstream: string; ahead: number; behind: number } | null;
   warnings: string[];
 };
 export type GitChange = {

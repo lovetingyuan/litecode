@@ -79,6 +79,39 @@ pub fn current_branch(repo: &Repository) -> Option<String> {
         })
 }
 
+#[derive(Serialize)]
+pub struct Tracking {
+    pub upstream: String,
+    pub ahead: usize,
+    pub behind: usize,
+}
+
+fn upstream_branch(repo: &Repository) -> Option<git2::Branch<'_>> {
+    let head = repo.head().ok()?;
+    if !head.is_branch() {
+        return None;
+    }
+    repo.find_branch(head.shorthand()?, BranchType::Local)
+        .ok()?
+        .upstream()
+        .ok()
+}
+
+fn tracking_counts(repo: &Repository, upstream: &git2::Branch<'_>) -> Option<(usize, usize)> {
+    repo.graph_ahead_behind(repo.head().ok()?.target()?, upstream.get().target()?)
+        .ok()
+}
+
+pub fn tracking(repo: &Repository) -> Option<Tracking> {
+    let upstream = upstream_branch(repo)?;
+    let (ahead, behind) = tracking_counts(repo, &upstream)?;
+    Some(Tracking {
+        upstream: upstream.name().ok()??.into(),
+        ahead,
+        behind,
+    })
+}
+
 fn status_name(status: Status, index: bool) -> Option<String> {
     let flags = if index {
         [
@@ -318,19 +351,14 @@ pub fn info(root: &Path) -> Result<Info> {
     let branch = (!repo.head_detached().unwrap_or(false))
         .then(|| current_branch(&repo))
         .flatten();
-    let upstream_branch = branch
-        .as_ref()
-        .and_then(|name| repo.find_branch(name, BranchType::Local).ok())
-        .and_then(|b| b.upstream().ok());
+    let upstream_branch = upstream_branch(&repo);
     let upstream = upstream_branch
         .as_ref()
         .and_then(|b| b.name().ok().flatten())
         .map(str::to_owned);
-    let counts = head
+    let counts = upstream_branch
         .as_ref()
-        .and_then(|h| h.target())
-        .zip(upstream_branch.as_ref().and_then(|b| b.get().target()))
-        .and_then(|(local, remote)| repo.graph_ahead_behind(local, remote).ok());
+        .and_then(|upstream| tracking_counts(&repo, upstream));
     let mut checked_out: HashSet<String> = repo
         .worktrees()
         .map_err(git_error)?

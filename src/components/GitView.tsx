@@ -157,6 +157,7 @@ export function GitView() {
   const [branchPending, setBranchPending] = useState(false);
   const [switchingBranch, setSwitchingBranch] = useState<string | null>(null);
   const [branchSearch, setBranchSearch] = useState("");
+  const branchSearchInputRef = useRef<HTMLInputElement>(null);
   const [branchSearchOpen, setBranchSearchOpen] = useState(false);
   useEffect(() => {
     setBranchSearch("");
@@ -319,16 +320,34 @@ export function GitView() {
     }
   }
   const branchSearchControl = branchSearchOpen ? (
-    <input
-      autoFocus
-      className="w-full max-w-48 h-6"
-      placeholder="Search branches"
-      aria-label="Search branches"
-      value={branchSearch}
-      onChange={(event) => setBranchSearch(event.target.value)}
-      onBlur={closeEmptyBranchSearch}
-      onKeyDown={handleBranchSearchKeyDown}
-    />
+    <div className="relative w-full max-w-48">
+      <input
+        ref={branchSearchInputRef}
+        autoFocus
+        className="w-full h-6 pr-6"
+        placeholder="Search branches"
+        aria-label="Search branches"
+        value={branchSearch}
+        onChange={(event) => setBranchSearch(event.target.value)}
+        onBlur={(event) => {
+          if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) {
+            closeEmptyBranchSearch();
+          }
+        }}
+        onKeyDown={handleBranchSearchKeyDown}
+      />
+      <IconButton
+        icon="close"
+        label="Clear branch search"
+        className="absolute right-0 top-0"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          setBranchSearch("");
+          branchSearchInputRef.current?.focus();
+        }}
+        onBlur={closeEmptyBranchSearch}
+      />
+    </div>
   ) : (
     <IconButton icon="search" label="Search branches" onClick={() => setBranchSearchOpen(true)} />
   );

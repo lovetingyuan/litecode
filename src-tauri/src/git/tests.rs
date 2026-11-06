@@ -51,6 +51,70 @@ fn changes(root: &Path) -> Snapshot {
 }
 
 #[test]
+fn workspace_tracking_follows_upstream_and_hides_unavailable_counts() {
+    let (_temp, root) = fixture();
+    let index = workspace::RepositoryIndex::default();
+    let read = || workspace::git_snapshot(&root, &index, 1).unwrap().tracking;
+    assert!(read().is_none());
+    fs::write(root.join("file.txt"), "base").unwrap();
+    stage(&root, &["file.txt"]);
+    commit(&root, "base");
+    assert!(read().is_none());
+
+    let repo = Repository::open(&root).unwrap();
+    let base = repo.head().unwrap().target().unwrap();
+    repo.remote("origin", "https://example.invalid/repo.git")
+        .unwrap();
+    repo.reference("refs/remotes/origin/main", base, true, "test upstream")
+        .unwrap();
+    repo.find_branch("main", BranchType::Local)
+        .unwrap()
+        .set_upstream(Some("origin/main"))
+        .unwrap();
+    let synced = read().unwrap();
+    assert_eq!(synced.upstream, "origin/main");
+    assert_eq!((synced.ahead, synced.behind), (0, 0));
+
+    fs::write(root.join("file.txt"), "local").unwrap();
+    stage(&root, &["file.txt"]);
+    commit(&root, "local");
+    let ahead = read().unwrap();
+    assert_eq!((ahead.ahead, ahead.behind), (1, 0));
+
+    let local = repo.head().unwrap().peel_to_commit().unwrap();
+    let parent = repo.find_commit(base).unwrap();
+    let signature = repo.signature().unwrap();
+    let remote = repo
+        .commit(
+            None,
+            &signature,
+            &signature,
+            "remote",
+            &local.tree().unwrap(),
+            &[&parent],
+        )
+        .unwrap();
+    repo.reference("refs/remotes/origin/main", remote, true, "advance upstream")
+        .unwrap();
+    let diverged = read().unwrap();
+    assert_eq!((diverged.ahead, diverged.behind), (1, 1));
+
+    repo.reference("refs/heads/main", base, true, "reset local")
+        .unwrap();
+    let behind = read().unwrap();
+    assert_eq!((behind.ahead, behind.behind), (0, 1));
+
+    repo.set_head_detached(base).unwrap();
+    assert!(read().is_none());
+    repo.set_head("refs/heads/main").unwrap();
+    repo.find_reference("refs/remotes/origin/main")
+        .unwrap()
+        .delete()
+        .unwrap();
+    assert!(read().is_none());
+}
+
+#[test]
 fn amend_uses_staged_changes_preserves_message_and_can_change_only_message() {
     let (_temp, root) = fixture();
     fs::write(root.join("file.txt"), "original\n").unwrap();

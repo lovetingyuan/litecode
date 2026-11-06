@@ -17,7 +17,7 @@ useApp.subscribe((state, previous) => {
     resetWorkspaceTree();
     setApp({
       treeRoot: null,
-      gitState: { root: null, session: null, git: [], branch: null, warnings: [] },
+      gitState: { root: null, session: null, git: [], branch: null, tracking: null, warnings: [] },
       fileIndexVersion: state.fileIndexVersion + 1,
       workspaceEpoch: state.workspaceEpoch + 1,
     });

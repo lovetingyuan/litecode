@@ -11,6 +11,7 @@ const snapshot = (branch: string): GitSnapshot => ({
   session: 1,
   git: [],
   branch,
+  tracking: null,
   warnings: [],
 });
 const caches: DirectoryCache[] = [];
@@ -26,7 +27,7 @@ afterEach(() => {
   caches.splice(0).forEach((cache) => cache.dispose());
   vi.resetAllMocks();
   setApp({
-    gitState: { root: null, session: null, git: [], branch: null, warnings: [] },
+    gitState: { root: null, session: null, git: [], branch: null, tracking: null, warnings: [] },
     notice: null,
   });
 });
