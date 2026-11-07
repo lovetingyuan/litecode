@@ -196,6 +196,7 @@ export function WorkbenchLayout({
     >
       <PaneLayout
         label="Primary side bar width"
+        separator={visible}
         proportionalLayout={false}
         defaultSizes={[sidebarWidth, Math.max(160, width - sidebarWidth)]}
         onChange={(sizes) => {
