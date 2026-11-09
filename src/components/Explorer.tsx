@@ -1169,10 +1169,8 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
     );
     const full = join(root, path);
     const changedPaths: string[] = [];
-    menuReturnsFocus.current = kind !== "findInFolder";
-    context?.close?.({
-      restoreFocus: !["rename", "newFile", "newFolder", "findInFolder"].includes(kind),
-    });
+    menuReturnsFocus.current = !["rename", "newFile", "newFolder", "findInFolder"].includes(kind);
+    context?.close?.({ restoreFocus: menuReturnsFocus.current });
     setContext(null);
     if (kind === "findInFolder") {
       findInFolder(path);
