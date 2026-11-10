@@ -20,10 +20,9 @@ In **Actions → Desktop release → Run workflow**, select a branch that includ
 
 ## Publish a version
 
-1. Run `npm run release -- 0.2.0` with the desired stable version. Review and commit the version changes.
-2. Tag that commit with the same version, for example `git tag -a v0.2.0 -m "LiteCode v0.2.0"`. Push your branch and tag, for example `git push --atomic origin main v0.2.0`.
-3. Wait for all jobs, including **verify-draft**, to pass. The action attaches the installers, updater artifacts, signatures, and `latest.json`. The Windows job also attaches the portable ZIP. If a job fails, keep the release in draft and rerun the failed jobs after fixing runner or secret settings.
-4. Review the draft and its release notes, then publish it as the latest official release. For the first CI release, install the new package directly. To verify future updates, install from the previous CI release and use **Help → Check for Updates…**.
+1. Commit your development changes on `main`, then run `npm run release -- 0.2.0` with the desired stable version. The command synchronizes the version files, creates the release commit and tag, and pushes `main` and the tag together. It also accepts version files already prepared for the same release. If the push fails, resolve the Git error and run the same command again.
+2. Open **Actions → Desktop release** and wait for all jobs, including **verify-draft**, to pass. The action creates a draft and attaches the installers, updater artifacts, signatures, and `latest.json`. The Windows job also attaches the portable ZIP. If a job fails, keep the release in draft and rerun the failed jobs after fixing runner or secret settings.
+3. Edit the release notes in the draft and publish it as the latest official release. To show the same text in the app's update dialog, set the `notes` field in `latest.json` before publishing. For the first CI release, install the new package directly. To verify future updates, install from the previous CI release and use **Help → Check for Updates…**.
 
 The updater reads `https://github.com/lovetingyuan/litecode/releases/latest/download/latest.json`. Keep the completed manifest and its referenced assets together. Drafts and prereleases are outside the stable update channel.
 
@@ -39,6 +38,6 @@ Versions distributed before this update feature must be upgraded manually once.
 
 ## Verification
 
-`npm test` includes tests for version synchronization, update state, and recovery acknowledgements.
+`npm test` includes tests for the release command against a local Git remote, update state, and recovery acknowledgements.
 
 Run `npm run build` first, then `node tools/verify-updates-desktop.mjs`. This builds two signed debug NSIS installers with a unique test application identifier, temporary signing key, isolated Cargo target directory, and isolated installation directory. It verifies update checks, shared operations, signature rejection, a real locked-backup failure, the 30-second backup timeout, installation, restart, and unsaved-buffer recovery. It uninstalls the fixture afterwards and keeps evidence under `.verification/updates-*/`. The production build cannot use the loopback endpoint override used by this test.
