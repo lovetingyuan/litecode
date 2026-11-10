@@ -1131,7 +1131,7 @@ function GitChangesList(props: Readonly<ChangesProps>) {
             >
               <FileIcon path={change.path} />
               <span
-                className={`git-file-name shrink-0 max-w-[70%] overflow-hidden text-ellipsis whitespace-nowrap ${gitStyles["git-file-name"]}${status === "D" ? " deleted" : ""}`}
+                className={`git-file-name min-w-0 max-w-[70%] overflow-hidden text-ellipsis whitespace-nowrap ${gitStyles["git-file-name"]}${status === "D" ? " deleted" : ""}`}
               >
                 {basename(change.path)}
               </span>
