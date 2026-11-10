@@ -533,9 +533,17 @@ export default function App() {
                       {commands
                         .filter((c) => c.menu === menu)
                         .map((c) => (
-                          <Menu.Item key={c.id} onClick={() => void execute(c.id)}>
+                          <Menu.Item
+                            key={c.id}
+                            className="group"
+                            onClick={() => void execute(c.id)}
+                          >
                             <span>{c.label}</span>
-                            {c.key && <kbd>{c.key}</kbd>}
+                            {c.key && (
+                              <kbd className="text-muted/90 group-hover:text-subtle/95 group-data-highlighted:text-subtle/95">
+                                {c.key}
+                              </kbd>
+                            )}
                           </Menu.Item>
                         ))}
                     </Menu.Popup>

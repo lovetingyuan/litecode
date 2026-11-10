@@ -1472,22 +1472,26 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
                 ["newFolder", "New Folder…"],
                 ["reveal", "Reveal in File Explorer"],
                 ["findInFolder", "Find in Folder…"],
-                ["cut", "Cut"],
-                ["copy", "Copy"],
-                ["paste", "Paste"],
+                ["cut", "Cut", "Ctrl+X"],
+                ["copy", "Copy", "Ctrl+C"],
+                ["paste", "Paste", "Ctrl+V"],
                 ["fileName", "Copy Name"],
                 ["fullPath", "Copy Path"],
                 ["relativePath", "Copy Relative Path"],
-                ["rename", "Rename…"],
-                ["delete", "Delete"],
+                ["rename", "Rename…", "F2"],
+                ["delete", "Delete", "Delete"],
               ]
                 .filter(
                   ([kind]) =>
                     kind !== "findInFolder" || !context?.path || context.path.endsWith("/"),
                 )
-                .map(([kind, label]) => (
+                .map(([kind, label, shortcut]) => (
                   <Menu.Item
                     key={kind}
+                    className="group"
+                    label={label}
+                    aria-label={label}
+                    aria-keyshortcuts={shortcut?.replace("Ctrl+", "Control+")}
                     disabled={
                       !context?.path &&
                       [
@@ -1502,7 +1506,12 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
                     }
                     onClick={() => void action(kind, context?.path ?? "")}
                   >
-                    {label}
+                    <span>{label}</span>
+                    {shortcut && (
+                      <kbd className="text-muted/90 group-hover:text-subtle/95 group-data-highlighted:text-subtle/95 group-data-disabled:text-inherit">
+                        {shortcut}
+                      </kbd>
+                    )}
                   </Menu.Item>
                 ))}
             </Menu.Popup>
