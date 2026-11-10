@@ -46,8 +46,9 @@ export async function packagePortable(options = {}) {
       throw error;
     }
   }
+  // Git Bash can put GNU tar first on PATH, but ZIP creation requires Windows bsdtar.
   execFileSync(
-    "tar.exe",
+    path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe"),
     ["-a", "-c", "-f", zip, "-C", path.dirname(directory), path.basename(directory)],
     { windowsHide: true },
   );
@@ -85,7 +86,9 @@ export async function packagePortable(options = {}) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const index = process.argv.indexOf("--output");
-  if (index !== -1 && !process.argv[index + 1]) throw new Error("--output requires a directory");
+  if (index !== -1 && !process.argv[index + 1]) {
+    throw new Error("--output requires a directory");
+  }
   await packagePortable({
     directory: index === -1 ? undefined : process.argv[index + 1],
     writeReport: !process.argv.includes("--no-report"),
