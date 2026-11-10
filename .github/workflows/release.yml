@@ -1,0 +1,166 @@
+name: Desktop release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    name: Bundle ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.tauri.outputs.releaseId }}
+    strategy:
+      fail-fast: false
+      # The official action updates the same draft and latest.json for every platform.
+      max-parallel: ${{ github.event_name == 'push' && 1 || 4 }}
+      matrix:
+        include:
+          - runner: windows-2025
+          - runner: ubuntu-22.04
+            ripgrep-target: x86_64-unknown-linux-musl
+            ripgrep-sha256: 1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599
+          - runner: macos-15
+            ripgrep-target: aarch64-apple-darwin
+            ripgrep-sha256: 378e973289176ca0c6054054ee7f631a065874a352bf43f0fa60ef079b6ba715
+          - runner: macos-15-intel
+            ripgrep-target: x86_64-apple-darwin
+            ripgrep-sha256: 64811cb24e77cac3057d6c40b63ac9becf9082eedd54ca411b475b755d334882
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Check release tag and signing key
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          node tools/release.mjs --check-tag "$GITHUB_REF_NAME"
+          : "${TAURI_SIGNING_PRIVATE_KEY:?Set the TAURI_SIGNING_PRIVATE_KEY Actions secret}"
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: Bundle native ripgrep
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          RIPGREP_TARGET: ${{ matrix.ripgrep-target }}
+          RIPGREP_SHA256: ${{ matrix.ripgrep-sha256 }}
+        run: |
+          mkdir -p tmp/release
+          name="ripgrep-15.1.0-$RIPGREP_TARGET"
+          archive="tmp/release/$name.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/$name.tar.gz" -o "$archive"
+          printf '%s  %s\n' "$RIPGREP_SHA256" "$archive" | shasum -a 256 --check
+          tar -xzf "$archive" -C tmp/release "$name/rg"
+          install -m 755 "tmp/release/$name/rg" src-tauri/tools/rg
+          src-tauri/tools/rg --pcre2-version
+          rm src-tauri/tools/rg.exe
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Run release checks
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          npm run lint
+          npm test -- --maxWorkers=2
+          npm run build:tools
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Disable updater packaging for manual builds
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          mkdir -p tmp/release
+          printf '%s\n' '{"bundle":{"createUpdaterArtifacts":false}}' > tmp/release/unsigned.json
+
+      - name: Build and upload Tauri bundles
+        id: tauri
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ github.event_name == 'push' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        with:
+          tagName: ${{ github.event_name == 'push' && github.ref_name || '' }}
+          releaseName: ${{ github.event_name == 'push' && format('LiteCode {0}', github.ref_name) || '' }}
+          releaseDraft: true
+          generateReleaseNotes: true
+          uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
+          args: ${{ github.event_name == 'workflow_dispatch' && '--config tmp/release/unsigned.json' || '' }} -- --locked
+
+      - name: Verify Windows update and upload portable ZIP
+        if: github.event_name == 'push' && runner.os == 'Windows'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          installer="src-tauri/target/release/bundle/nsis/LiteCode_${GITHUB_REF_NAME#v}_x64-setup.exe"
+          cargo run --locked --quiet --manifest-path src-tauri/Cargo.toml --example verify-update -- \
+            "$installer" "$installer.sig" src-tauri/tauri.conf.json "${GITHUB_REF_NAME#v}"
+          node tools/package-portable.mjs --output tmp/release/portable --no-report
+          gh release upload "$GITHUB_REF_NAME" tmp/release/portable/*-portable.zip --clobber
+
+  verify-draft:
+    if: github.event_name == 'push'
+    needs: bundle
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check draft assets and updater entries
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.bundle.outputs.release-id }}
+        run: |
+          release=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")
+          assets=$(jq -ce --arg tag "$GITHUB_REF_NAME" '
+            select(.draft and .tag_name == $tag) |
+            [.assets[] | select(.state == "uploaded" and .size > 0)]
+          ' <<< "$release")
+          jq -e '
+            map(.name) |
+            any(endswith("-setup.exe")) and any(endswith("-portable.zip")) and
+            any(endswith("_aarch64.dmg")) and any(endswith("_x64.dmg")) and
+            any(endswith(".AppImage")) and any(endswith(".deb"))
+          ' <<< "$assets"
+          manifest_id=$(jq -er '.[] | select(.name == "latest.json") | .id' <<< "$assets")
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$manifest_id" |
+            jq -e --arg version "${GITHUB_REF_NAME#v}" --argjson assets "$assets" '
+              .version == $version and
+              ([.platforms["windows-x86_64"], .platforms["darwin-aarch64"],
+                .platforms["darwin-x86_64"], .platforms["linux-x86_64-appimage"],
+                .platforms["linux-x86_64-deb"]] |
+                all((.signature // "" | length > 0) and
+                  (.url as $url | any($assets[]; .url == $url))))
+            '

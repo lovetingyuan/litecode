@@ -16,6 +16,7 @@ use std::{
 };
 use tauri::{Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 
 fn visible_path(path: &Path) -> String {
     crate::tools::process_path(path)
@@ -833,10 +834,10 @@ pub async fn open_directory(
             "The folder no longer exists or is not a directory.",
         ));
     }
-    std::process::Command::new("explorer.exe")
-        .arg(path)
-        .spawn()?;
-    Ok(())
+    window
+        .opener()
+        .open_path(visible_path(&directory), None::<&str>)
+        .map_err(|error| AppError::new("openDirectory", error.to_string()))
 }
 
 #[tauri::command]

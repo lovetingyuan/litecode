@@ -76,10 +76,11 @@ fn normalized(path: &str) -> String {
 }
 
 pub fn rg_path(app: &tauri::AppHandle) -> PathBuf {
+    let executable = if cfg!(windows) { "rg.exe" } else { "rg" };
     app.path()
         .resource_dir()
         .ok()
-        .map(|p| p.join("tools/rg.exe"))
+        .map(|p| p.join("tools").join(executable))
         .filter(|p| p.exists())
         .unwrap_or_else(|| PathBuf::from("rg"))
 }

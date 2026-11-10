@@ -49,7 +49,7 @@ async function setupUpdater() {
   config.plugins.updater.pubkey = pubkey;
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
   console.log(
-    `Updater key ready: ${signingKeyPath}\nBack up the private key securely. Commit the public key in src-tauri/tauri.conf.json before running npm run release.`,
+    `Updater key ready: ${signingKeyPath}\nBack up the private key securely. Commit the public key in src-tauri/tauri.conf.json and configure the Actions signing secret before releasing.`,
   );
 }
 

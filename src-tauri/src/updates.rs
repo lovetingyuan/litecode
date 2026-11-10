@@ -350,7 +350,7 @@ fn update_error(error: impl std::fmt::Display) -> AppError {
     AppError::new(
         "update",
         format!(
-            "{error}. Check your connection and that the latest official Release includes latest.json and a signed Windows x64 installer."
+            "{error}. Check your connection and that the latest official release has update files for your platform."
         ),
     )
 }
