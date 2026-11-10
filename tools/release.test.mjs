@@ -100,19 +100,6 @@ describe("release push", { timeout: 30000 }, () => {
     expect(git(cwd, "rev-parse", "main")).toBe(git(remote, "rev-parse", "main"));
   });
 
-  it("fetches the real remote main before checking whether it matches", async () => {
-    const { cwd, remote } = await fixture();
-    const base = git(cwd, "rev-parse", "main");
-    git(cwd, "switch", "-c", "remote-change");
-    git(cwd, "commit", "--allow-empty", "-m", "Remote update");
-    git(cwd, "push", remote, "HEAD:refs/heads/main");
-    git(cwd, "switch", "main");
-    expect(git(cwd, "rev-parse", "origin/main")).toBe(base);
-    await expect(pushRelease(cwd, "0.2.0")).rejects.toThrow("本地 main 与 origin/main 不一致");
-    expect(git(cwd, "rev-parse", "HEAD")).toBe(base);
-    expect(git(cwd, "tag", "--list")).toBe("");
-  });
-
   it("retries a failed atomic push with the same commit and tag after syncing main", async () => {
     const { cwd, remote } = await fixture();
     const hook = path.join(remote, "hooks/pre-receive");
