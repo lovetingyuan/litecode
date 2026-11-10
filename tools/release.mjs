@@ -99,25 +99,18 @@ async function checkReleaseTree(cwd) {
       throw new Error(`请先完成当前 Git 操作（${marker}）。`);
     }
   }
-  const outsideVersionFiles = versionFiles.map((name) => `:(exclude)${name}`);
-  if (
-    git(cwd, ["diff", "--cached", "--name-only"]).trim() ||
-    git(cwd, [
-      "status",
-      "--porcelain",
-      "--untracked-files=all",
-      "--",
-      ".",
-      ...outsideVersionFiles,
-    ]).trim()
-  ) {
-    throw new Error("请先提交开发改动。发布命令只会提交版本号变更。");
+  if (git(cwd, ["status", "--porcelain", "--untracked-files=all"]).trim()) {
+    throw new Error("工作区有未提交的改动，请清理后再发布。");
   }
 }
 
 export async function pushRelease(cwd, input) {
   await checkReleaseTree(cwd);
   const base = git(cwd, ["rev-parse", "HEAD"]).trim();
+  git(cwd, ["fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"]);
+  if (git(cwd, ["rev-parse", "refs/remotes/origin/main"]).trim() !== base) {
+    throw new Error("本地 main 与 origin/main 不一致，请先同步后再发布。");
+  }
   const committed = new Map(
     versionFiles.map((name) => [name, git(cwd, ["show", `${base}:${name}`])]),
   );
@@ -145,19 +138,13 @@ export async function pushRelease(cwd, input) {
     throw new Error(`本地标签 ${tag} 已指向其他发布。`);
   }
 
-  git(cwd, ["fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main"]);
-  try {
-    git(cwd, ["merge-base", "--is-ancestor", "origin/main", base]);
-  } catch {
-    throw new Error("远端 main 有未合入的提交，请先同步 main。");
-  }
   const working = await readVersionFiles(cwd);
   const normalize = (contents) => contents.replaceAll("\r\n", "\n");
   const expected = new Map();
   for (const [name, before] of committed) {
     const after = onSameVersion ? before : versionContents(name, before, version);
     const actual = normalize(working.get(name));
-    if (actual !== normalize(before) && actual !== normalize(after)) {
+    if (actual !== normalize(before)) {
       throw new Error(`${name} 含有其他改动，请先提交开发改动。`);
     }
     expected.set(name, after);
@@ -173,7 +160,7 @@ export async function pushRelease(cwd, input) {
     }
     git(cwd, ["commit", "--only", "-m", `chore(release): ${tag}`, "--", ...versionFiles]);
   }
-  const commit = git(cwd, ["rev-parse", "HEAD"]).trim();
+  const commit = onSameVersion ? base : git(cwd, ["rev-parse", "HEAD"]).trim();
   if (
     !onSameVersion &&
     (git(cwd, ["rev-parse", `${commit}^`]).trim() !== base ||
@@ -193,6 +180,7 @@ export async function pushRelease(cwd, input) {
     git(cwd, [
       "push",
       "--atomic",
+      `--force-with-lease=refs/heads/main:${base}`,
       "--no-follow-tags",
       "origin",
       `${commit}:refs/heads/main`,
@@ -200,7 +188,7 @@ export async function pushRelease(cwd, input) {
     ]);
   } catch (error) {
     throw new Error(
-      `推送失败，已保留本地发布提交和标签。解决问题后，重新执行同一条 npm 命令。\n${error.message}`,
+      `推送失败，已保留本地发布提交和标签。解决推送问题并同步 main 后，再运行同一条 npm 命令。\n${error.message}`,
     );
   }
   return tag;

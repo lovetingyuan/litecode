@@ -62,13 +62,10 @@ describe("release inputs", () => {
 });
 
 describe("release push", { timeout: 30000 }, () => {
-  it("commits a prepared version and pushes main with the annotated tag", async () => {
+  it("updates a clean main and pushes the release commit and annotated tag", async () => {
     const { cwd, remote, files } = await fixture();
     git(cwd, "config", "push.followTags", "true");
     git(cwd, "tag", "-a", "unrelated", "-m", "Unrelated tag");
-    for (const [name, contents] of Object.entries(files)) {
-      await writeFile(path.join(cwd, name), contents.replaceAll("0.1.0", "0.2.0"));
-    }
     expect(await pushRelease(cwd, "0.2.0")).toBe("v0.2.0");
     expect(await currentVersion(cwd)).toBe("0.2.0");
     expect(git(remote, "rev-parse", "main")).toBe(git(remote, "rev-parse", "v0.2.0^{}"));
@@ -90,15 +87,33 @@ describe("release push", { timeout: 30000 }, () => {
     await expect(currentVersion(cwd)).rejects.toThrow("版本不一致");
   });
 
-  it("rejects unrelated edits inside version files before creating a tag", async () => {
+  it("rejects unstaged, staged, and untracked changes before creating a tag", async () => {
     const { cwd, remote } = await fixture();
-    await writeFile(path.join(cwd, "package.json"), '{"version":"0.2.0","scripts":{}}\n');
-    await expect(pushRelease(cwd, "0.2.0")).rejects.toThrow("package.json 含有其他改动");
+    await writeFile(path.join(cwd, "package.json"), '{\n  "version": "0.2.0"\n}\n');
+    await expect(pushRelease(cwd, "0.2.0")).rejects.toThrow("工作区有未提交的改动");
+    git(cwd, "add", "package.json");
+    await expect(pushRelease(cwd, "0.2.0")).rejects.toThrow("工作区有未提交的改动");
+    git(cwd, "restore", "--source=HEAD", "--staged", "--worktree", "package.json");
+    await writeFile(path.join(cwd, "draft.txt"), "Untracked draft");
+    await expect(pushRelease(cwd, "0.2.0")).rejects.toThrow("工作区有未提交的改动");
     expect(git(cwd, "tag", "--list")).toBe("");
     expect(git(cwd, "rev-parse", "main")).toBe(git(remote, "rev-parse", "main"));
   });
 
-  it("retries a failed atomic push with the same release commit and tag", async () => {
+  it("fetches the real remote main before checking whether it matches", async () => {
+    const { cwd, remote } = await fixture();
+    const base = git(cwd, "rev-parse", "main");
+    git(cwd, "switch", "-c", "remote-change");
+    git(cwd, "commit", "--allow-empty", "-m", "Remote update");
+    git(cwd, "push", remote, "HEAD:refs/heads/main");
+    git(cwd, "switch", "main");
+    expect(git(cwd, "rev-parse", "origin/main")).toBe(base);
+    await expect(pushRelease(cwd, "0.2.0")).rejects.toThrow("本地 main 与 origin/main 不一致");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(base);
+    expect(git(cwd, "tag", "--list")).toBe("");
+  });
+
+  it("retries a failed atomic push with the same commit and tag after syncing main", async () => {
     const { cwd, remote } = await fixture();
     const hook = path.join(remote, "hooks/pre-receive");
     await writeFile(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
@@ -107,6 +122,8 @@ describe("release push", { timeout: 30000 }, () => {
     expect(git(remote, "tag", "--list")).toBe("");
     expect(git(remote, "rev-parse", "main")).not.toBe(commit);
     await rm(hook);
+    await expect(pushRelease(cwd, "0.2.0")).rejects.toThrow("本地 main 与 origin/main 不一致");
+    git(cwd, "push", "--no-follow-tags", "origin", "main");
     expect(await pushRelease(cwd, "0.2.0")).toBe("v0.2.0");
     expect(await pushRelease(cwd, "0.2.0")).toBe("v0.2.0");
     expect(git(remote, "rev-parse", "v0.2.0^{}")).toBe(commit);
