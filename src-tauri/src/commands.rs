@@ -846,10 +846,8 @@ pub async fn reveal_path(
     path: String,
 ) -> Result<()> {
     let path = state.authorize(window.label(), &path)?;
-    std::process::Command::new("explorer.exe")
-        .arg(format!("/select,{}", path.display()))
-        .spawn()?;
-    Ok(())
+    tauri_plugin_opener::reveal_item_in_dir(path)
+        .map_err(|error| AppError::new("reveal", error.to_string()))
 }
 
 #[tauri::command]
