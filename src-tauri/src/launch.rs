@@ -1,10 +1,11 @@
-use crate::{
-    commands,
-    error::{AppError, Result},
-    state::AppState,
-};
+#[cfg(any(windows, test))]
+use crate::error::{AppError, Result};
+#[cfg(windows)]
+use crate::{commands, state::AppState};
 use serde::Serialize;
+#[cfg(any(windows, test))]
 use std::path::Path;
+#[cfg(windows)]
 use tauri::Manager;
 
 #[derive(Serialize)]
@@ -13,6 +14,7 @@ pub struct OpenTarget {
     pub directory: bool,
 }
 
+#[cfg(any(windows, test))]
 pub fn inspect(path: &Path) -> Result<OpenTarget> {
     let path = std::fs::canonicalize(path)?;
     if path.to_str().is_none() {
@@ -34,6 +36,7 @@ pub fn inspect(path: &Path) -> Result<OpenTarget> {
     })
 }
 
+#[cfg(windows)]
 pub fn open(app: &tauri::AppHandle, path: &Path) -> Result<()> {
     let target = inspect(path)?;
     commands::create_empty_window(app, &app.state::<AppState>(), Some(target))?;

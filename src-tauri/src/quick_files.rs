@@ -147,6 +147,7 @@ pub async fn quick_file_paths(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::search::test_rg_path;
     use std::fs;
 
     fn fixture(files: &[(&str, &str)]) -> tempfile::TempDir {
@@ -160,7 +161,7 @@ mod tests {
     }
 
     async fn scan(root: &Path, settings: &Value) -> Vec<String> {
-        let mut paths = enumerate(Path::new("rg"), root, settings).await.unwrap();
+        let mut paths = enumerate(&test_rg_path(), root, settings).await.unwrap();
         paths.sort();
         paths
     }
@@ -265,7 +266,7 @@ mod tests {
         assert!(scan(directory.path(), &settings).await.is_empty());
         assert!(
             enumerate(
-                Path::new("rg"),
+                &test_rg_path(),
                 &directory.path().join("missing"),
                 &settings
             )
