@@ -1,15 +1,18 @@
+#[cfg(any(windows, test))]
+use crate::file_moves::key;
 use crate::sync::MutexExt;
 use crate::sync::RwLockExt;
 use crate::{
     error::{AppError, Result},
     file_clipboard::{check_source, copy_item},
-    file_moves::{FileMove, MoveFailure, key, visible, within, workspace},
+    file_moves::{FileMove, MoveFailure, visible, within, workspace},
     state::AppState,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+#[cfg(any(windows, test))]
+use std::collections::HashSet;
 use std::{
-    collections::HashSet,
     fs,
     io::Read,
     path::{Path, PathBuf},
@@ -22,6 +25,7 @@ pub struct DropItem {
     directory: bool,
 }
 
+#[cfg(windows)]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ResolvedDrop {
@@ -30,6 +34,7 @@ struct ResolvedDrop {
     failed: Vec<MoveFailure>,
 }
 
+#[cfg(any(windows, test))]
 fn resolve_sources(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<MoveFailure>) {
     let mut seen = HashSet::new();
     let mut failed = vec![];
