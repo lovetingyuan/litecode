@@ -26,12 +26,6 @@ In **Actions → Desktop release → Run workflow**, select a branch that includ
 
 The updater reads `https://github.com/lovetingyuan/litecode/releases/latest/download/latest.json`. Keep the completed manifest and its referenced assets together. Drafts and prereleases are outside the stable update channel.
 
-## Undo a failed release
-
-Use Git 2.45 or later and sign in to GitHub CLI with repository write access. Wait for the build to finish or cancel it in Actions. From a clean `main` that matches `origin/main`, run `npm run release -- 0.2.0 --revert`. The command removes the draft and its assets, deletes the local and remote tag, and reverts an automatic version bump with a new commit. If the release command only added a tag for an existing version, that version stays on `main`. Published releases require manual review.
-
-If PowerShell reports an unknown npm option, use `npm.cmd run release -- 0.2.0 --revert`.
-
 ## Application updates
 
 Use **Help → Check for Updates…** or the command palette. Each application launch checks silently, with all editor windows sharing one process-wide schedule. While the app remains open, it checks once per local calendar day and retries failed checks every 30 minutes until one succeeds. The schedule is evaluated every 60 seconds, so a check missed across midnight or while the computer sleeps runs within 60 seconds of normal execution resuming. It does not wake the computer or replay checks for previous days. Automatic checks wait while an update is downloading or installing; manual checks bypass the daily and retry limits. An available update adds a button at the upper right without opening a dialog.
