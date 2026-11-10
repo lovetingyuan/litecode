@@ -1,14 +1,17 @@
-use crate::{
-    error::{AppError, Result},
-    sync::MutexExt,
-};
+use crate::error::{AppError, Result};
+#[cfg(windows)]
+use crate::sync::MutexExt;
 use serde::Serialize;
+#[cfg(any(windows, test))]
 use std::{
-    collections::{HashMap, HashSet},
-    sync::Mutex,
+    collections::HashMap,
     time::{Duration, Instant},
 };
-use tauri::{Manager, State, WebviewWindow};
+#[cfg(windows)]
+use std::{collections::HashSet, sync::Mutex};
+#[cfg(windows)]
+use tauri::Manager;
+use tauri::{State, WebviewWindow};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +20,7 @@ pub struct ResourceUsage {
     cpu_percent: Option<f64>,
 }
 
+#[cfg(any(windows, test))]
 struct ProcessSample {
     // Creation time distinguishes a new process that reuses an old PID.
     created: u64,
@@ -24,11 +28,13 @@ struct ProcessSample {
     memory_bytes: u64,
 }
 
+#[cfg(any(windows, test))]
 struct Sample {
     at: Instant,
     processes: HashMap<u32, ProcessSample>,
 }
 
+#[cfg(any(windows, test))]
 impl Sample {
     fn usage(&self, previous: Option<&Self>, processors: u32) -> ResourceUsage {
         let cpu_percent = previous.and_then(|previous| {
@@ -61,11 +67,17 @@ impl Sample {
 }
 
 #[derive(Default)]
-pub struct ResourceMonitor(Mutex<HashMap<String, Sample>>);
+pub struct ResourceMonitor {
+    #[cfg(windows)]
+    samples: Mutex<HashMap<String, Sample>>,
+}
 
 impl ResourceMonitor {
     pub fn close_window(&self, label: &str) {
-        self.0.lock_recover().remove(label);
+        #[cfg(windows)]
+        self.samples.lock_recover().remove(label);
+        #[cfg(not(windows))]
+        let _ = label;
     }
 }
 
@@ -232,7 +244,7 @@ pub async fn get_app_resource_usage(
             tauri::async_runtime::spawn_blocking(move || sample_processes(pids))
                 .await
                 .map_err(|error| AppError::new("resourceUsage", error.to_string()))??;
-        let mut samples = monitor.0.lock_recover();
+        let mut samples = monitor.samples.lock_recover();
         let previous = if reset {
             None
         } else {

@@ -15,7 +15,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{Emitter, Manager, State, WebviewWindow};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, FilePath};
 use tauri_plugin_opener::OpenerExt;
 
 fn visible_path(path: &Path) -> String {
@@ -257,7 +257,7 @@ pub async fn pick_path(
 ) -> Result<Option<String>> {
     let app = window.app_handle().clone();
     let picker_window = window.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || -> Result<Option<FilePath>> {
         #[cfg(windows)]
         if kind == "folder" {
             return crate::folder_picker::pick(&picker_window).map(|path| path.map(Into::into));

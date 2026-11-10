@@ -116,13 +116,7 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         let file = outside.path().join("granted.txt");
         fs::write(&file, "keep").unwrap();
-        state
-            .windows
-            .lock_recover()
-            .get_mut("test")
-            .unwrap()
-            .grants
-            .insert(fs::canonicalize(&file).unwrap());
+        let file = state.grant("test", &file).unwrap();
         let error = recycle(&state, "test", &visible(&file), |_| {
             Err(AppError::new("recycle", "unavailable"))
         })

@@ -85,6 +85,15 @@ pub fn rg_path(app: &tauri::AppHandle) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("rg"))
 }
 
+#[cfg(test)]
+pub(crate) fn test_rg_path() -> PathBuf {
+    if cfg!(windows) {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tools/rg.exe")
+    } else {
+        PathBuf::from("rg")
+    }
+}
+
 fn add_arguments(command: &mut Command, query: &Query) {
     command.args([
         "--json",

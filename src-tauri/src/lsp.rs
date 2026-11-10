@@ -44,6 +44,9 @@ pub struct ServerEvent {
 }
 
 pub fn kill_tree(pid: u32) {
+    #[cfg(not(windows))]
+    let _ = pid;
+
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

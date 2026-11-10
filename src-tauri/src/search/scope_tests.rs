@@ -73,11 +73,7 @@ async fn search(
         cancelled: false,
         errors: vec![],
     };
-    let rg = if cfg!(windows) {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tools/rg.exe")
-    } else {
-        PathBuf::from("rg")
-    };
+    let rg = test_rg_path();
     SearchRun {
         rg: &rg,
         query,
