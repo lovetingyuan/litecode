@@ -1,6 +1,6 @@
 {
   "name": "litecode",
-  "version": "0.2.2",
+  "version": "0.2.0",
   "private": true,
   "description": "A super light version of VSCode.",
   "type": "module",
@@ -15,8 +15,7 @@
     "format": "oxfmt --write .",
     "test": "vitest run",
     "test:e2e": "node tools/verify-desktop.mjs",
-    "release": "node tools/release.mjs",
-    "release:rollback": "node tools/release-rollback.mjs"
+    "release": "node tools/release.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

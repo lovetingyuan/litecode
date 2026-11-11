@@ -10,7 +10,6 @@ import {
   readReleaseInput,
   tagNotes,
 } from "./release.mjs";
-import { rollbackRelease } from "./release-rollback.mjs";
 
 const notes =
   '## Fixed\n\n- Preserve `code`, $HOME, $(echo test), "quotes" and 中文.\n# Markdown comment';
@@ -160,59 +159,5 @@ describe("release push", { timeout: 90000 }, () => {
     expect(git(remote, "rev-parse", "v0.2.0^{}")).toBe(commit);
     expect(git(remote, "rev-parse", "v0.2.0")).toBe(tagObject);
     expect(tagNotes(remote, "v0.2.0")).toBe(notes);
-  });
-});
-
-describe("release rollback", { timeout: 90000 }, () => {
-  it("restores the chosen version and removes both tags after an atomic push succeeds", async () => {
-    const { cwd, remote, files } = await fixture();
-    await pushRelease(cwd, "0.1.1", notes);
-    await pushRelease(cwd, "0.2.0", notes);
-    const manifestPath = path.join(cwd, "package.json");
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    await writeFile(manifestPath, `${JSON.stringify({ ...manifest, private: true }, null, 2)}\n`);
-    git(cwd, "commit", "-am", "Preserve this fix");
-    git(cwd, "push", "origin", "main");
-    const releaseHead = git(remote, "rev-parse", "main");
-    const hook = path.join(remote, "hooks/pre-receive");
-    await writeFile(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-
-    await expect(rollbackRelease(cwd, "v0.2.0", "0.1.0")).rejects.toThrow("Rollback push failed");
-    const rollback = git(cwd, "rev-parse", "main");
-    expect(await currentVersion(cwd)).toBe("0.1.0");
-    expect(git(cwd, "status", "--porcelain")).toBe("");
-    expect(git(cwd, "tag", "--list", "v0.2.0")).toBe("v0.2.0");
-    expect(git(remote, "tag", "--list", "v0.2.0")).toBe("v0.2.0");
-    expect(git(remote, "rev-parse", "main")).toBe(releaseHead);
-
-    await rm(hook);
-    await rollbackRelease(cwd, "v0.2.0", "0.1.0");
-    await rollbackRelease(cwd, "v0.2.0", "0.1.0");
-    expect(git(cwd, "rev-parse", "main")).toBe(rollback);
-    expect(git(remote, "rev-parse", "main")).toBe(rollback);
-    expect(git(remote, "rev-parse", "main^")).toBe(releaseHead);
-    expect(git(cwd, "tag", "--list")).toBe("v0.1.1");
-    expect(git(remote, "tag", "--list")).toBe("v0.1.1");
-    expect(git(cwd, "diff", "--name-only", "HEAD^", "HEAD").split("\n").sort()).toEqual(
-      Object.keys(files).sort(),
-    );
-    expect(JSON.parse(await readFile(manifestPath, "utf8"))).toEqual({
-      version: "0.1.0",
-      private: true,
-    });
-  });
-
-  it("rolls back a version bump left by a failed release push even if the tag is already gone", async () => {
-    const { cwd, remote } = await fixture();
-    const hook = path.join(remote, "hooks/pre-receive");
-    await writeFile(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-    await expect(pushRelease(cwd, "0.2.0", notes)).rejects.toThrow("推送失败");
-    git(cwd, "tag", "-d", "v0.2.0");
-    await rm(hook);
-
-    await rollbackRelease(cwd, "0.2.0", "v0.1.0");
-    expect(await currentVersion(cwd)).toBe("0.1.0");
-    expect(git(cwd, "rev-parse", "main")).toBe(git(remote, "rev-parse", "main"));
-    expect(git(remote, "tag", "--list")).toBe("");
   });
 });
