@@ -49,7 +49,8 @@ export function useExternalDrop(ready: boolean) {
       const path = event.composedPath();
       if (
         useApp.getState().openingWorkspace !== null ||
-        document.querySelector('[role="dialog"]')
+        // Monaco's find widget also uses role="dialog" and stays mounted when hidden.
+        document.querySelector("[data-block-external-drop][data-open]")
       ) {
         return null;
       }

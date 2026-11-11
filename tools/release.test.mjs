@@ -2,14 +2,31 @@ import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { currentVersion, normalizeVersion, pushRelease } from "./release.mjs";
+import { Readable, Writable } from "node:stream";
+import {
+  currentVersion,
+  normalizeVersion,
+  pushRelease,
+  readReleaseInput,
+  tagNotes,
+} from "./release.mjs";
+
+const notes =
+  '## Fixed\n\n- Preserve `code`, $HOME, $(echo test), "quotes" and 中文.\n# Markdown comment';
+const output = () =>
+  new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
 
 const temporary = [];
+// These integration tests start many real Git processes, which are slower on Windows.
 afterEach(async () => {
   for (const directory of temporary.splice(0)) {
     await rm(directory, { recursive: true, force: true });
   }
-});
+}, 30000);
 
 const git = (cwd, ...args) =>
   execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
@@ -52,24 +69,45 @@ async function fixture() {
   return { cwd, remote, files };
 }
 
-describe("release inputs", () => {
+describe("release inputs", { timeout: 60000 }, () => {
   it("accepts only increasing stable versions", () => {
     expect(normalizeVersion(" v0.10.0 ", "0.9.9")).toBe("0.10.0");
     for (const input of ["0.9.9", "0.1.0", "0.10.0-beta.1", "01.2.3", "x.y.z", "1.0.0; echo bad"]) {
       expect(() => normalizeVersion(input, "0.9.9")).toThrow();
     }
   });
+
+  it("reads a version and multiline Markdown until a single dot", async () => {
+    const { cwd } = await fixture();
+    const input = Readable.from([`0.2.0\n${notes}\n.\n`]);
+    expect(await readReleaseInput(cwd, input, output())).toEqual({ version: "0.2.0", notes });
+  });
+
+  it("rejects blank or unfinished notes without creating a release", async () => {
+    const { cwd, remote } = await fixture();
+    await expect(
+      readReleaseInput(cwd, Readable.from(["0.2.0\n\n  \n.\n"]), output()),
+    ).rejects.toThrow("must not be empty");
+    await expect(
+      readReleaseInput(cwd, Readable.from(["0.2.0\nIncomplete\n"]), output()),
+    ).rejects.toThrow("cancelled");
+    await expect(pushRelease(cwd, "0.2.0", " \n")).rejects.toThrow("must not be empty");
+    expect(await currentVersion(cwd)).toBe("0.1.0");
+    expect(git(cwd, "tag", "--list")).toBe("");
+    expect(git(cwd, "rev-parse", "main")).toBe(git(remote, "rev-parse", "main"));
+  });
 });
 
-describe("release push", { timeout: 30000 }, () => {
+describe("release push", { timeout: 90000 }, () => {
   it("updates a clean main and pushes the release commit and annotated tag", async () => {
     const { cwd, remote, files } = await fixture();
     git(cwd, "config", "push.followTags", "true");
     git(cwd, "tag", "-a", "unrelated", "-m", "Unrelated tag");
-    expect(await pushRelease(cwd, "0.2.0")).toBe("v0.2.0");
+    expect(await pushRelease(cwd, "0.2.0", notes)).toBe("v0.2.0");
     expect(await currentVersion(cwd)).toBe("0.2.0");
     expect(git(remote, "rev-parse", "main")).toBe(git(remote, "rev-parse", "v0.2.0^{}"));
     expect(git(remote, "cat-file", "-t", "v0.2.0")).toBe("tag");
+    expect(tagNotes(remote, "v0.2.0")).toBe(notes);
     expect(git(remote, "tag", "--list")).toBe("v0.2.0");
     expect(
       git(cwd, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").split("\n").sort(),
@@ -104,8 +142,13 @@ describe("release push", { timeout: 30000 }, () => {
     const { cwd, remote } = await fixture();
     const hook = path.join(remote, "hooks/pre-receive");
     await writeFile(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-    await expect(pushRelease(cwd, "0.2.0")).rejects.toThrow("推送失败");
+    await expect(pushRelease(cwd, "0.2.0", notes)).rejects.toThrow("推送失败");
     const commit = git(cwd, "rev-parse", "main");
+    const tagObject = git(cwd, "rev-parse", "v0.2.0");
+    expect(await readReleaseInput(cwd, Readable.from(["0.2.0\n"]), output())).toEqual({
+      version: "0.2.0",
+      notes,
+    });
     expect(git(remote, "tag", "--list")).toBe("");
     expect(git(remote, "rev-parse", "main")).not.toBe(commit);
     await rm(hook);
@@ -114,5 +157,7 @@ describe("release push", { timeout: 30000 }, () => {
     expect(await pushRelease(cwd, "0.2.0")).toBe("v0.2.0");
     expect(await pushRelease(cwd, "0.2.0")).toBe("v0.2.0");
     expect(git(remote, "rev-parse", "v0.2.0^{}")).toBe(commit);
+    expect(git(remote, "rev-parse", "v0.2.0")).toBe(tagObject);
+    expect(tagNotes(remote, "v0.2.0")).toBe(notes);
   });
 });

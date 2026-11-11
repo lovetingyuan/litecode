@@ -71,7 +71,6 @@ import {
 } from "../explorer/externalDrop";
 import { explorerDragType } from "../explorer/explorerDrag";
 import { deleteInternalFiles, pasteInternalFiles } from "../explorer/documentFileOperations";
-import { gitConflictDecoration } from "../utils/gitStatus";
 import { findInFolder } from "../search/search";
 
 export { refreshTree } from "../explorer/workspaceTree";
@@ -163,20 +162,8 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
     stickyFolders: true,
     icons: treeIcons,
     search: false,
-    renderRowDecoration: ({ row }) => {
-      if (row.kind === "directory") {
-        return directoryDecoration(row.path);
-      }
-      const state = useApp.getState();
-      return state.root
-        ? gitConflictDecoration(
-            join(state.root, row.path),
-            state.root,
-            state.gitState.root,
-            state.gitState.git,
-          )
-        : null;
-    },
+    renderRowDecoration: ({ row }) =>
+      row.kind === "directory" ? directoryDecoration(row.path) : null,
     unsafeCSS: `
       ${sidebarScrollbarCSS}
       [data-file-tree-sticky-overlay-content]{box-shadow:0 3px 3px -3px var(--lc-shadow-solid)}
@@ -950,11 +937,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
   }, [model, root, workspaceEpoch]);
   useEffect(() => {
     model.setGitStatus(
-      root && gitState.root && normalize(gitState.root) === normalize(root)
-        ? gitState.git.flatMap(({ path, status }) =>
-            status === "conflicted" ? [] : [{ path, status }],
-          )
-        : [],
+      root && gitState.root && normalize(gitState.root) === normalize(root) ? gitState.git : [],
     );
     model.setComposition(model.getComposition());
   }, [model, gitState, root]);

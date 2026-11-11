@@ -267,13 +267,25 @@ pub fn git_snapshot(root: &Path, index: &RepositoryIndex, session: u64) -> Resul
                 let repository = crate::git::snapshot(&repo, &statuses);
                 let mut cached = vec![];
                 for entry in statuses.iter() {
-                    let Some(relative) = entry.path() else {
+                    // StatusEntry::path() is the old path for a rename. Decorations
+                    // must follow the current worktree/index path, like the Git panel.
+                    let relative = entry
+                        .index_to_workdir()
+                        .or_else(|| entry.head_to_index())
+                        .and_then(|delta| {
+                            delta
+                                .new_file()
+                                .path()
+                                .map(|path| path.to_string_lossy().replace('\\', "/"))
+                        })
+                        .or_else(|| entry.path().map(str::to_owned));
+                    let Some(relative) = relative else {
                         continue;
                     };
                     // Path operations on Windows strip a trailing separator.
                     // The tree needs it to inherit ignored directory statuses.
                     let is_directory = relative.ends_with('/');
-                    let full = repo_path.join(relative);
+                    let full = repo_path.join(&relative);
                     let s = entry.status();
                     let status = if s.is_conflicted() {
                         "conflicted"
@@ -886,6 +898,39 @@ mod tests {
             .iter()
             .find(|g| g.path == path)
             .map(|g| g.status.as_str())
+    }
+
+    #[test]
+    fn renamed_decorations_follow_the_destination_in_fresh_and_cached_snapshots() {
+        for staged in [false, true] {
+            let (_directory, root, repo) = fixture(&[("source/old.txt", "rename contents\n")]);
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("source/old.txt")).unwrap();
+            index.write().unwrap();
+            let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+            let signature = git2::Signature::now("LiteCode Test", "test@example.invalid").unwrap();
+            repo.commit(Some("HEAD"), &signature, &signature, "base", &tree, &[])
+                .unwrap();
+            std::fs::create_dir(root.join("destination")).unwrap();
+            std::fs::rename(
+                root.join("source/old.txt"),
+                root.join("destination/new.txt"),
+            )
+            .unwrap();
+            if staged {
+                index.remove_path(Path::new("source/old.txt")).unwrap();
+                index.add_path(Path::new("destination/new.txt")).unwrap();
+                index.write().unwrap();
+            }
+            let repositories = RepositoryIndex::default();
+            for _ in 0..2 {
+                let snapshot = git_snapshot(&root, &repositories, 1).unwrap();
+                assert_eq!(status(&snapshot, "destination/new.txt"), Some("renamed"));
+                assert_eq!(status(&snapshot, "source/old.txt"), None);
+            }
+            let subtree = git_snapshot(&root.join("destination"), &repositories, 1).unwrap();
+            assert_eq!(status(&subtree, "new.txt"), Some("renamed"));
+        }
     }
 
     #[test]

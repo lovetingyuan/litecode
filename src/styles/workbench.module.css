@@ -23,10 +23,23 @@
   min-height: 0;
   border: 0;
 }
-.editors[data-external-drop="true"],
-.explorer[data-external-drop="true"] {
+.editors[data-external-drop="true"] {
   outline: 2px solid var(--vscode-focusBorder, var(--lc-focus));
   outline-offset: -2px;
+  box-shadow: inset 0 0 0 9999px var(--lc-drop-background);
+}
+.explorer {
+  position: relative;
+  isolation: isolate;
+}
+/* Paint the drop highlight above the opaque tree and its sticky rows so all four edges stay visible. */
+.explorer[data-external-drop="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border: 2px solid var(--vscode-focusBorder, var(--lc-focus));
   box-shadow: inset 0 0 0 9999px var(--lc-drop-background);
 }
 
@@ -186,6 +199,8 @@
   height: 26px;
 }
 .file-tree {
+  /* Keep vendor row and sticky-header z-indices below the explorer drop overlay. */
+  isolation: isolate;
   --trees-font-family: "Segoe UI", sans-serif;
   --trees-font-size: 15px;
   --trees-row-height: 26px;

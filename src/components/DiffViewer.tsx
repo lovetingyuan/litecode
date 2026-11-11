@@ -111,6 +111,7 @@ export function DiffViewer() {
       <Dialog.Portal>
         <Dialog.Backdrop className="modal-backdrop fixed inset-0 bg-backdrop z-[150]" />
         <Dialog.Popup
+          data-block-external-drop=""
           className={`diff-panel fixed inset-[7%] z-[151] flex flex-col bg-editor border border-strong rounded-[5px] overflow-hidden ${workbenchStyles["diff-panel"]}`}
         >
           <div

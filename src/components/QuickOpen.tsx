@@ -443,6 +443,7 @@ export function QuickOpen() {
       <Dialog.Portal>
         <Dialog.Backdrop className="quick-backdrop fixed inset-[35px_0_22px] bg-transparent z-[110]" />
         <Dialog.Popup
+          data-block-external-drop=""
           className={`quick-open fixed top-[38px] left-[50%] w-170 max-w-[90vw] max-h-[70vh] bg-quick border border-strong rounded-[6px] z-[111] flex flex-col text-[15px] outline-none ${quickStyles["quick-open"]}`}
           initialFocus={input}
         >

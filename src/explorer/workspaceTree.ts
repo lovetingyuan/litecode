@@ -45,9 +45,6 @@ export function loadedWorkspacePaths() {
 }
 export function directoryDecoration(path: string) {
   const entry = workspaceDirectories()?.directories.get(directoryPath(path));
-  if (entry?.status === "loading") {
-    return { text: "…", title: "Loading directory" };
-  }
   if (entry?.status === "failed") {
     return { text: "!", title: `${entry.error}. Collapse and expand this folder to retry.` };
   }

@@ -62,6 +62,10 @@
   :global(.codicon[class*="codicon-"]):before {
   content: "\uebb2";
 }
+/* Override Allotment's panel border within editor splits to make group boundaries clearer. */
+.editor-groups {
+  --separator-border: var(--lc-border-strong);
+}
 .editor-groups:global(.welcome-hidden) {
   visibility: hidden;
 }

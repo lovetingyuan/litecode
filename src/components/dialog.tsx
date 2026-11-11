@@ -160,6 +160,7 @@ export function DialogHost() {
       <Dialog.Portal>
         <Dialog.Backdrop className="modal-backdrop fixed inset-0 bg-backdrop z-[150]" />
         <Dialog.Popup
+          data-block-external-drop=""
           className={`modal-panel fixed top-[50%] left-[50%] bg-widget border border-strong rounded-[6px] w-120 max-w-[90vw] p-6 z-[151] ${workbenchStyles["modal-panel"]}${request?.items ? " move-confirmation ".concat(workbenchStyles["move-confirmation"]) : ""}`}
           initialFocus={request?.defaultChoice ? defaultButton : undefined}
           aria-busy={!!request?.working || undefined}

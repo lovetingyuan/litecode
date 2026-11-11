@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { creationPatches, installCreationModules } from "./patch-trees-creation.mjs";
 import { stripLegacyCreation } from "./trees/legacyCreation.mjs";
 
-// Keep the beta.6 fixes reproducible: sticky scroll, padding, ignore inheritance and an
+// Keep the beta.6 fixes reproducible: sticky scroll, padding, ignore status handling and an
 // application-owned drop request so confirmation never needs an optimistic move.
 const root = new URL("../node_modules/@pierre/trees/", import.meta.url);
 const { version } = JSON.parse(readFileSync(new URL("package.json", root), "utf8"));
@@ -11,6 +11,53 @@ if (version !== "1.0.0-beta.6") {
 }
 
 const patches = [
+  [
+    "dist/publicTypes.d.ts",
+    [["type GitStatus = 'added'", "type GitStatus = 'conflicted' | 'added'"]],
+  ],
+  [
+    "dist/utils/gitStatusPresentation.js",
+    [
+      ["const GIT_STATUS_LABEL = {", 'const GIT_STATUS_LABEL = {\n\tconflicted: "!",'],
+      [
+        "const GIT_STATUS_TITLE = {",
+        'const GIT_STATUS_TITLE = {\n\tconflicted: "Git: Unmerged changes",',
+      ],
+    ],
+  ],
+  [
+    "dist/utils/themeToTreeStyles.js",
+    [
+      [
+        "const result = {",
+        'const result = {\n\t\t"--trees-theme-git-conflict-fg": colors["gitDecoration.conflictingResourceForeground"] ?? "",',
+      ],
+    ],
+  ],
+  [
+    "dist/style.js",
+    [
+      [
+        // The beta has no conflict selector; keep its color in the normal Git lane.
+        String.raw`[data-item-git-status=\"deleted\"] {`,
+        String.raw`[data-item-git-status=\"conflicted\"] {\n    --trees-item-git-status-color: var(--trees-theme-git-conflict-fg, var(--trees-git-modified-color));\n  }\n\n  [data-item-git-status=\"deleted\"] {`,
+      ],
+    ],
+  ],
+  [
+    "dist/model/gitStatus.js",
+    [
+      // Ignored paths retain their styling but must not count as ancestor changes.
+      [
+        "\tdecrementAncestorChangeCounts(changeCountByDirectoryPath, directoriesWithChanges, canonicalPath);\n\treturn true;",
+        '\tif (previousStatus !== "ignored") decrementAncestorChangeCounts(changeCountByDirectoryPath, directoriesWithChanges, canonicalPath);\n\treturn true;',
+      ],
+      [
+        "if (previousStatus == null) incrementAncestorChangeCounts(changeCountByDirectoryPath, directoriesWithChanges, canonicalPath);",
+        'if ((previousStatus == null || previousStatus === "ignored") && status !== "ignored") incrementAncestorChangeCounts(changeCountByDirectoryPath, directoriesWithChanges, canonicalPath);\n\tif (previousStatus != null && previousStatus !== "ignored" && status === "ignored") decrementAncestorChangeCounts(changeCountByDirectoryPath, directoriesWithChanges, canonicalPath);',
+      ],
+    ],
+  ],
   [
     "dist/model/layout.js",
     [

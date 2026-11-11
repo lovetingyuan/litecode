@@ -1,7 +1,7 @@
 import editorStyles from "./EditorGroup.module.css";
 import workbenchStyles from "../styles/workbench.module.css";
 import terminalStyles from "../styles/terminal.module.css";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { Popover } from "@base-ui/react/popover";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -215,6 +215,9 @@ export default function App() {
   const locked = useUpdates((s) => updateLocked(s.phase));
   const [fatal, setFatal] = useState<string | null>(null);
   const [maximized, setMaximized] = useState(false);
+  const [copiedProjectPath, setCopiedProjectPath] = useState<string | null>(null);
+  const copyFeedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(copyFeedbackTimer.current), []);
   useExternalDrop(s.ready);
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
   useEffect(() => {
@@ -426,6 +429,27 @@ export default function App() {
                         )
                       }
                     />
+                    <IconButton
+                      icon={copiedProjectPath === s.root ? "check" : "copy"}
+                      label={copiedProjectPath === s.root ? "Copied!" : "Copy Project Folder Path"}
+                      onClick={() => {
+                        const path = pathTitle(s.root);
+                        void (async () => {
+                          if (desktop) {
+                            await (
+                              await import("@tauri-apps/plugin-clipboard-manager")
+                            ).writeText(path);
+                          } else {
+                            await navigator.clipboard.writeText(path);
+                          }
+                          clearTimeout(copyFeedbackTimer.current);
+                          setCopiedProjectPath(s.root);
+                          copyFeedbackTimer.current = setTimeout(() => {
+                            setCopiedProjectPath(null);
+                          }, 1500);
+                        })().catch((error) => notify(errorMessage(error)));
+                      }}
+                    />
                   </Popover.Popup>
                 </Popover.Positioner>
               </Popover.Portal>
@@ -556,7 +580,8 @@ export default function App() {
             className={`title-center absolute left-[50%] w-[40%] max-w-150 flex items-center gap-1 h-full justify-center ${workbenchStyles["title-center"]}`}
             data-tauri-drag-region
           />
-          <div className="title-updates ml-auto mr-2" inert={openingWorkspace}>
+          {/* Keep the entire update button above the overlapping titlebar drag region. */}
+          <div className="title-updates relative z-[2] ml-auto mr-2" inert={openingWorkspace}>
             <UpdateButton />
           </div>
           <div

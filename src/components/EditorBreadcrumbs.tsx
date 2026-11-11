@@ -19,7 +19,6 @@ import type { Doc, Group } from "../types/types";
 import { EditorViewMenu } from "./MediaStatus";
 import { FileIcon, Icon } from "./ui";
 import scrollbarCSS from "../styles/sidebar-scrollbar.css?raw";
-import { gitConflictDecoration } from "../utils/gitStatus";
 
 export function EditorBreadcrumbs({ doc, group }: Readonly<{ doc: Doc; group: Group }>) {
   const root = useApp((state) => state.root);
@@ -167,16 +166,7 @@ function BreadcrumbPicker({
     dragAndDrop: false,
     renderRowDecoration: ({ row }) => {
       if (row.kind !== "directory") {
-        const state = useApp.getState();
-        const tree = adapter.current;
-        return state.root && tree
-          ? gitConflictDecoration(
-              join(state.root, tree.toWorkspacePath(row.path)),
-              state.root,
-              state.gitState.root,
-              state.gitState.git,
-            )
-          : null;
+        return null;
       }
       const state = adapter.current?.state(row.path);
       if (state?.status === "loading") {
@@ -239,8 +229,7 @@ function BreadcrumbPicker({
         tree
         ? git.git.flatMap((entry) => {
             const localRoot = tree.toWorkspacePath("");
-            return entry.status !== "conflicted" &&
-              entry.path.toLowerCase().startsWith(localRoot.toLowerCase())
+            return entry.path.toLowerCase().startsWith(localRoot.toLowerCase())
               ? [{ path: entry.path.slice(localRoot.length), status: entry.status }]
               : [];
           })

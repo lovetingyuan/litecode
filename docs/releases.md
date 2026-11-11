@@ -20,11 +20,14 @@ In **Actions → Desktop release → Run workflow**, select a branch that includ
 
 ## Publish a version
 
-1. Start on `main` with a clean working tree and push any local commits to `origin/main`. Run `npm run release -- 0.2.0` with the desired stable version. The command fetches `origin/main` and checks that both branches point to the same commit. It updates the version files if needed, creates the tag, and pushes `main` and the tag together. If the push fails, resolve the Git error and synchronize `main` before retrying. To sync a release commit left ahead after a failed push, run `git push --no-follow-tags origin main`.
-2. Open **Actions → Desktop release** and wait for all jobs, including **verify-draft**, to pass. The action creates a draft and attaches the installers, updater artifacts, signatures, and `latest.json`. The Windows job also attaches the portable ZIP. If a job fails, keep the release in draft and rerun the failed jobs after fixing runner or secret settings.
-3. Edit the release notes in the draft and publish it as the latest official release. To show the same text in the app's update dialog, set the `notes` field in `latest.json` before publishing. For the first CI release, install the new package directly. To verify future updates, install from the previous CI release and use **Help → Check for Updates…**.
+1. Start on `main` with a clean working tree and push any local commits to `origin/main`. Run `npm run release` without arguments. Enter the new stable version, then type Markdown release notes over multiple lines. Blank lines are allowed; enter `.` on its own line to finish. Empty notes are rejected, and ending input before `.` cancels the release. Outer whitespace is trimmed, matching Tauri Action's input handling.
+2. The command fetches `origin/main` and checks that both branches point to the same commit. It updates the version files if needed, saves the notes in an annotated tag headed `LiteCode vX.Y.Z`, and pushes `main` and the tag together. If the push fails, resolve the Git error and synchronize `main` before running `npm run release` again. Enter the same version to reuse the existing tag and its notes. To sync a release commit left ahead after a failed push, run `git push --no-follow-tags origin main`.
+3. Open **Actions → Desktop release** and wait for all jobs, including **verify-draft**, to pass. Actions reads the notes from the tag and uses them for both the Release body and `latest.json.notes`. The action attaches installers, updater artifacts, and signatures; the Windows job also attaches the portable ZIP. After every platform has finished, the workflow replaces asset API URLs in `latest.json` with public download URLs and verifies the completed manifest. If a job fails, keep the release in draft and rerun the failed jobs after fixing runner or secret settings.
+4. Publish the verified draft as the latest official release. The tag is the source of truth for release notes; editing the Release body later does not automatically update the app's notes. Install the previous version and use **Help → Check for Updates…** to verify the upgrade.
 
 The updater reads `https://github.com/lovetingyuan/litecode/releases/latest/download/latest.json`. Keep the completed manifest and its referenced assets together. Drafts and prereleases are outside the stable update channel.
+
+The build workflow uses its authenticated repository token for GitHub API requests. Clients only request the public `latest.json` and the public installer download URL, avoiding anonymous API rate limits. Manifest finalization only runs against release drafts and requires the tag notes file; published releases are not modified. Original and finalized manifests are written under `tmp/release/vX.Y.Z/`.
 
 ## Application updates
 
@@ -38,6 +41,6 @@ Versions distributed before this update feature must be upgraded manually once.
 
 ## Verification
 
-`npm test` includes tests for the release command against a local Git remote, update state, and recovery acknowledgements.
+`npm test` includes tests for interactive release input and tag notes against a local Git remote, updater manifest finalization, update state, and recovery acknowledgements. To run only the release tooling tests, use `npx vitest run tools/release.test.mjs tools/finalize-updater.test.mjs`.
 
 Run `npm run build` first, then `node tools/verify-updates-desktop.mjs`. This builds two signed debug NSIS installers with a unique test application identifier, temporary signing key, isolated Cargo target directory, and isolated installation directory. It verifies update checks, shared operations, signature rejection, a real locked-backup failure, the 30-second backup timeout, installation, restart, and unsaved-buffer recovery. It uninstalls the fixture afterwards and keeps evidence under `.verification/updates-*/`. The production build cannot use the loopback endpoint override used by this test.

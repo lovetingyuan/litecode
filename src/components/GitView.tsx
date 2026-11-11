@@ -40,6 +40,7 @@ import {
 } from "../git/branches";
 import {
   changePaths,
+  gitContext,
   openGitDiff,
   openGitSource,
   readGitInfo,
@@ -144,7 +145,6 @@ export function GitView() {
     path: string;
     root: string | null;
     session: typeof git.session;
-    version: number;
     branch: typeof branch;
     detached: typeof detached;
     operation: typeof operation;
@@ -157,8 +157,9 @@ export function GitView() {
     details.session === git.session
       ? details.info
       : null;
+  // Metadata invalidation refreshes details silently; it does not make actions unavailable.
   const currentInfo =
-    details?.version === infoVersion &&
+    details &&
     details.branch === branch &&
     details.detached === detached &&
     details.operation === operation &&
@@ -167,10 +168,15 @@ export function GitView() {
       : null;
   const [refreshing, setRefreshing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
+  const [syncPending, setSyncPending] = useState<string | null>(null);
+  const syncWorking = useRef(false);
+  const syncBusy = busy ?? syncPending;
   const syncGeneration = useRef(0);
   const syncSuccessTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useLayoutEffect(() => {
     setSyncSuccess(null);
+    setSyncPending(null);
+    syncWorking.current = false;
     return () => {
       syncGeneration.current += 1;
       clearTimeout(syncSuccessTimer.current);
@@ -206,7 +212,6 @@ export function GitView() {
             path: repositoryPath,
             root,
             session: git.session,
-            version: infoVersion,
             branch,
             detached,
             operation,
@@ -270,21 +275,11 @@ export function GitView() {
       });
     });
   }
-  function finishSync(completed: boolean, kind: string, generation: number) {
-    if (!completed || generation !== syncGeneration.current) {
-      return;
-    }
-    setSyncSuccess(kind);
-    syncSuccessTimer.current = setTimeout(() => setSyncSuccess(null), 1500);
-  }
-  async function sync(kind: "fetch" | "pull" | "pullRebase" | "push") {
-    if (!repository || !info || !currentInfo || busy) {
-      return;
-    }
-    const generation = ++syncGeneration.current;
-    clearTimeout(syncSuccessTimer.current);
-    setSyncSuccess(null);
-    let request: GitOperation;
+  async function chooseSyncRequest(
+    kind: "fetch" | "pull" | "pullRebase" | "push",
+    info: GitInfo,
+    valid: () => boolean,
+  ): Promise<GitOperation | null> {
     if (kind === "fetch" || (kind === "push" && !info.upstream)) {
       const remote =
         info.remotes.length === 1
@@ -297,35 +292,99 @@ export function GitView() {
                 description: r.fetch ?? "",
               })),
             );
+      if (!valid()) {
+        return null;
+      }
       if (!remote) {
         warnIfNoRemotes(info.remotes);
-        return;
+        return null;
       }
-      request = requestForRemote(kind, remote);
-    } else if (kind === "pull" || kind === "pullRebase") {
-      request = { kind: "pull", rebase: kind === "pullRebase" };
-      if (!info.upstream) {
-        const target = await choose(
-          "Select Branch to Pull",
-          info.branches.filter((b) => b.remote).map((b) => ({ id: b.name, label: b.name })),
-        );
-        const remote = info.remotes.find((r) => target?.startsWith(r.name + "/"));
-        if (!target || !remote) {
-          return;
-        }
-        request = {
-          ...request,
-          remote: remote.name,
-          branch: target.slice(remote.name.length + 1),
-        };
-      }
-    } else {
-      request = { kind: "push" };
+      return requestForRemote(kind, remote);
     }
-    if (generation !== syncGeneration.current) {
+    if (kind === "push") {
+      return { kind: "push" };
+    }
+    const request: GitOperation = { kind: "pull", rebase: kind === "pullRebase" };
+    if (info.upstream) {
+      return request;
+    }
+    const target = await choose(
+      "Select Branch to Pull",
+      info.branches.filter((b) => b.remote).map((b) => ({ id: b.name, label: b.name })),
+    );
+    if (!valid()) {
+      return null;
+    }
+    const remote = info.remotes.find((r) => target?.startsWith(r.name + "/"));
+    if (!target || !remote) {
+      return null;
+    }
+    return {
+      ...request,
+      remote: remote.name,
+      branch: target.slice(remote.name.length + 1),
+    };
+  }
+  function finishSync(completed: boolean, kind: string, generation: number) {
+    if (!completed || generation !== syncGeneration.current) {
       return;
     }
-    finishSync(await runGitOperation(repository.path, request), kind, generation);
+    setSyncSuccess(kind);
+    syncSuccessTimer.current = setTimeout(() => setSyncSuccess(null), 1500);
+  }
+  async function sync(kind: "fetch" | "pull" | "pullRebase" | "push") {
+    if (!repository || !currentInfo || busy || syncWorking.current) {
+      return;
+    }
+    const context = gitContext(repository.path);
+    const generation = ++syncGeneration.current;
+    const valid = () => {
+      const state = useApp.getState();
+      const selected = selectedRepository();
+      return (
+        generation === syncGeneration.current &&
+        state.root === context.expectedRoot &&
+        state.gitState.session === context.session &&
+        selected?.path === repository.path &&
+        selected.branch === repository.branch &&
+        selected.detached === repository.detached &&
+        selected.operation === repository.operation &&
+        (kind === "fetch" || (!selected.detached && !selected.operation)) &&
+        !state.gitBusy[repository.path]
+      );
+    };
+    if (!valid()) {
+      return;
+    }
+    syncWorking.current = true;
+    setSyncPending(kind);
+    clearTimeout(syncSuccessTimer.current);
+    setSyncSuccess(null);
+    try {
+      const info = await readGitInfo(repository.path);
+      if (
+        !valid() ||
+        info.detached !== repository.detached ||
+        (!info.detached && info.branch !== repository.branch) ||
+        info.operation !== repository.operation
+      ) {
+        return;
+      }
+      const request = await chooseSyncRequest(kind, info, valid);
+      if (!request || !valid()) {
+        return;
+      }
+      finishSync(await runGitOperation(repository.path, request), kind, generation);
+    } catch (error) {
+      if (valid()) {
+        report(error);
+      }
+    } finally {
+      if (generation === syncGeneration.current) {
+        syncWorking.current = false;
+        setSyncPending(null);
+      }
+    }
   }
   async function branchAction(action: () => Promise<unknown>, branch: string | null = null) {
     if (branchWorking.current) {
@@ -345,7 +404,7 @@ export function GitView() {
     }
   }
   const branchDisabled =
-    !!busy || branchPending || !currentInfo || !!info?.operation || !!repository?.operation;
+    !!syncBusy || branchPending || !currentInfo || !!info?.operation || !!repository?.operation;
   const chooseBranch = (branches: GitInfo["branches"]) =>
     choose(
       "Select Local Tracking Branch",
@@ -386,6 +445,10 @@ export function GitView() {
         className="absolute right-0 top-0"
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => {
+          if (!branchQuery) {
+            setBranchSearchOpen(false);
+            return;
+          }
           setBranchSearch("");
           branchSearchInputRef.current?.focus();
         }}
@@ -487,13 +550,13 @@ export function GitView() {
                 className={`${actionButtonClass} compact`}
                 aria-label="Fetch"
                 data-success={syncSuccess === "fetch"}
-                aria-busy={busy === "fetch"}
-                disabled={!!busy || !currentInfo}
+                aria-busy={syncBusy === "fetch"}
+                disabled={!!syncBusy || !currentInfo}
                 onClick={() => void sync("fetch").catch(report)}
               >
                 <span className="git-sync-label">Fetch</span>
                 {syncSuccess === "fetch" && <Icon name="check" className="git-sync-success" />}
-                {busy === "fetch" && (
+                {syncBusy === "fetch" && (
                   <span
                     className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
                     aria-hidden="true"
@@ -504,13 +567,15 @@ export function GitView() {
                 className={`${actionButtonClass} compact`}
                 aria-label="Pull"
                 data-success={syncSuccess === "pull"}
-                aria-busy={busy === "pull"}
-                disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
+                aria-busy={syncBusy === "pull"}
+                disabled={
+                  !!syncBusy || !currentInfo || repository.detached || !!repository.operation
+                }
                 onClick={() => void sync("pull").catch(report)}
               >
                 <span className="git-sync-label">Pull</span>
                 {syncSuccess === "pull" && <Icon name="check" className="git-sync-success" />}
-                {busy === "pull" && (
+                {syncBusy === "pull" && (
                   <span
                     className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
                     aria-hidden="true"
@@ -521,13 +586,15 @@ export function GitView() {
                 className={`${actionButtonClass} compact`}
                 aria-label="Pull (Rebase)"
                 data-success={syncSuccess === "pullRebase"}
-                aria-busy={busy === "pullRebase"}
-                disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
+                aria-busy={syncBusy === "pullRebase"}
+                disabled={
+                  !!syncBusy || !currentInfo || repository.detached || !!repository.operation
+                }
                 onClick={() => void sync("pullRebase").catch(report)}
               >
                 <span className="git-sync-label">Pull (Rebase)</span>
                 {syncSuccess === "pullRebase" && <Icon name="check" className="git-sync-success" />}
-                {busy === "pullRebase" && (
+                {syncBusy === "pullRebase" && (
                   <span
                     className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
                     aria-hidden="true"
@@ -538,13 +605,15 @@ export function GitView() {
                 className={`${actionButtonClass} compact`}
                 aria-label="Push"
                 data-success={syncSuccess === "push"}
-                aria-busy={busy === "push"}
-                disabled={!!busy || !currentInfo || repository.detached || !!repository.operation}
+                aria-busy={syncBusy === "push"}
+                disabled={
+                  !!syncBusy || !currentInfo || repository.detached || !!repository.operation
+                }
                 onClick={() => void sync("push").catch(report)}
               >
                 <span className="git-sync-label">Push</span>
                 {syncSuccess === "push" && <Icon name="check" className="git-sync-success" />}
-                {busy === "push" && (
+                {syncBusy === "push" && (
                   <span
                     className={`spinner w-5 h-5 border-[2px] border-button-secondary rounded-full ${workbenchStyles["spinner"]}`}
                     aria-hidden="true"

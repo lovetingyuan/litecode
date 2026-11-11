@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { access, mkdir, open, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createInterface } from "node:readline";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const repository = "https://github.com/lovetingyuan/litecode";
@@ -73,8 +74,59 @@ export async function currentVersion(cwd) {
   return readVersions(await readVersionFiles(cwd));
 }
 
-function git(cwd, args) {
-  return execFileSync("git", args, { cwd, encoding: "utf8", windowsHide: true });
+function git(cwd, args, input) {
+  return execFileSync("git", args, { cwd, input, encoding: "utf8", windowsHide: true });
+}
+
+export function normalizeNotes(notes) {
+  if (typeof notes !== "string" || !notes.trim() || notes.includes("\0")) {
+    throw new Error("Release notes must not be empty or contain null characters.");
+  }
+  // Tauri Action trims releaseBody inputs; use the same boundary for tag and manifest notes.
+  return notes.replaceAll("\r\n", "\n").trim();
+}
+
+export function tagNotes(cwd, tag) {
+  if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)) {
+    throw new Error("Expected a stable release tag vX.Y.Z.");
+  }
+  const contents = git(cwd, ["cat-file", "tag", `refs/tags/${tag}`]);
+  const message = contents.slice(contents.indexOf("\n\n") + 2);
+  const title = `LiteCode ${tag}\n\n`;
+  if (!message.startsWith(title)) {
+    throw new Error(`Tag ${tag} must contain a LiteCode title followed by release notes.`);
+  }
+  return normalizeNotes(message.slice(title.length));
+}
+
+export async function readReleaseInput(cwd, input = process.stdin, output = process.stdout) {
+  const current = await currentVersion(cwd);
+  const reader = createInterface({ input, output, terminal: Boolean(input.isTTY) });
+  const lines = reader[Symbol.asyncIterator]();
+  try {
+    output.write(`New version (current: ${current}): `);
+    const first = await lines.next();
+    if (first.done) throw new Error("Release input cancelled.");
+    const requested = first.value.trim().replace(/^v/, "");
+    const version = requested === current ? current : normalizeVersion(requested, current);
+    const tag = `v${version}`;
+    if (git(cwd, ["tag", "--list", tag]).trim()) {
+      const notes = tagNotes(cwd, tag);
+      output.write(`Reusing release notes from ${tag}.\n`);
+      return { version, notes };
+    }
+    output.write("Release notes (Markdown; enter . on its own line to finish):\n");
+    const notes = [];
+    for (;;) {
+      const line = await lines.next();
+      if (line.done) throw new Error("Release input cancelled. Finish notes with a single . line.");
+      if (line.value === ".") break;
+      notes.push(line.value);
+    }
+    return { version, notes: normalizeNotes(notes.join("\n")) };
+  } finally {
+    reader.close();
+  }
 }
 
 async function checkReleaseTree(cwd) {
@@ -104,7 +156,7 @@ async function checkReleaseTree(cwd) {
   }
 }
 
-export async function pushRelease(cwd, input) {
+export async function pushRelease(cwd, input, notes) {
   await checkReleaseTree(cwd);
   const base = git(cwd, ["rev-parse", "HEAD"]).trim();
   git(cwd, ["fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"]);
@@ -137,6 +189,7 @@ export async function pushRelease(cwd, input) {
   if (localTag && (!onSameVersion || git(cwd, ["rev-parse", `${ref}^{commit}`]).trim() !== base)) {
     throw new Error(`本地标签 ${tag} 已指向其他发布。`);
   }
+  const releaseNotes = localTag ? tagNotes(cwd, tag) : normalizeNotes(notes);
 
   const working = await readVersionFiles(cwd);
   const normalize = (contents) => contents.replaceAll("\r\n", "\n");
@@ -175,7 +228,13 @@ export async function pushRelease(cwd, input) {
   ) {
     throw new Error("发布提交含有意外改动，请检查本地提交后重试。");
   }
-  if (!localTag) git(cwd, ["tag", "-a", tag, commit, "-m", `LiteCode ${tag}`]);
+  if (!localTag) {
+    git(
+      cwd,
+      ["tag", "-a", tag, commit, "--cleanup=verbatim", "-F", "-"],
+      `LiteCode ${tag}\n\n${releaseNotes}\n`,
+    );
+  }
   try {
     git(cwd, [
       "push",
@@ -201,9 +260,13 @@ async function main(args) {
       throw new Error(`Release tag must match the application version v${current}.`);
     return;
   }
+  if (args.length === 2 && args[0] === "--tag-notes") {
+    process.stdout.write(tagNotes(root, args[1]));
+    return;
+  }
   // npm.ps1 can forward the removed option as npm config instead of an argument.
-  if (args.length !== 1 || process.env.npm_config_revert !== undefined)
-    throw new Error("Usage: npm run release -- X.Y.Z");
+  if (args.length !== 0 || process.env.npm_config_revert !== undefined)
+    throw new Error("Usage: npm run release");
   const pushUrl = git(root, ["remote", "get-url", "--push", "--all", "origin"]).trim();
   if (
     !/^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)lovetingyuan\/litecode(?:\.git)?$/.test(
@@ -219,7 +282,9 @@ async function main(args) {
     throw new Error("另一个发布命令正在运行。若进程已退出，请移除 tmp/release.lock 后重试。");
   });
   try {
-    const tag = await pushRelease(root, args[0]);
+    await checkReleaseTree(root);
+    const { version, notes } = await readReleaseInput(root);
+    const tag = await pushRelease(root, version, notes);
     console.log(
       `${tag} 已推送。GitHub Actions 构建后会创建 Release 草稿。\n${repository}/actions/workflows/release.yml\n${repository}/releases`,
     );
