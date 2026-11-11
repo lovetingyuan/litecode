@@ -6,7 +6,7 @@ import { createInterface } from "node:readline";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const repository = "https://github.com/lovetingyuan/litecode";
-const versionFiles = [
+export const versionFiles = [
   "package.json",
   "package-lock.json",
   "src-tauri/tauri.conf.json",
@@ -31,7 +31,7 @@ const cargoVersion = {
   "src-tauri/Cargo.lock": /(\[\[package\]\]\r?\nname = "litecode"\r?\nversion = ")([^"]+)(")/,
 };
 
-function versionContents(name, contents, version) {
+export function versionContents(name, contents, version) {
   if (name.endsWith(".json")) {
     const data = JSON.parse(contents);
     data.version = version;
@@ -46,7 +46,7 @@ function versionContents(name, contents, version) {
   );
 }
 
-function readVersions(files) {
+export function readVersions(files) {
   const pkg = JSON.parse(files.get("package.json"));
   const lock = JSON.parse(files.get("package-lock.json"));
   const config = JSON.parse(files.get("src-tauri/tauri.conf.json"));
@@ -74,8 +74,17 @@ export async function currentVersion(cwd) {
   return readVersions(await readVersionFiles(cwd));
 }
 
-function git(cwd, args, input) {
-  return execFileSync("git", args, { cwd, input, encoding: "utf8", windowsHide: true });
+export function git(cwd, args, input, env) {
+  return execFileSync("git", args, { cwd, input, env, encoding: "utf8", windowsHide: true });
+}
+
+export function committedVersionFiles(cwd, commit) {
+  return new Map(versionFiles.map((name) => [name, git(cwd, ["show", `${commit}:${name}`])]));
+}
+
+export function remoteTagRefs(cwd, ref) {
+  const refs = git(cwd, ["ls-remote", "--tags", "origin", ref, `${ref}^{}`]).trim();
+  return new Map(refs ? refs.split("\n").map((line) => line.trim().split(/\s+/).reverse()) : []);
 }
 
 export function normalizeNotes(notes) {
@@ -129,7 +138,7 @@ export async function readReleaseInput(cwd, input = process.stdin, output = proc
   }
 }
 
-async function checkReleaseTree(cwd) {
+export async function checkReleaseTree(cwd) {
   if (git(cwd, ["branch", "--show-current"]).trim() !== "main") {
     throw new Error("请从 main 分支发布。");
   }
@@ -163,9 +172,7 @@ export async function pushRelease(cwd, input, notes) {
   if (git(cwd, ["rev-parse", "refs/remotes/origin/main"]).trim() !== base) {
     throw new Error("本地 main 与 origin/main 不一致，请先同步后再发布。");
   }
-  const committed = new Map(
-    versionFiles.map((name) => [name, git(cwd, ["show", `${base}:${name}`])]),
-  );
+  const committed = committedVersionFiles(cwd, base);
   const current = readVersions(committed);
   const requested = input.trim().replace(/^v/, "");
   const version = requested === current ? current : normalizeVersion(input, current);
@@ -173,14 +180,7 @@ export async function pushRelease(cwd, input, notes) {
   const ref = `refs/tags/${tag}`;
   const onSameVersion = version === current;
   const localTag = git(cwd, ["tag", "--list", tag]).trim();
-  const remoteRefs = git(cwd, ["ls-remote", "--tags", "origin", ref, `${ref}^{}`]);
-  const remoteTags = new Map(
-    remoteRefs
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => line.trim().split(/\s+/).reverse()),
-  );
+  const remoteTags = remoteTagRefs(cwd, ref);
   const remoteTarget = remoteTags.get(`${ref}^{}`) ?? remoteTags.get(ref);
   if (remoteTarget) {
     if (onSameVersion && remoteTarget === base) return tag;
@@ -253,6 +253,31 @@ export async function pushRelease(cwd, input, notes) {
   return tag;
 }
 
+export async function withReleaseLock(cwd, run) {
+  const pushUrl = git(cwd, ["remote", "get-url", "--push", "--all", "origin"]).trim();
+  if (
+    !/^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)lovetingyuan\/litecode(?:\.git)?$/.test(
+      pushUrl,
+    )
+  ) {
+    throw new Error("origin 推送目标必须是 lovetingyuan/litecode。");
+  }
+  const lockFile = path.join(cwd, "tmp/release.lock");
+  await mkdir(path.dirname(lockFile), { recursive: true });
+  const lock = await open(lockFile, "wx").catch((error) => {
+    if (error.code !== "EEXIST") {
+      throw error;
+    }
+    throw new Error("另一个发布命令正在运行。若进程已退出，请移除 tmp/release.lock 后重试。");
+  });
+  try {
+    return await run();
+  } finally {
+    await lock.close();
+    await unlink(lockFile);
+  }
+}
+
 async function main(args) {
   if (args.length === 2 && args[0] === "--check-tag") {
     const current = await currentVersion(root);
@@ -265,33 +290,17 @@ async function main(args) {
     return;
   }
   // npm.ps1 can forward the removed option as npm config instead of an argument.
-  if (args.length !== 0 || process.env.npm_config_revert !== undefined)
+  if (args.length !== 0 || process.env.npm_config_revert !== undefined) {
     throw new Error("Usage: npm run release");
-  const pushUrl = git(root, ["remote", "get-url", "--push", "--all", "origin"]).trim();
-  if (
-    !/^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)lovetingyuan\/litecode(?:\.git)?$/.test(
-      pushUrl,
-    )
-  ) {
-    throw new Error("origin 推送目标必须是 lovetingyuan/litecode。");
   }
-  const lockFile = path.join(root, "tmp/release.lock");
-  await mkdir(path.dirname(lockFile), { recursive: true });
-  const lock = await open(lockFile, "wx").catch((error) => {
-    if (error.code !== "EEXIST") throw error;
-    throw new Error("另一个发布命令正在运行。若进程已退出，请移除 tmp/release.lock 后重试。");
-  });
-  try {
+  await withReleaseLock(root, async () => {
     await checkReleaseTree(root);
     const { version, notes } = await readReleaseInput(root);
     const tag = await pushRelease(root, version, notes);
     console.log(
       `${tag} 已推送。GitHub Actions 构建后会创建 Release 草稿。\n${repository}/actions/workflows/release.yml\n${repository}/releases`,
     );
-  } finally {
-    await lock.close();
-    await unlink(lockFile);
-  }
+  });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

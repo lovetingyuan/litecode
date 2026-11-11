@@ -29,6 +29,12 @@ The updater reads `https://github.com/lovetingyuan/litecode/releases/latest/down
 
 The build workflow uses its authenticated repository token for GitHub API requests. Clients only request the public `latest.json` and the public installer download URL, avoiding anonymous API rate limits. Manifest finalization only runs against release drafts and requires the tag notes file; published releases are not modified. Original and finalized manifests are written under `tmp/release/vX.Y.Z/`.
 
+## Roll back a failed release
+
+To abandon a failed, unpublished `v0.2.2` release and restore version `0.2.0`, run `npm run release:rollback -- v0.2.2 0.2.0` from a clean `main`. The command commits the version change, pushes `main` and removes the failed tag from `origin` in one operation, then removes the local tag. Code changes stay in `main`. If the push fails, resolve the Git error and retry the same command.
+
+If the workflow created a GitHub Release draft, remove that draft in GitHub before reusing the version.
+
 ## Application updates
 
 Use **Help → Check for Updates…** or the command palette. Each application launch checks silently, with all editor windows sharing one process-wide schedule. While the app remains open, it checks once per local calendar day and retries failed checks every 30 minutes until one succeeds. The schedule is evaluated every 60 seconds, so a check missed across midnight or while the computer sleeps runs within 60 seconds of normal execution resuming. It does not wake the computer or replay checks for previous days. Automatic checks wait while an update is downloading or installing; manual checks bypass the daily and retry limits. An available update adds a button at the upper right without opening a dialog.
