@@ -377,6 +377,7 @@ export default function App() {
     }
   }
   function renderStatusBar() {
+    const root = s.root;
     const tracking = s.gitState.tracking;
     const trackingDescription = tracking
       ? `; ${tracking.upstream}: ${tracking.behind} commits behind, ${tracking.ahead} commits ahead`
@@ -388,8 +389,8 @@ export default function App() {
       >
         <div className="status-left flex items-stretch min-w-0">
           <ResourceStatus />
-          {s.root && (
-            <Popover.Root key={s.root}>
+          {root && (
+            <Popover.Root key={root}>
               <Popover.Trigger
                 className={`workspace-status ${workbenchStyles["workspace-status"]}`}
                 title={rootName}
@@ -414,7 +415,7 @@ export default function App() {
                     <span
                       className={`workspace-path flex-1 min-w-0 py-[3px] px-0 leading-[18px] select-text ${workbenchStyles["workspace-path"]}`}
                     >
-                      {pathTitle(s.root)}
+                      {pathTitle(root)}
                     </span>
                     <Popover.Close
                       render={
@@ -424,16 +425,16 @@ export default function App() {
                         />
                       }
                       onClick={() =>
-                        void call("open_directory", { path: s.root }).catch((error) =>
+                        void call("open_directory", { path: root }).catch((error) =>
                           notify(errorMessage(error)),
                         )
                       }
                     />
                     <IconButton
-                      icon={copiedProjectPath === s.root ? "check" : "copy"}
-                      label={copiedProjectPath === s.root ? "Copied!" : "Copy Project Folder Path"}
+                      icon={copiedProjectPath === root ? "check" : "copy"}
+                      label={copiedProjectPath === root ? "Copied!" : "Copy Project Folder Path"}
                       onClick={() => {
-                        const path = pathTitle(s.root);
+                        const path = pathTitle(root);
                         void (async () => {
                           if (desktop) {
                             await (
@@ -443,7 +444,7 @@ export default function App() {
                             await navigator.clipboard.writeText(path);
                           }
                           clearTimeout(copyFeedbackTimer.current);
-                          setCopiedProjectPath(s.root);
+                          setCopiedProjectPath(root);
                           copyFeedbackTimer.current = setTimeout(() => {
                             setCopiedProjectPath(null);
                           }, 1500);
