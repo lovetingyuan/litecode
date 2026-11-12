@@ -75,7 +75,7 @@ export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group
   const previewStarting = html && starting;
   const markdown = isMarkdownDocument(doc);
   const mode = editorViewMode(doc, group, packageDocument);
-  let options: { mode: NonNullable<MediaView["mode"]> | "html" | "markdownRemote"; label: string }[];
+  let options: { mode: NonNullable<MediaView["mode"]> | "html"; label: string }[];
   if (packageDocument) {
     options = [
       { mode: "text", label: "Edit" },
@@ -90,7 +90,6 @@ export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group
     options = [
       { mode: "text", label: "Text Editor" },
       { mode: "markdown", label: "Markdown Preview" },
-      { mode: "markdownRemote", label: "Preview with Remote Images" },
     ];
   } else {
     options = [
@@ -130,7 +129,7 @@ export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group
                   if (option.mode === "html") {
                     void previewHtml(doc.id).catch((error) => notify(errorMessage(error)));
                   } else {
-                    selectPreview(group.id, doc.id, option.mode);
+                    patchMediaView(group.id, doc.id, { mode: option.mode });
                   }
                 }}
               >
@@ -145,23 +144,12 @@ export function EditorViewMenu({ doc, group }: Readonly<{ doc: Doc; group: Group
   );
 }
 
-function selectPreview(
-  groupId: string,
-  docId: string,
-  mode: NonNullable<MediaView["mode"]> | "markdownRemote",
-) {
-  patchMediaView(groupId, docId, {
-    mode: mode === "markdownRemote" ? "markdown" : mode,
-    allowRemoteImages: mode === "markdownRemote",
-  });
-}
-
 function editorViewMode(doc: Doc, group: Group, packageDocument: boolean) {
   if (packageDocument) {
     return isPackageView(doc, group) ? "package" : "text";
   }
   if (isMarkdownView(doc, group)) {
-    return group.mediaViews?.[doc.id]?.allowRemoteImages ? "markdownRemote" : "markdown";
+    return "markdown";
   }
   return isTextView(doc, group) ? "text" : "image";
 }

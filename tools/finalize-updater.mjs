@@ -54,17 +54,21 @@ function gh(args) {
 async function main(args) {
   const [tag, notesFile] = args;
   const repository = process.env.GITHUB_REPOSITORY;
+  const releaseId = process.env.RELEASE_ID;
   if (
     args.length !== 2 ||
     !/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag) ||
-    !/^[\w.-]+\/[\w.-]+$/.test(repository ?? "")
+    !/^[\w.-]+\/[\w.-]+$/.test(repository ?? "") ||
+    !/^[1-9]\d*$/.test(releaseId ?? "")
   ) {
     throw new Error(
-      "Usage: GITHUB_REPOSITORY=owner/repo node tools/finalize-updater.mjs vX.Y.Z notes-file",
+      "Usage: GITHUB_REPOSITORY=owner/repo RELEASE_ID=id node tools/finalize-updater.mjs vX.Y.Z notes-file",
     );
   }
-  const release = JSON.parse(gh(["api", `repos/${repository}/releases/tags/${tag}`]));
-  if (!release.draft) throw new Error("Only release drafts can be finalized.");
+  const release = JSON.parse(gh(["api", `repos/${repository}/releases/${releaseId}`]));
+  if (!release.draft || release.tag_name !== tag) {
+    throw new Error("Only the draft for the requested tag can be finalized.");
+  }
   release.assets = JSON.parse(
     gh([
       "api",
@@ -76,7 +80,9 @@ async function main(args) {
   const asset = release.assets.find(
     (item) => item.name === "latest.json" && item.state === "uploaded" && item.size > 0,
   );
-  if (!asset) throw new Error("Release has no uploaded latest.json.");
+  if (!asset) {
+    throw new Error("Release has no uploaded latest.json.");
+  }
   const original = gh([
     "api",
     "-H",
@@ -104,7 +110,9 @@ async function main(args) {
   )
     .flat()
     .find((item) => item.name === "latest.json");
-  if (!uploaded) throw new Error("Uploaded manifest could not be found.");
+  if (!uploaded) {
+    throw new Error("Uploaded manifest could not be found.");
+  }
   const actual = JSON.parse(
     gh([
       "api",

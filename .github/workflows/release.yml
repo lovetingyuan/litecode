@@ -47,13 +47,14 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Check release tag and signing key
+      - name: Check release tag, notes, and signing key
         if: github.event_name == 'push'
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           node tools/release.mjs --check-tag "$GITHUB_REF_NAME"
+          node tools/release.mjs --tag-notes "$GITHUB_REF_NAME" > /dev/null
           : "${TAURI_SIGNING_PRIVATE_KEY:?Set the TAURI_SIGNING_PRIVATE_KEY Actions secret}"
 
       - name: Install Linux build dependencies
@@ -114,7 +115,6 @@ jobs:
           tagName: ${{ github.event_name == 'push' && github.ref_name || '' }}
           releaseName: ${{ github.event_name == 'push' && format('LiteCode {0}', github.ref_name) || '' }}
           releaseDraft: true
-          generateReleaseNotes: true
           uploadWorkflowArtifacts: ${{ github.event_name == 'workflow_dispatch' }}
           args: ${{ github.event_name == 'workflow_dispatch' && '--config tmp/release/unsigned.json' || '' }} -- --locked
 
@@ -137,7 +137,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Check draft assets and updater entries
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Verify assets and finalize release notes
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -145,7 +153,7 @@ jobs:
         run: |
           release=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")
           assets=$(jq -ce --arg tag "$GITHUB_REF_NAME" '
-            select(.draft and .tag_name == $tag) |
+            select(.draft and (.prerelease == false) and .tag_name == $tag) |
             [.assets[] | select(.state == "uploaded" and .size > 0)]
           ' <<< "$release")
           jq -e '
@@ -154,13 +162,8 @@ jobs:
             any(endswith("_aarch64.dmg")) and any(endswith("_x64.dmg")) and
             any(endswith(".AppImage")) and any(endswith(".deb"))
           ' <<< "$assets"
-          manifest_id=$(jq -er '.[] | select(.name == "latest.json") | .id' <<< "$assets")
-          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$manifest_id" |
-            jq -e --arg version "${GITHUB_REF_NAME#v}" --argjson assets "$assets" '
-              .version == $version and
-              ([.platforms["windows-x86_64"], .platforms["darwin-aarch64"],
-                .platforms["darwin-x86_64"], .platforms["linux-x86_64-appimage"],
-                .platforms["linux-x86_64-deb"]] |
-                all((.signature // "" | length > 0) and
-                  (.url as $url | any($assets[]; .url == $url))))
-            '
+          mkdir -p tmp/release
+          node tools/release.mjs --tag-notes "$GITHUB_REF_NAME" > tmp/release/notes.md
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            --field 'body=@tmp/release/notes.md' --silent
+          node tools/finalize-updater.mjs "$GITHUB_REF_NAME" tmp/release/notes.md

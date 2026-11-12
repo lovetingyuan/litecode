@@ -3,14 +3,12 @@ export type MarkdownTarget =
   | { kind: "external"; url: string }
   | { kind: "file"; path: string; hash: string };
 
-export function markdownImageTarget(value: string, path: string | null, allowRemote = false) {
+export function markdownImageTarget(value: string, path: string | null) {
   const target = resolveMarkdownUrl(value, path);
   if (target?.kind === "file") {
     return target;
   }
-  return allowRemote && target?.kind === "external" && /^https:/i.test(target.url)
-    ? target
-    : undefined;
+  return target?.kind === "external" && /^https:/i.test(target.url) ? target : undefined;
 }
 
 function fileUrl(path: string) {

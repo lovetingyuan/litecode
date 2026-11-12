@@ -69,7 +69,6 @@ export function MarkdownPreview({ doc, group }: Readonly<{ doc: Doc; group: Grou
         text={text}
         path={doc.path}
         groupId={group.id}
-        allowRemote={group.mediaViews?.[doc.id]?.allowRemoteImages ?? false}
       />
     </div>
   );
@@ -79,12 +78,10 @@ const MarkdownContent = memo(function MarkdownContent({
   text,
   path,
   groupId,
-  allowRemote,
 }: {
   text: string;
   path: string | null;
   groupId: string;
-  allowRemote: boolean;
 }) {
   async function follow(href: string, article: HTMLElement) {
     const target = resolveMarkdownUrl(href, path);
@@ -157,7 +154,7 @@ const MarkdownContent = memo(function MarkdownContent({
         components={components}
         urlTransform={(url, key) => {
           if (key === "src") {
-            const image = markdownImageTarget(url, path, allowRemote);
+            const image = markdownImageTarget(url, path);
             return image?.kind === "file" ? mediaSource(image.path) : (image?.url ?? "");
           }
           const target = resolveMarkdownUrl(url, path);

@@ -393,6 +393,10 @@ try {
   await trigger.focus();
   await trigger.press("ArrowDown");
   await page.getByRole("menuitem", { name: "Text Editor", exact: true }).waitFor();
+  assert.deepEqual(await page.getByRole("menuitem").allTextContents(), [
+    "Text Editor",
+    "Markdown Preview",
+  ]);
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
   await group(first).getByRole("heading", { name: "Unsaved 预览", exact: true }).waitFor();
@@ -409,29 +413,17 @@ try {
       .evaluate((el) => el.scrollWidth > el.clientWidth),
   );
   await group(first).getByAltText("Local", { exact: true }).waitFor();
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll(".markdown-body img")].length === 1 &&
-      [...document.querySelectorAll(".markdown-body img")].every((img) => img.naturalWidth === 1),
-  );
-  await group(first).getByRole("img", { name: "Missing image", exact: true }).waitFor();
-  assert.equal(await group(first).locator(".markdown-image-error").count(), 4);
-  assert.equal(httpImageRequests, 0);
-  assert.equal(httpsImageRequests, 0);
-  await group(first).getByRole("button", { name: "Load remote images", exact: true }).click();
-  await page.waitForFunction(
-    () =>
-      document.querySelectorAll(".markdown-body img").length === 2 &&
-      [...document.querySelectorAll(".markdown-body img")].every((img) => img.naturalWidth === 1),
-  );
+  await page.waitForFunction(() => {
+    const imgs = [...document.querySelectorAll(".markdown-body img")];
+    return imgs.length === 2 && imgs.every((img) => img.naturalWidth === 1);
+  });
+  assert.equal(await group(first).locator(".markdown-image-error").count(), 3);
   assert.equal(httpImageRequests, 0);
   assert.equal(httpsImageRequests, 1);
   assert.equal(
     await group(first).getByAltText("HTTPS", { exact: true }).getAttribute("referrerpolicy"),
     "no-referrer",
   );
-  await group(first).getByRole("button", { name: "Block remote images", exact: true }).click();
-  assert.equal(await group(first).locator(".markdown-body img").count(), 1);
   assert.equal(await group(first).getByRole("link", { name: "Unsafe", exact: true }).count(), 0);
   assert.equal(await page.evaluate(() => window.markdownExecuted), undefined);
   assert.equal(
@@ -453,7 +445,7 @@ try {
   assert.equal(denied, true);
   await page.screenshot({ path: path.join(run, "01-markdown-preview.png") });
   checks.push(
-    "Text default, keyboard menu, unsaved buffer, GFM, safe HTML/URLs, local images, explicit HTTPS opt-in, blocked HTTP and authorized-file boundary",
+    "Text default, keyboard menu, unsaved buffer, GFM, safe HTML/URLs, local and HTTPS images, blocked HTTP and authorized-file boundary",
   );
   console.log(checks.at(-1));
 
