@@ -165,5 +165,6 @@ jobs:
           mkdir -p tmp/release
           node tools/release.mjs --tag-notes "$GITHUB_REF_NAME" > tmp/release/notes.md
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            --field draft=true --raw-field "tag_name=$GITHUB_REF_NAME" \
             --field 'body=@tmp/release/notes.md' --silent
           node tools/finalize-updater.mjs "$GITHUB_REF_NAME" tmp/release/notes.md
