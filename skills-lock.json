@@ -1,11 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
     "trees": {
       "source": "pierrecomputer/pierre",
       "sourceType": "github",
       "skillPath": "skills/trees/SKILL.md",
-      "computedHash": "8c89773a6e72c8c488b75c5776ba519e361790e54992d276c95d79177d1d0291"
+      "computedHash": "2fc6b4d2557dfdafa9880fb8ace37a02419e9248efa84262ccb6553889227526"
     }
   }
 }

@@ -10086,6 +10086,13 @@ var FullTextDocument2 = class _FullTextDocument {
         const startOffset = this.offsetAt(range.start);
         const endOffset = this.offsetAt(range.end);
         this._content = this._content.substring(0, startOffset) + change.text + this._content.substring(endOffset, this._content.length);
+        const insertedEndOffset = startOffset + change.text.length;
+        const crlfAtStart = this._content.charCodeAt(startOffset - 1) === 13 && this._content.charCodeAt(startOffset) === 10;
+        const crlfAtEnd = this._content.charCodeAt(insertedEndOffset - 1) === 13 && this._content.charCodeAt(insertedEndOffset) === 10;
+        if (crlfAtStart || crlfAtEnd) {
+          this._lineOffsets = void 0;
+          continue;
+        }
         const startLine = Math.max(range.start.line, 0);
         const endLine = Math.max(range.end.line, 0);
         let lineOffsets = this._lineOffsets;
@@ -40648,7 +40655,7 @@ var CSSValidation = class {
     for (const r2 in Rules) {
       ruleIds.push(Rules[r2].id);
     }
-    function toDiagnostic(marker) {
+    function toDiagnostic2(marker) {
       const range = Range2.create(document.positionAt(marker.getOffset()), document.positionAt(marker.getOffset() + marker.getLength()));
       const source = document.languageId;
       return {
@@ -40659,7 +40666,7 @@ var CSSValidation = class {
         range
       };
     }
-    return entries.filter((entry) => entry.getLevel() !== Level.Ignore).map(toDiagnostic);
+    return entries.filter((entry) => entry.getLevel() !== Level.Ignore).map(toDiagnostic2);
   }
 };
 
@@ -90564,8 +90571,8 @@ var ErrorCode;
   ErrorCode2[ErrorCode2["DuplicateKey"] = 520] = "DuplicateKey";
   ErrorCode2[ErrorCode2["CommentNotPermitted"] = 521] = "CommentNotPermitted";
   ErrorCode2[ErrorCode2["PropertyKeysMustBeDoublequoted"] = 528] = "PropertyKeysMustBeDoublequoted";
-  ErrorCode2[ErrorCode2["SchemaResolveError"] = 768] = "SchemaResolveError";
   ErrorCode2[ErrorCode2["SchemaUnsupportedFeature"] = 769] = "SchemaUnsupportedFeature";
+  ErrorCode2[ErrorCode2["SchemaResolveError"] = 65536] = "SchemaResolveError";
 })(ErrorCode || (ErrorCode = {}));
 var SchemaDraft;
 (function(SchemaDraft2) {
@@ -90953,8 +90960,9 @@ function validate(n2, schema, validationResult, matchingSchemas, context) {
     }
     const testAlternatives = (alternatives, maxOneMatch) => {
       const matches2 = [];
+      const alternativesToTest = _tryDiscriminatorOptimization(alternatives) ?? alternatives;
       let bestMatch = void 0;
-      for (const subSchemaRef of alternatives) {
+      for (const subSchemaRef of alternativesToTest) {
         const subSchema = asSchema(subSchemaRef);
         const subValidationResult = new ValidationResult();
         const subMatchingSchemas = matchingSchemas.newSub();
@@ -91070,6 +91078,69 @@ function validate(n2, schema, validationResult, matchingSchemas, context) {
         code: ErrorCode.Deprecated
       });
     }
+  }
+  function _tryDiscriminatorOptimization(alternatives) {
+    if (alternatives.length < 2) {
+      return void 0;
+    }
+    const buildConstMap = (getSchemas) => {
+      const constMap = /* @__PURE__ */ new Map();
+      for (let i2 = 0; i2 < alternatives.length; i2++) {
+        const schemas = getSchemas(asSchema(alternatives[i2]), i2);
+        if (!schemas) {
+          return void 0;
+        }
+        schemas.forEach(([key, schema2]) => {
+          if (schema2.const !== void 0) {
+            if (!constMap.has(key)) {
+              constMap.set(key, /* @__PURE__ */ new Map());
+            }
+            const valueMap = constMap.get(key);
+            if (!valueMap.has(schema2.const)) {
+              valueMap.set(schema2.const, []);
+            }
+            valueMap.get(schema2.const).push(i2);
+          }
+        });
+      }
+      return constMap;
+    };
+    const findDiscriminator = (constMap, getValue) => {
+      for (const [key, valueMap] of constMap) {
+        const coveredAlts = /* @__PURE__ */ new Set();
+        valueMap.forEach((indices) => indices.forEach((idx) => coveredAlts.add(idx)));
+        if (coveredAlts.size === alternatives.length) {
+          const discriminatorValue = getValue(key);
+          const matchingIndices = valueMap.get(discriminatorValue);
+          if (matchingIndices?.length) {
+            return matchingIndices.map((idx) => alternatives[idx]);
+          }
+          break;
+        }
+      }
+      return void 0;
+    };
+    if (node.type === "object" && node.properties?.length) {
+      const constMap = buildConstMap((schema2) => schema2.properties ? Object.entries(schema2.properties).map(([k, v2]) => [k, asSchema(v2)]) : void 0);
+      if (constMap) {
+        return findDiscriminator(constMap, (propName) => {
+          const prop = node.properties.find((p2) => p2.keyNode.value === propName);
+          return prop?.valueNode?.type === "string" ? prop.valueNode.value : void 0;
+        });
+      }
+    } else if (node.type === "array" && node.items?.length) {
+      const constMap = buildConstMap((schema2) => {
+        const itemSchemas = schema2.prefixItems || (Array.isArray(schema2.items) ? schema2.items : void 0);
+        return itemSchemas ? itemSchemas.map((item, idx) => [idx, asSchema(item)]) : void 0;
+      });
+      if (constMap) {
+        return findDiscriminator(constMap, (itemIndex) => {
+          const item = node.items[itemIndex];
+          return item?.type === "string" ? item.value : void 0;
+        });
+      }
+    }
+    return void 0;
   }
   function _validateNumberNode(node2) {
     const val = node2.value;
@@ -91519,7 +91590,7 @@ function validate(n2, schema, validationResult, matchingSchemas, context) {
       for (const f4 of node2.properties) {
         const key = f4.keyNode;
         if (key) {
-          validate(key, propertyNames, validationResult, NoOpSchemaCollector.instance, context);
+          validate(key, propertyNames, validationResult, matchingSchemas, context);
         }
       }
     }
@@ -92893,7 +92964,7 @@ var JSONHover = class {
 };
 function toMarkdown(plain) {
   if (plain) {
-    return plain.trim().replace(/[\\`*_{}[\]()<>#+\-.!]/g, "\\$&").replace(/([ \t]+)/g, (_match, g1) => "&nbsp;".repeat(g1.length)).replace(/\n/g, "\\\n");
+    return plain.trim().replace(/[\\`*_{}[\]()<>#+\-.!]/g, "\\$&").replace(/(^ +)/mg, (_match, g1) => "&nbsp;".repeat(g1.length)).replace(/( {2,})/g, (_match, g1) => " " + "&nbsp;".repeat(g1.length - 1)).replace(/(\t+)/g, (_match, g1) => "&nbsp;".repeat(g1.length * 4)).replace(/\n/g, "\\\n");
   }
   return void 0;
 }
@@ -92937,25 +93008,26 @@ var JSONValidation = class {
       let schemaValidation = documentSettings?.schemaValidation ? toDiagnosticSeverity(documentSettings.schemaValidation) : DiagnosticSeverity.Warning;
       let schemaRequest = documentSettings?.schemaRequest ? toDiagnosticSeverity(documentSettings.schemaRequest) : DiagnosticSeverity.Warning;
       if (schema2) {
-        const addSchemaProblem = (errorMessage, errorCode) => {
+        const addSchemaProblem = (errorMessage, errorCode, relatedInformation) => {
           if (jsonDocument.root && schemaRequest) {
             const astRoot = jsonDocument.root;
             const property = astRoot.type === "object" ? astRoot.properties[0] : void 0;
             if (property && property.keyNode.value === "$schema") {
               const node = property.valueNode || property;
               const range = Range.create(textDocument.positionAt(node.offset), textDocument.positionAt(node.offset + node.length));
-              addProblem(Diagnostic.create(range, errorMessage, schemaRequest, errorCode));
+              addProblem(Diagnostic.create(range, errorMessage, schemaRequest, errorCode, "json", relatedInformation));
             } else {
               const range = Range.create(textDocument.positionAt(astRoot.offset), textDocument.positionAt(astRoot.offset + 1));
-              addProblem(Diagnostic.create(range, errorMessage, schemaRequest, errorCode));
+              addProblem(Diagnostic.create(range, errorMessage, schemaRequest, errorCode, "json", relatedInformation));
             }
           }
         };
         if (schema2.errors.length) {
-          addSchemaProblem(schema2.errors[0], ErrorCode.SchemaResolveError);
+          const error = schema2.errors[0];
+          addSchemaProblem(error.message, error.code, error.relatedInformation);
         } else if (schemaValidation) {
           for (const warning of schema2.warnings) {
-            addSchemaProblem(warning, ErrorCode.SchemaUnsupportedFeature);
+            addSchemaProblem(warning.message, warning.code, warning.relatedInformation);
           }
           const semanticErrors = jsonDocument.validate(textDocument, schema2.schema, schemaValidation, documentSettings?.schemaDraft);
           if (semanticErrors) {
@@ -94429,7 +94501,7 @@ var descriptions = {
   maxProperties: l10n19.t("The maximum number of properties an object can have. Inclusive."),
   minProperties: l10n19.t("The minimum number of properties an object can have. Inclusive."),
   required: l10n19.t("An array of strings that lists the names of all properties required on this object."),
-  additionalProperties: l10n19.t("Either a schema or a boolean. If a schema, used to validate all properties not matched by 'properties', 'propertyNames', or 'patternProperties'. If false, any properties not defined by the adajacent keywords will cause this schema to fail."),
+  additionalProperties: l10n19.t("Either a schema or a boolean. If a schema, used to validate all properties not matched by 'properties', 'propertyNames', or 'patternProperties'. If false, any properties not defined by the adjacent keywords will cause this schema to fail."),
   definitions: l10n19.t("Not used for validation. Place subschemas here that you wish to reference inline with $ref."),
   properties: l10n19.t("A map of property names to schemas for each property."),
   patternProperties: l10n19.t("A map of regular expressions on property names to schemas for matching properties."),
@@ -94564,6 +94636,7 @@ function createRegex(glob, opts) {
 }
 
 // node_modules/vscode-json-languageservice/lib/esm/services/jsonSchemaService.js
+init_main();
 var BANG = "!";
 var PATH_SEP = "/";
 var FilePatternAssociation = class {
@@ -94655,6 +94728,13 @@ var UnresolvedSchema = class {
     this.errors = errors;
   }
 };
+function toDiagnostic(message, code, relatedURL) {
+  const relatedInformation = relatedURL ? [{
+    location: { uri: relatedURL, range: Range.create(0, 0, 0, 0) },
+    message
+  }] : void 0;
+  return { message, code, relatedInformation };
+}
 var ResolvedSchema = class {
   constructor(schema, errors = [], warnings = [], schemaDraft) {
     this.schema = schema;
@@ -94810,35 +94890,44 @@ var JSONSchemaService = class {
   loadSchema(url) {
     if (!this.requestService) {
       const errorMessage = l10n20.t("Unable to load schema from '{0}'. No schema request service available", toDisplayString(url));
-      return this.promise.resolve(new UnresolvedSchema({}, [errorMessage]));
+      return this.promise.resolve(new UnresolvedSchema({}, [toDiagnostic(errorMessage, ErrorCode.SchemaResolveError, url)]));
     }
     return this.requestService(url).then((content) => {
       if (!content) {
         const errorMessage = l10n20.t("Unable to load schema from '{0}': No content.", toDisplayString(url));
-        return new UnresolvedSchema({}, [errorMessage]);
+        return new UnresolvedSchema({}, [toDiagnostic(errorMessage, ErrorCode.SchemaResolveError, url)]);
       }
       const errors = [];
       if (content.charCodeAt(0) === 65279) {
-        errors.push(l10n20.t("Problem reading content from '{0}': UTF-8 with BOM detected, only UTF 8 is allowed.", toDisplayString(url)));
+        errors.push(toDiagnostic(l10n20.t("Problem reading content from '{0}': UTF-8 with BOM detected, only UTF 8 is allowed.", toDisplayString(url)), ErrorCode.SchemaResolveError, url));
         content = content.trimStart();
       }
       let schemaContent = {};
       const jsonErrors = [];
       schemaContent = parse2(content, jsonErrors);
       if (jsonErrors.length) {
-        errors.push(l10n20.t("Unable to parse content from '{0}': Parse error at offset {1}.", toDisplayString(url), jsonErrors[0].offset));
+        errors.push(toDiagnostic(l10n20.t("Unable to parse content from '{0}': Parse error at offset {1}.", toDisplayString(url), jsonErrors[0].offset), ErrorCode.SchemaResolveError, url));
       }
       return new UnresolvedSchema(schemaContent, errors);
     }, (error) => {
-      let errorMessage = error.toString();
-      const errorSplit = error.toString().split("Error: ");
-      if (errorSplit.length > 1) {
-        errorMessage = errorSplit[1];
+      let { message, code } = error;
+      if (typeof message !== "string") {
+        let errorMessage2 = error.toString();
+        const errorSplit = error.toString().split("Error: ");
+        if (errorSplit.length > 1) {
+          errorMessage2 = errorSplit[1];
+        }
+        if (endsWith3(errorMessage2, ".")) {
+          errorMessage2 = errorMessage2.substr(0, errorMessage2.length - 1);
+        }
+        message = errorMessage2;
       }
-      if (endsWith3(errorMessage, ".")) {
-        errorMessage = errorMessage.substr(0, errorMessage.length - 1);
+      let errorCode = ErrorCode.SchemaResolveError;
+      if (typeof code === "number" && code < 65536) {
+        errorCode += code;
       }
-      return new UnresolvedSchema({}, [l10n20.t("Unable to load schema from '{0}': {1}.", toDisplayString(url), errorMessage)]);
+      const errorMessage = l10n20.t("Unable to load schema from '{0}': {1}.", toDisplayString(url), message);
+      return new UnresolvedSchema({}, [toDiagnostic(errorMessage, errorCode, url)]);
     });
   }
   resolveSchemaContent(schemaToResolve, handle) {
@@ -94846,7 +94935,7 @@ var JSONSchemaService = class {
     const schema = schemaToResolve.schema;
     const schemaDraft = schema.$schema ? getSchemaDraftFromId(schema.$schema) : void 0;
     if (schemaDraft === SchemaDraft.v3) {
-      return this.promise.resolve(new ResolvedSchema({}, [l10n20.t("Draft-03 schemas are not supported.")], [], schemaDraft));
+      return this.promise.resolve(new ResolvedSchema({}, [toDiagnostic(l10n20.t("Draft-03 schemas are not supported."), ErrorCode.SchemaUnsupportedFeature)], [], schemaDraft));
     }
     let usesUnsupportedFeatures = /* @__PURE__ */ new Set();
     const contextService = this.contextService;
@@ -94888,7 +94977,8 @@ var JSONSchemaService = class {
       if (section) {
         merge(target, section);
       } else {
-        resolveErrors.push(l10n20.t("$ref '{0}' in '{1}' can not be resolved.", refSegment || "", sourceHandle.uri));
+        const message = l10n20.t("$ref '{0}' in '{1}' can not be resolved.", refSegment || "", sourceHandle.uri);
+        resolveErrors.push(toDiagnostic(message, ErrorCode.SchemaResolveError));
       }
     };
     const resolveExternalLink = (node, uri, refSegment, parentHandle) => {
@@ -94900,8 +94990,10 @@ var JSONSchemaService = class {
       return referencedHandle.getUnresolvedSchema().then((unresolvedSchema) => {
         parentHandle.dependencies.add(uri);
         if (unresolvedSchema.errors.length) {
+          const error = unresolvedSchema.errors[0];
           const loc = refSegment ? uri + "#" + refSegment : uri;
-          resolveErrors.push(l10n20.t("Problems loading reference '{0}': {1}", loc, unresolvedSchema.errors[0]));
+          const errorMessage = refSegment ? l10n20.t("Problems loading reference '{0}': {1}", refSegment, error.message) : error.message;
+          resolveErrors.push(toDiagnostic(errorMessage, error.code, uri));
         }
         mergeRef(node, unresolvedSchema.schema, referencedHandle, refSegment);
         return resolveRefs(node, unresolvedSchema.schema, referencedHandle);
@@ -94942,7 +95034,7 @@ var JSONSchemaService = class {
         const anchor = isString(id) && id.charAt(0) === "#" ? id.substring(1) : next.$anchor;
         if (anchor) {
           if (result.has(anchor)) {
-            resolveErrors.push(l10n20.t("Duplicate anchor declaration: '{0}'", anchor));
+            resolveErrors.push(toDiagnostic(l10n20.t("Duplicate anchor declaration: '{0}'", anchor), ErrorCode.SchemaResolveError));
           } else {
             result.set(anchor, next);
           }
@@ -94959,7 +95051,7 @@ var JSONSchemaService = class {
     return resolveRefs(schema, schema, handle).then((_2) => {
       let resolveWarnings = [];
       if (usesUnsupportedFeatures.size) {
-        resolveWarnings.push(l10n20.t("The schema uses meta-schema features ({0}) that are not yet supported by the validator.", Array.from(usesUnsupportedFeatures.keys()).join(", ")));
+        resolveWarnings.push(toDiagnostic(l10n20.t("The schema uses meta-schema features ({0}) that are not yet supported by the validator.", Array.from(usesUnsupportedFeatures.keys()).join(", ")), ErrorCode.SchemaUnsupportedFeature));
       }
       return new ResolvedSchema(schema, resolveErrors, resolveWarnings, schemaDraft);
     });

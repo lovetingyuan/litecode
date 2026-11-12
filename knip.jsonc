@@ -14,8 +14,6 @@
     "tools/notices.mjs",
     "tools/report-verification.mjs",
     "tools/web-language-server.mjs",
-    // Copied into @pierre/trees by installCreationModules before use.
-    "tools/trees/InlineEditInput.js",
   ],
   "project": [
     "src/**/*.{ts,tsx,css,json}",

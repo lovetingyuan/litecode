@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, normalizePath } from "vite";
 import react from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
@@ -6,7 +6,6 @@ import process from "node:process";
 import { readdirSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import "./tools/patch-trees-scroll.mjs";
 const host = process.env.TAURI_DEV_HOST;
 let gitHash = "unknown";
 try {
@@ -19,14 +18,9 @@ try {
 } catch {
   // Source archives may not include Git metadata.
 }
-// Dependency patches must be applied before Vite optimizes and caches the tree.
+// Invalidate Vite's optimized Trees modules when the installed patch changes.
 const treesPatchHash = createHash("sha256")
-  .update(readFileSync(new URL("./tools/patch-trees-scroll.mjs", import.meta.url)))
-  .update(readFileSync(new URL("./tools/patch-trees-creation.mjs", import.meta.url)))
-  .update(readFileSync(new URL("./tools/trees/inlineEdit.js", import.meta.url)))
-  .update(readFileSync(new URL("./tools/trees/InlineEditInput.js", import.meta.url)))
-  .update(readFileSync(new URL("./tools/trees/controller.mjs", import.meta.url)))
-  .update(readFileSync(new URL("./tools/trees/legacyCreation.mjs", import.meta.url)))
+  .update(readFileSync(new URL("./patches/@pierre+trees+1.0.0.patch", import.meta.url)))
   .digest("hex")
   .slice(0, 12);
 
@@ -101,7 +95,13 @@ export default defineConfig(() => ({
       : undefined,
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**", "**/.verification/**", "**/artifacts/**"],
+      ignored: [
+        "**/src-tauri/**",
+        "**/.verification/**",
+        "**/artifacts/**",
+        // Windows watcher handles can interfere with renames in desktop verification fixtures.
+        `${normalizePath(import.meta.dirname)}/tmp/**`,
+      ],
     },
   },
 }));

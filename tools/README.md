@@ -6,7 +6,7 @@ still be a manual verification entry point.
 | Files                                                           | Purpose                                                                                                                                               |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `build-tools.mjs`, `web-language-server.mjs`, `languages/`      | Build and package language services and Prettier; used by Tauri development and builds.                                                               |
-| `patch-trees-*.mjs`, `trees/`                                   | Apply the pinned Trees dependency patches during installation and Vite startup; includes inline editing tests and compatibility with earlier patches. |
+| `trees/creation.test.js`                                        | Tests inline editing in the installed Trees package after npm applies the patch.                                      |
 | `release.mjs`, `release.test.mjs`, `setup-updater.mjs`          | Version and tag push, release tests, and updater key setup. See [release instructions](../docs/releases.md).                                          |
 | `package-portable.mjs`                                          | Package the Windows portable app from the release build. ZIP creation uses Windows `tar.exe`.                                                         |
 | `notices.mjs`                                                   | Generate dependency license notices and inventory from the npm and Cargo locks.                                                                       |

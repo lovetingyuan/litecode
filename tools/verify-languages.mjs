@@ -169,10 +169,10 @@ await test(
       { textDocument: { uri }, position: { line: 2, character: 6 } },
       true,
     );
+    // The JSON service can escape punctuation in its Markdown hover content.
+    const hoverText = hover?.contents?.[0]?.replaceAll("&nbsp;", " ").replaceAll("\\.", ".");
     assert.ok(
-      JSON.stringify(hover)
-        .replaceAll("&nbsp;", " ")
-        .includes(settingsSchema.properties["editor.lineHeight"].description),
+      hoverText?.includes(settingsSchema.properties["editor.lineHeight"].description),
       JSON.stringify(hover),
     );
     await send("textDocument/didChange", {

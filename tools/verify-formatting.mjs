@@ -13,7 +13,8 @@ await mkdir(nested);
 const manifest = JSON.parse(
   await readFile(path.join(path.dirname(path.dirname(prettier)), "package.json"), "utf8"),
 );
-assert.equal(manifest.version, "3.8.2");
+const project = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+assert.equal(manifest.version, project.devDependencies.prettier);
 await assert.rejects(access(path.resolve("src-tauri/tools/formatters/node_modules/oxfmt")));
 await writeFile(path.join(root, "package.json"), '{"private":true}');
 await writeFile(

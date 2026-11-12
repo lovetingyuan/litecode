@@ -1209,7 +1209,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
   const treeStyle = {
     flex: 1,
     minHeight: 0,
-    // Included in the virtual layout by tools/patch-trees-scroll.mjs.
+    // The Trees patch includes this padding in the virtual layout.
     "--trees-scroll-padding-bottom": "32px",
     "--trees-scrollbar-gutter-override": "12px",
     ...themeToTreeStyles(treeTheme),

@@ -5,12 +5,11 @@ creates inside that folder; a file target uses its parent; the workspace menu
 uses the root. Draft folders sort before folders, and draft files sort before
 files, after expanded folder subtrees. The draft path never reaches disk IPC.
 
-`tools/patch-trees-scroll.mjs` installs the pinned beta.6 inline editing extension
-alongside the existing scroll/drag patches. `tools/patch-trees-creation.mjs`
-defines the small controller/render patches; `tools/trees/` holds the session
-and input implementation. Patch replacements for the same dependency file
-are grouped before writing. Vite's cache key includes all patch sources.
-Review these patches when upgrading `@pierre/trees`.
+The npm `postinstall` hook applies `patches/@pierre+trees+1.0.0.patch` with
+`patch-package`. The patch contains the inline editing session and input,
+along with the changes to scrolling, drag and drop, and Git decorations.
+Vite's dependency cache key includes the patch contents. Review and regenerate
+the patch when upgrading `@pierre/trees`.
 
 Virtual rows use stable path keys passed as the JSX runtime's separate key
 argument. Keeping keys in DOM props lets sticky/scroll range changes remount

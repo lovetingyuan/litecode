@@ -1,4 +1,4 @@
-/* Match @pierre/trees 1.0.0-beta.6 icon colors outside its Shadow DOM.
+/* Match @pierre/trees 1.0.0 icon colors outside its Shadow DOM.
    Recheck these tokens when upgrading trees; its palette is not publicly exported. */
 .file-icon {
   --trees-icon-gray: light-dark(#84848a, #adadb1);

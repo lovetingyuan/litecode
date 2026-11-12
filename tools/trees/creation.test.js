@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FileTree } from "@pierre/trees";
-import { InlineEditSession as CreationSession } from "./inlineEdit.js";
+import { InlineEditSession as CreationSession } from "../../node_modules/@pierre/trees/dist/model/inlineEdit.js";
 
 afterEach(() => vi.useRealTimers());
 const deferred = () => {

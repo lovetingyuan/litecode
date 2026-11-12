@@ -37,6 +37,7 @@ Run `npm ci` first. Desktop development requires Node.js 24+, Rust, and the [Tau
 | `npm run tauri -- build`   | Build the desktop installer.                                                 |
 | `npm run dev`              | Start only the frontend dev server.                                          |
 | `npm run build`            | Type-check and build the frontend.                                           |
+| `npm run check`            | Check TypeScript types and Rust compilation.                                 |
 | `npm run lint`             | Lint; add `-- --fix` to apply fixes.                                         |
 | `npm run format`           | Format files with Oxfmt, excluding generated language tools.                 |
 | `npm test`                 | Run unit tests.                                                              |

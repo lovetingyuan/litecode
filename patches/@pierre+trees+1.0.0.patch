@@ -1,0 +1,990 @@
+diff --git a/node_modules/@pierre/trees/dist/model/FileTreeController.js b/node_modules/@pierre/trees/dist/model/FileTreeController.js
+index 28da458..1537983 100644
+--- a/node_modules/@pierre/trees/dist/model/FileTreeController.js
++++ b/node_modules/@pierre/trees/dist/model/FileTreeController.js
+@@ -1,3 +1,4 @@
++import { InlineEditSession } from "./inlineEdit.js";
+ import { PathStore } from "../path-store/src/store.js";
+ import { renameFileTreePaths } from "../utils/renameFileTreePaths.js";
+ import { buildDropOperations, createDropContext, dropTargetsEqual, isSelfOrDescendantDrop, resolveDraggedPathsForStart } from "./dragAndDrop.js";
+@@ -68,9 +69,9 @@ var FileTreeController = class FileTreeController {
+ 					commit: () => {
+ 						this.#completeRenaming();
+ 					},
+-					getPath: () => this.#renamingPath,
+-					getValue: () => this.#renamingValue,
+-					isActive: () => this.#renamingPath != null,
++					getPath: () => this.#editSession?.path ?? null,
++					getValue: () => this.#editSession?.value ?? "",
++					isActive: () => this.#editSession != null,
+ 					setValue: (value) => {
+ 						this.#setRenamingValue(value);
+ 					}
+@@ -79,6 +80,8 @@ var FileTreeController = class FileTreeController {
+ 			writable: true
+ 		});
+ 	}
++	#editSession = null;
++	#renameStart;
+ 	#baseOptions;
+ 	#listeners = /* @__PURE__ */ new Set();
+ 	#mutationListeners = /* @__PURE__ */ new Map();
+@@ -104,9 +107,7 @@ var FileTreeController = class FileTreeController {
+ 	#projectionSetSizeByIndex = /* @__PURE__ */ new Int32Array(0);
+ 	#renameCanRename = void 0;
+ 	#renameEnabled = false;
+-	#renamingPath = null;
+-	#renamingValue = "";
+-	#removeRenamingPathIfCanceled = false;
++	// InlineEditSession owns input state and cancellation.
+ 	#searchCollapsedOverrides = /* @__PURE__ */ new Set();
+ 	#searchMatchPathSet = /* @__PURE__ */ new Set();
+ 	#searchMatchingPaths = [];
+@@ -137,6 +138,7 @@ var FileTreeController = class FileTreeController {
+ 		if (dragAndDrop != null && dragAndDrop !== false) this.#dragAndDropConfig = dragAndDrop === true ? {} : dragAndDrop;
+ 		this.#renameEnabled = renaming != null && renaming !== false;
+ 		if (renaming != null && renaming !== false && renaming !== true) {
++			this.#renameStart = renaming.onStart;
+ 			this.#renameCanRename = renaming.canRename;
+ 			this.#onRenameError = renaming.onError;
+ 			this.#onRename = renaming.onRename;
+@@ -156,6 +158,7 @@ var FileTreeController = class FileTreeController {
+ 		this.#unsubscribe = this.#subscribe();
+ 	}
+ 	destroy() {
++		this.cancelEditing();
+ 		this.#unsubscribe?.();
+ 		this.#unsubscribe = null;
+ 		this.#mutationListeners.clear();
+@@ -451,7 +454,7 @@ var FileTreeController = class FileTreeController {
+ 		};
+ 	}
+ 	startDrag(path) {
+-		if (this.#dragAndDropConfig == null) return false;
++		if (this.#dragAndDropConfig == null || this.#editSession) return false;
+ 		const resolvedPath = this.#resolveSelectionPath(path);
+ 		if (resolvedPath == null) return false;
+ 		if (this.#searchValue != null && this.#searchValue.length > 0) return false;
+@@ -502,6 +505,11 @@ var FileTreeController = class FileTreeController {
+ 			this.#emit();
+ 			return false;
+ 		}
++		if (this.#dragAndDropConfig?.onDropRequest != null) {
++			this.#emit();
++			this.#dragAndDropConfig.onDropRequest(dropContext);
++			return true;
++		}
+ 		const dropPlan = buildDropOperations(dragSession.draggedPaths, target);
+ 		if (dropPlan == null) {
+ 			this.#emit();
+@@ -586,88 +594,70 @@ var FileTreeController = class FileTreeController {
+ 	focusPreviousSearchMatch() {
+ 		this.#focusRelativeSearchMatch(-1);
+ 	}
+-	startRenaming(path = this.#focusedPath ?? "", options = {}) {
+-		if (!this.#renameEnabled) return false;
+-		const itemInfo = this.#store.getPathInfo(path);
+-		if (itemInfo == null) return false;
+-		const canonicalPath = itemInfo.path;
+-		const isFolder = isCanonicalDirectoryPath(canonicalPath);
+-		const publicPath = toRenameHelperPath(canonicalPath);
+-		if (this.#renameCanRename?.({
+-			isFolder,
+-			path: publicPath
+-		}) === false) return false;
+-		for (const ancestorPath of getAncestorDirectoryPaths(canonicalPath)) if (!this.#store.isExpanded(ancestorPath)) this.#store.expand(ancestorPath);
+-		this.#applySelection([canonicalPath], canonicalPath, false);
+-		if (this.#searchValue != null) {
+-			this.#setSearchState(null, false);
+-			this.#onSearchChange?.(this.#searchValue);
+-		}
+-		this.#focusPathWithoutEmit(canonicalPath);
+-		this.#renamingPath = canonicalPath;
+-		this.#renamingValue = getRenameLeafName(canonicalPath);
+-		this.#removeRenamingPathIfCanceled = options.removeIfCanceled ?? false;
++
++	getEditSession() { return this.#editSession; }
++	getEditingPath() { return this.#editSession?.path ?? null; }
++	getCreatingPath() { return this.#editSession?.mode === "create" ? this.#editSession.path : null; }
++	cancelEditing() { this.#editSession?.dispose(); }
++	cancelCreating() { if (this.#editSession?.mode === "create") this.cancelEditing(); }
++	#beginEditing(options) {
++		this.cancelEditing();
++		const session = new InlineEditSession(this, options, () => this.#emit(), () => {
++			if (this.#editSession !== session) return;
++			this.#editSession = null;
++			if (session.mode === "create" && this.getItem(session.path)) this.remove(session.path, { recursive: true });
++			if (this.getSelectedPaths().length === 0 && options.parentPath) this.selectOnlyPath(options.parentPath);
++			this.#emit();
++		});
++		if (session.mode === "create") this.add(session.path);
++		this.#editSession = session;
++		this.selectOnlyPath(session.path);
++		this.scrollToPath(session.path, { focus: false, offset: "nearest" });
+ 		this.#emit();
+-		return true;
++		return session.path;
+ 	}
+-	#cancelRenaming() {
+-		if (this.#renamingPath == null) return;
+-		const renamingPath = this.#renamingPath;
+-		const removePlaceholderEntry = this.#removeRenamingPathIfCanceled;
+-		this.#renamingPath = null;
+-		this.#renamingValue = "";
+-		this.#removeRenamingPathIfCanceled = false;
+-		if (removePlaceholderEntry) {
+-			this.remove(renamingPath, isCanonicalDirectoryPath(renamingPath) ? { recursive: true } : void 0);
+-			return;
+-		}
+-		this.#focusPathWithoutEmit(renamingPath);
+-		this.#emit();
++	startCreating(options) {
++		this.cancelEditing();
++		const parent = options.parentPath.replace(/\/$/, "");
++		if (parent && !this.getItem(parent)?.isDirectory()) return null;
++		if (parent) this.#expandDirectory(parent + "/");
++		return this.#beginEditing({ ...options, parentPath: parent, mode: "create" });
+ 	}
+-	#completeRenaming() {
+-		const renamingPath = this.#renamingPath;
+-		if (renamingPath == null) return;
+-		if (this.#removeRenamingPathIfCanceled && this.#renamingValue.trim().length === 0) {
+-			this.#renamingPath = null;
+-			this.#renamingValue = "";
+-			this.#removeRenamingPathIfCanceled = false;
+-			this.remove(renamingPath, isCanonicalDirectoryPath(renamingPath) ? { recursive: true } : void 0);
+-			return;
+-		}
+-		const isFolder = isCanonicalDirectoryPath(renamingPath);
+-		const result = renameFileTreePaths({
+-			files: this.#store.list(),
+-			isFolder,
+-			nextBasename: this.#renamingValue,
+-			path: toRenameHelperPath(renamingPath)
+-		});
+-		this.#renamingPath = null;
+-		this.#renamingValue = "";
+-		this.#removeRenamingPathIfCanceled = false;
+-		if ("error" in result) {
+-			this.#focusPathWithoutEmit(renamingPath);
+-			this.#onRenameError?.(result.error);
+-			this.#emit();
+-			return;
+-		}
+-		if (result.sourcePath === result.destinationPath) {
+-			this.#focusPathWithoutEmit(renamingPath);
+-			this.#emit();
+-			return;
+-		}
+-		this.#onRename?.({
+-			destinationPath: result.destinationPath,
+-			isFolder: result.isFolder,
+-			sourcePath: result.sourcePath
++	startRenaming(path = this.#focusedPath ?? "", _options = {}) {
++		if (!this.#renameEnabled) return false;
++		this.cancelEditing();
++		const info = this.#store.getPathInfo(path);
++		if (!info) return false;
++		const canonical = info.path;
++		const folder = isCanonicalDirectoryPath(canonical);
++		const item = { path: toRenameHelperPath(canonical), isFolder: folder };
++		if (this.#renameCanRename?.(item) === false) return false;
++		const hooks = this.#renameStart?.(item);
++		if (this.#renameStart && !hooks) return false;
++		for (const ancestor of getAncestorDirectoryPaths(canonical)) this.#store.expand(ancestor);
++		const validate = value => {
++			const result = renameFileTreePaths({ files: this.#store.list(), isFolder: folder, nextBasename: value, path: item.path });
++			return "error" in result ? result.error : null;
++		};
++		this.#beginEditing({
++			mode: "rename", path: canonical, kind: folder ? "newFolder" : "newFile",
++			parentPath: getImmediateParentPath(canonical) ?? "", initialValue: getRenameLeafName(canonical),
++			validateSync: hooks?.validateSync, validate: hooks?.validate ?? validate,
++			onCancel: hooks?.onCancel, onFinish: hooks?.onFinish,
++			onCommit: hooks?.onCommit ?? (async value => {
++				const result = renameFileTreePaths({ files: this.#store.list(), isFolder: folder, nextBasename: value, path: item.path });
++				if ("error" in result) throw new Error(result.error);
++				await this.#onRename?.({ sourcePath: result.sourcePath, destinationPath: result.destinationPath, isFolder: folder });
++				this.move(canonical, toCanonicalRenamePath(result.destinationPath, folder));
++			}),
+ 		});
+-		this.move(toCanonicalRenamePath(result.sourcePath, isFolder), toCanonicalRenamePath(result.destinationPath, isFolder));
+-	}
+-	#setRenamingValue(value) {
+-		if (this.#renamingPath == null || this.#renamingValue === value) return;
+-		this.#renamingValue = value;
+-		this.#emit();
++		return true;
+ 	}
++	#cancelRenaming() { this.#editSession?.cancel(); }
++	#completeRenaming() { void this.#editSession?.commit(); }
++	#setRenamingValue(value) { this.#editSession?.setValue(value); }
+ 	resetPaths(pathsOrOptions, maybeOptions = {}) {
++		this.cancelEditing();
+ 		const usingPreparedOnlyOverload = !Array.isArray(pathsOrOptions);
+ 		const paths = usingPreparedOnlyOverload ? void 0 : pathsOrOptions;
+ 		const options = usingPreparedOnlyOverload ? pathsOrOptions : maybeOptions;
+@@ -679,7 +669,7 @@ var FileTreeController = class FileTreeController {
+ 		}, "resetPaths", this.#baseOptions.sort);
+ 		const nextStore = this.#createStore(resolvedInput.paths, resolvedInput.preparedInput, options.initialExpandedPaths);
+ 		const previousFocusedPath = this.#focusedPath;
+-		const previousRenamingPath = this.#renamingPath;
++		// Path resets dispose the current inline session.
+ 		const previousSelectedPaths = this.getSelectedPaths();
+ 		const previousSelectionAnchorPath = this.#selectionAnchorPath;
+ 		this.#unsubscribe?.();
+@@ -691,11 +681,7 @@ var FileTreeController = class FileTreeController {
+ 		this.#selectedPaths = new Set(nextSelectedPaths);
+ 		if (selectionChanged) this.#selectionVersion += 1;
+ 		this.#selectionAnchorPath = previousSelectionAnchorPath == null ? null : nextStore.getPathInfo(previousSelectionAnchorPath)?.path ?? null;
+-		this.#renamingPath = previousRenamingPath == null ? null : nextStore.getPathInfo(previousRenamingPath)?.path ?? null;
+-		if (this.#renamingPath == null) {
+-			this.#renamingValue = "";
+-			this.#removeRenamingPathIfCanceled = false;
+-		}
++		// No edit state is carried across a full reset.
+ 		this.#rebuildVisibleProjection(previousFocusedPath, previousFocusedPath != null || nextSelectedPaths.length > 0 || this.#selectionAnchorPath != null);
+ 		this.#unsubscribe = this.#subscribe();
+ 		this.#emit();
+@@ -1074,6 +1060,7 @@ var FileTreeController = class FileTreeController {
+ 		return focusCandidate ?? this.#focusedPath;
+ 	}
+ 	#emit() {
++		if (this.#editSession && !this.#editSession.busy && this.#store.getVisibleIndex(this.#editSession.path) == null) this.cancelEditing();
+ 		for (const listener of this.#listeners) listener();
+ 	}
+ 	#emitMutation(event) {
+@@ -1160,9 +1147,7 @@ var FileTreeController = class FileTreeController {
+ 	}
+ 	#applyMutationState(event) {
+ 		this.#remapSearchCollapsedOverridesThroughMutation(event);
+-		const nextRenamingPath = remapPathThroughMutation(this.#renamingPath, event);
+-		if (nextRenamingPath == null && this.#renamingPath != null) this.#renamingValue = "";
+-		this.#renamingPath = nextRenamingPath;
++		// An external source removal cancels editing in #emit().
+ 		const nextFocusedPath = remapPathThroughMutation(this.#focusedPath, event, true);
+ 		const nextSelectedPaths = [...this.#selectedPaths].map((selectedPath) => remapPathThroughMutation(selectedPath, event)).filter((resolvedPath) => resolvedPath != null).map((resolvedPath) => this.#store.getPathInfo(resolvedPath)?.path ?? null).filter((resolvedPath) => resolvedPath != null);
+ 		const nextSelectionAnchorPath = remapPathThroughMutation(this.#selectionAnchorPath, event);
+@@ -1182,7 +1167,7 @@ var FileTreeController = class FileTreeController {
+ 				this.#itemHandles.clear();
+ 				this.#invalidateKnownPathCaches();
+ 			}
+-			if (this.#dragSession != null && isPathMutationEvent(event)) this.#dragSession = null;
++			if (this.#dragSession != null && isPathMutationEvent(event) && event.operation !== "add" && !(event.operation === "batch" && event.events.every(child => child.operation === "add"))) this.#dragSession = null;
+ 			const focusPathCandidate = isPathMutationEvent(event) ? this.#applyMutationState(event) : this.#focusedPath;
+ 			let searchFocusCandidate;
+ 			if (this.#searchValue != null && this.#searchValue.length > 0) {
+diff --git a/node_modules/@pierre/trees/dist/model/gitStatus.js b/node_modules/@pierre/trees/dist/model/gitStatus.js
+index 1e57ee3..6fbe74a 100644
+--- a/node_modules/@pierre/trees/dist/model/gitStatus.js
++++ b/node_modules/@pierre/trees/dist/model/gitStatus.js
+@@ -106,13 +106,14 @@ function removeGitStatusPath({ canonicalPath, changeCountByDirectoryPath, direct
+ 	if (previousStatus == null) return false;
+ 	statusByPath.delete(canonicalPath);
+ 	if (previousStatus === "ignored" && canonicalPath.endsWith("/")) ignoredDirectoryPaths.delete(canonicalPath);
+-	decrementAncestorChangeCounts(changeCountByDirectoryPath, directoriesWithChanges, canonicalPath);
++	if (previousStatus !== "ignored") decrementAncestorChangeCounts(changeCountByDirectoryPath, directoriesWithChanges, canonicalPath);
+ 	return true;
+ }
+ function setGitStatusPath({ canonicalPath, changeCountByDirectoryPath, directoriesWithChanges, ignoredDirectoryPaths, isDirectory, status, statusByPath }) {
+ 	const previousStatus = statusByPath.get(canonicalPath);
+ 	if (previousStatus === status) return false;
+-	if (previousStatus == null) incrementAncestorChangeCounts(changeCountByDirectoryPath, directoriesWithChanges, canonicalPath);
++	if ((previousStatus == null || previousStatus === "ignored") && status !== "ignored") incrementAncestorChangeCounts(changeCountByDirectoryPath, directoriesWithChanges, canonicalPath);
++	if (previousStatus != null && previousStatus !== "ignored" && status === "ignored") decrementAncestorChangeCounts(changeCountByDirectoryPath, directoriesWithChanges, canonicalPath);
+ 	statusByPath.set(canonicalPath, status);
+ 	if (status === "ignored" && isDirectory) ignoredDirectoryPaths.add(canonicalPath);
+ 	else if (isDirectory) ignoredDirectoryPaths.delete(canonicalPath);
+diff --git a/node_modules/@pierre/trees/dist/model/inlineEdit.js b/node_modules/@pierre/trees/dist/model/inlineEdit.js
+new file mode 100644
+index 0000000..2579f86
+--- /dev/null
++++ b/node_modules/@pierre/trees/dist/model/inlineEdit.js
+@@ -0,0 +1,107 @@
++// A draft has a real virtual row, but is never part of a disk snapshot.
++let sequence = 0;
++export const creationNames = new Set();
++
++export class InlineEditSession {
++  constructor(controller, options, emit, close) {
++    this.controller = controller;
++    this.options = options;
++    this.emit = emit;
++    this.close = close;
++    this.mode = options.mode ?? "create";
++    this.initialValue = options.initialValue ?? "";
++    this.value = this.initialValue;
++    const dot = this.value.lastIndexOf(".");
++    this.selection = [0, options.kind === "newFile" && dot > 0 ? dot : this.value.length];
++    this.error = null;
++    this.busy = false;
++    this.disposed = false;
++    this.revision = 0;
++    this.name = `.litecode-new-${Date.now().toString(36)}-${++sequence}`;
++    const parent = options.parentPath.replace(/\/$/, "");
++    this.path =
++      this.mode === "rename"
++        ? options.path
++        : `${parent ? parent + "/" : ""}${this.name}${options.kind === "newFolder" ? "/" : ""}`;
++    if (this.mode === "create") creationNames.add(this.name);
++  }
++  setValue(value) {
++    if (this.busy || this.disposed) return;
++    this.value = value;
++    this.revision++;
++    this.validation = null;
++    clearTimeout(this.timer);
++    this.error = this.options.validateSync?.(value) ?? null;
++    this.emit();
++    if (value && !this.error)
++      this.timer = setTimeout(() => {
++        void this.check();
++      }, 150);
++  }
++  check() {
++    clearTimeout(this.timer);
++    if (this.validation) return this.validation;
++    const revision = this.revision;
++    const value = this.value;
++    const syntax = this.options.validateSync?.(value);
++    const validation = Promise.resolve()
++      .then(() => syntax || this.options.validate(value))
++      .catch((error) => error?.message ?? String(error))
++      .then((error) => {
++        if (!this.disposed && revision === this.revision) {
++          if (this.validation === validation) this.validation = null;
++          this.error = error ?? null;
++          this.emit();
++        }
++        return error;
++      });
++    this.validation = validation;
++    return validation;
++  }
++  async commit(blur = false) {
++    if (this.busy || this.disposed) return;
++    if (!this.value.trim()) {
++      this.cancel();
++      return;
++    }
++    if (this.mode === "rename" && this.value === this.initialValue) {
++      this.finish(false);
++      return;
++    }
++    const revision = this.revision;
++    const error = await this.check();
++    if (this.disposed || revision !== this.revision || this.busy) return;
++    if (error) {
++      if (blur) this.cancel();
++      return;
++    }
++    this.busy = true;
++    this.emit();
++    try {
++      await this.options.onCommit(this.value);
++      if (!this.disposed) this.finish(false);
++    } catch (error) {
++      if (!this.disposed) {
++        this.error = error?.message ?? String(error);
++        this.busy = false;
++        this.validation = null; // Retry must recheck disk, even for the same text.
++        this.emit();
++      }
++    }
++  }
++  cancel() {
++    if (!this.busy) this.finish(true);
++  }
++  dispose() {
++    this.finish(true);
++  }
++  finish(canceled) {
++    if (this.disposed) return;
++    this.disposed = true;
++    clearTimeout(this.timer);
++    creationNames.delete(this.name);
++    this.close();
++    this.options.onFinish?.();
++    if (canceled) this.options.onCancel?.();
++  }
++}
+diff --git a/node_modules/@pierre/trees/dist/model/layout.js b/node_modules/@pierre/trees/dist/model/layout.js
+index 38d9ce2..df27c30 100644
+--- a/node_modules/@pierre/trees/dist/model/layout.js
++++ b/node_modules/@pierre/trees/dist/model/layout.js
+@@ -123,7 +123,7 @@ function computeStickyRows(rows, scrollTop, itemHeight) {
+ }
+ function computeFileTreeLayout(rows, metrics) {
+ 	const totalRowCount = metrics.totalRowCount ?? rows.length;
+-	const totalHeight = totalRowCount * metrics.itemHeight;
++	const totalHeight = totalRowCount * metrics.itemHeight + Math.max(0, metrics.paddingBottom ?? 0);
+ 	const viewportHeight = Math.max(0, metrics.viewportHeight);
+ 	const overscan = Math.max(0, Math.floor(metrics.overscan));
+ 	const maxScrollTop = Math.max(0, totalHeight - viewportHeight);
+diff --git a/node_modules/@pierre/trees/dist/model/publicTypes.d.ts b/node_modules/@pierre/trees/dist/model/publicTypes.d.ts
+index 06d89e9..76b3c78 100644
+--- a/node_modules/@pierre/trees/dist/model/publicTypes.d.ts
++++ b/node_modules/@pierre/trees/dist/model/publicTypes.d.ts
+@@ -145,6 +145,7 @@ interface FileTreeDropResult extends FileTreeDropContext {
+ interface FileTreeDragAndDropConfig {
+   canDrag?: (paths: readonly FileTreePublicId[]) => boolean;
+   canDrop?: (event: FileTreeDropContext) => boolean;
++  onDropRequest?: (event: FileTreeDropContext) => void;
+   onDropComplete?: (event: FileTreeDropResult) => void;
+   onDropError?: (error: string, event: FileTreeDropContext) => void;
+   openOnDropDelay?: number;
+@@ -159,6 +160,13 @@ interface FileTreeRenameEvent {
+   sourcePath: FileTreePublicId;
+ }
+ interface FileTreeRenamingConfig {
++  onStart?: (item: FileTreeRenamingItem) => {
++    validateSync?: (value: string) => string | null;
++    validate: (value: string) => string | null | Promise<string | null>;
++    onCommit: (value: string) => Promise<void>;
++    onCancel?: () => void;
++    onFinish?: () => void;
++  } | null;
+   canRename?: (item: FileTreeRenamingItem) => boolean;
+   onError?: (error: string) => void;
+   onRename?: (event: FileTreeRenameEvent) => void;
+diff --git a/node_modules/@pierre/trees/dist/path-store/src/canonical.js b/node_modules/@pierre/trees/dist/path-store/src/canonical.js
+index 1299bb2..b3c7bf3 100644
+--- a/node_modules/@pierre/trees/dist/path-store/src/canonical.js
++++ b/node_modules/@pierre/trees/dist/path-store/src/canonical.js
+@@ -1,3 +1,4 @@
++import { creationNames } from "../../model/inlineEdit.js";
+ import { applyChildAggregateDelta, createDirectoryChildIndex, ensureChildIdByNameId, ensureChildPositions, rebuildDirectoryChildAggregates, rebuildVisibleChildChunks, updateChildPositionsFrom } from "./child-index.js";
+ import { addNodeFlag, createNodeDepthAndFlags, getNodeDepth, getNodeKind, hasNodeFlag, isDirectoryNode, setNodeDepth } from "./internal-types.js";
+ import { withBenchmarkPhase } from "./internal/benchmarkInstrumentation.js";
+@@ -343,6 +344,9 @@ function compareSiblingNodesDefault(state, leftId, rightId) {
+ 	if (leftIsDirectory !== isDirectoryNode(rightNode)) return leftIsDirectory ? -1 : 1;
+ 	const leftSortKey = getSegmentSortKey(state.snapshot.segmentTable, leftNode.nameId);
+ 	const rightSortKey = getSegmentSortKey(state.snapshot.segmentTable, rightNode.nameId);
++	const leftDraft = creationNames.has(getSegmentValue(state.snapshot.segmentTable, leftNode.nameId));
++	const rightDraft = creationNames.has(getSegmentValue(state.snapshot.segmentTable, rightNode.nameId));
++	if (leftDraft !== rightDraft) return leftDraft ? -1 : 1;
+ 	const comparison = compareSegmentSortKeys(leftSortKey, rightSortKey);
+ 	if (comparison !== 0) return comparison;
+ 	const leftName = getSegmentValue(state.snapshot.segmentTable, leftNode.nameId);
+diff --git a/node_modules/@pierre/trees/dist/publicTypes.d.ts b/node_modules/@pierre/trees/dist/publicTypes.d.ts
+index c2568e2..fd52c95 100644
+--- a/node_modules/@pierre/trees/dist/publicTypes.d.ts
++++ b/node_modules/@pierre/trees/dist/publicTypes.d.ts
+@@ -1,5 +1,5 @@
+ //#region src/publicTypes.d.ts
+-type GitStatus = 'added' | 'deleted' | 'ignored' | 'modified' | 'renamed' | 'untracked';
++type GitStatus = 'conflicted' | 'added' | 'deleted' | 'ignored' | 'modified' | 'renamed' | 'untracked';
+ type GitStatusEntry = {
+   path: string;
+   status: GitStatus;
+diff --git a/node_modules/@pierre/trees/dist/render/FileTree.d.ts b/node_modules/@pierre/trees/dist/render/FileTree.d.ts
+index 316edef..9dbf6ae 100644
+--- a/node_modules/@pierre/trees/dist/render/FileTree.d.ts
++++ b/node_modules/@pierre/trees/dist/render/FileTree.d.ts
+@@ -1,6 +1,16 @@
+ import { FileTreeBatchOperation, FileTreeCompositionOptions, FileTreeGitStatusPatch, FileTreeHydrationProps, FileTreeItemHandle, FileTreeListener, FileTreeMoveOptions, FileTreeMutationEventForType, FileTreeMutationEventType, FileTreeMutationHandle, FileTreeOptions, FileTreePublicId, FileTreeRemoveOptions, FileTreeRenderProps, FileTreeResetOptions, FileTreeResetPreparedOptions, FileTreeScrollToPathOptions, FileTreeSearchSessionHandle, FileTreeSsrPayload, FileTreeVisibleRow } from "../model/publicTypes.js";
+ //#region src/render/FileTree.d.ts
+ declare function serializeFileTreeSsrPayload(payload: FileTreeSsrPayload, mode?: 'declarative' | 'dom'): string;
++
++interface FileTreeCreationOptions {
++  parentPath: string;
++  kind: 'newFile' | 'newFolder';
++  validateSync?: (value: string) => string | null;
++  validate: (value: string) => string | null | Promise<string | null>;
++  onCommit: (value: string) => Promise<void>;
++  onCancel?: () => void;
++  onFinish?: () => void;
++}
+ declare class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHandle {
+   #private;
+   static LoadedCustomComponent: boolean;
+@@ -40,6 +50,12 @@ declare class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionH
+   getSearchMatchingPaths(): readonly string[];
+   focusNextSearchMatch(): void;
+   focusPreviousSearchMatch(): void;
++
++  startCreating(options: FileTreeCreationOptions): string | null;
++  cancelCreating(): void;
++  getCreatingPath(): string | null;
++  cancelEditing(): void;
++  getEditingPath(): string | null;
+   startRenaming(path?: string, options?: {
+     removeIfCanceled?: boolean;
+   }): boolean;
+diff --git a/node_modules/@pierre/trees/dist/render/FileTree.js b/node_modules/@pierre/trees/dist/render/FileTree.js
+index 0b41099..3d2a779 100644
+--- a/node_modules/@pierre/trees/dist/render/FileTree.js
++++ b/node_modules/@pierre/trees/dist/render/FileTree.js
+@@ -248,6 +248,12 @@ var FileTree = class {
+ 	focusPreviousSearchMatch() {
+ 		this.#controller.focusPreviousSearchMatch();
+ 	}
++
++	startCreating(options) { return this.#controller.startCreating(options); }
++	cancelCreating() { this.#controller.cancelCreating(); }
++	getCreatingPath() { return this.#controller.getCreatingPath(); }
++	cancelEditing() { this.#controller.cancelEditing(); }
++	getEditingPath() { return this.#controller.getEditingPath(); }
+ 	startRenaming(path, options) {
+ 		return this.#controller.startRenaming(path, options);
+ 	}
+diff --git a/node_modules/@pierre/trees/dist/render/FileTreeView.js b/node_modules/@pierre/trees/dist/render/FileTreeView.js
+index b4c7ee4..0503a44 100644
+--- a/node_modules/@pierre/trees/dist/render/FileTreeView.js
++++ b/node_modules/@pierre/trees/dist/render/FileTreeView.js
+@@ -10,7 +10,7 @@ import { GIT_STATUS_LABEL } from "../utils/gitStatusPresentation.js";
+ import { shouldBumpControllerRevision } from "./controllerSnapshotSubscription.js";
+ import { focusElement, getActiveTreeElement, getCachedViewportHeight, getParkedFocusedRowOffset, getResizeObserverViewportHeight, readMeasuredViewportHeight, scrollFocusedRowIntoView, scrollFocusedRowToOffset, scrollFocusedRowToViewportOffset } from "./focusHelpers.js";
+ import { classifyFileTreeRenameHandoff } from "./renameHandoff.js";
+-import { RenameInput } from "./RenameInput.js";
++import { InlineEditInput } from "./InlineEditInput.js";
+ import { computeFileTreeRowElementAttributes } from "./rowAttributes.js";
+ import { computeFileTreeRowClickPlan } from "./rowClickPlan.js";
+ import { Fragment } from "preact";
+@@ -57,21 +57,29 @@ function computeStickyRowsFromCandidates(candidates, scrollTop, itemHeight, tota
+ 		};
+ 	}).filter((entry) => entry.top + itemHeight > 0);
+ }
+-function computeFileTreeViewLayoutState({ controller, itemHeight, overscan, scrollTop, stickyFolders, viewportHeight }) {
++// Match VS Code's default tree sticky scroll limits.
++function getStickyRowCount(itemHeight, viewportHeight) {
++	return Math.max(0, Math.min(7, Math.floor(viewportHeight * 0.4 / itemHeight)));
++}
++function constrainStickyRows(rows, itemHeight, viewportHeight) {
++	return rows.slice(0, getStickyRowCount(itemHeight, viewportHeight));
++}
++function computeFileTreeViewLayoutState({ controller, itemHeight, overscan, scrollTop, stickyFolders, viewportHeight, paddingBottom = 0 }) {
+ 	const visibleCount = controller.getVisibleCount();
+ 	const stickyCandidates = stickyFolders && visibleCount > 0 ? controller.getStickyRowCandidates(scrollTop, itemHeight) : [];
+ 	const visibleRows = stickyCandidates == null && stickyFolders && visibleCount > 0 ? controller.getVisibleRows(0, visibleCount - 1) : [];
+-	const stickyRows = stickyCandidates == null ? void 0 : computeStickyRowsFromCandidates(stickyCandidates, scrollTop, itemHeight, visibleCount);
++	const stickyRows = constrainStickyRows(stickyCandidates == null ? computeStickyRows(visibleRows, scrollTop, itemHeight) : computeStickyRowsFromCandidates(stickyCandidates, scrollTop, itemHeight, visibleCount), itemHeight, viewportHeight);
+ 	const snapshot = computeFileTreeLayout(visibleRows, {
+ 		itemHeight,
+ 		overscan,
++		paddingBottom,
+ 		scrollTop,
+ 		stickyRows,
+ 		totalRowCount: visibleCount,
+ 		viewportHeight
+ 	});
+ 	const previewStickyCandidates = stickyFolders && scrollTop <= 0 && visibleCount > 0 ? controller.getStickyRowCandidates(1, itemHeight) : [];
+-	const overlayRows = previewStickyCandidates != null && scrollTop <= 0 ? computeStickyRowsFromCandidates(previewStickyCandidates, 1, itemHeight, visibleCount) : stickyFolders && scrollTop <= 0 && visibleRows.length > 0 ? computeStickyRows(visibleRows, 1, itemHeight) : snapshot.sticky.rows;
++	const overlayRows = constrainStickyRows(previewStickyCandidates != null && scrollTop <= 0 ? computeStickyRowsFromCandidates(previewStickyCandidates, 1, itemHeight, visibleCount) : stickyFolders && scrollTop <= 0 && visibleRows.length > 0 ? computeStickyRows(visibleRows, 1, itemHeight) : snapshot.sticky.rows, itemHeight, viewportHeight);
+ 	return {
+ 		overlayHeight: overlayRows.reduce((maxBottom, entry) => Math.max(maxBottom, entry.top + itemHeight), 0),
+ 		overlayRows,
+@@ -86,7 +94,13 @@ function getPointElement(rootNode, clientX, clientY) {
+ 	const pointRoot = rootNode;
+ 	const documentElementFromPoint = document.elementFromPoint?.bind(document) ?? null;
+ 	const element = pointRoot.elementFromPoint?.(clientX, clientY) ?? documentElementFromPoint?.(clientX, clientY) ?? null;
+-	if (rootNode instanceof ShadowRoot && (element == null || !rootNode.contains(element))) return getShadowPointElementByGeometry(rootNode, clientX, clientY);
++	if (rootNode instanceof ShadowRoot && (element == null || !rootNode.contains(element))) {
++		const row = getShadowPointElementByGeometry(rootNode, clientX, clientY);
++		if (row) return row;
++		const scroller = rootNode.querySelector("[data-file-tree-virtualized-scroll]");
++		const rect = scroller?.getBoundingClientRect();
++		return rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom ? scroller : null;
++	}
+ 	return element instanceof HTMLElement ? element : null;
+ }
+ function getShadowPointElementByGeometry(rootNode, clientX, clientY) {
+@@ -100,7 +114,7 @@ function getShadowPointElementByGeometry(rootNode, clientX, clientY) {
+ }
+ function resolveDropTargetFromElement(target) {
+ 	const rowButton = target?.closest?.("[data-type=\"item\"]");
+-	if (!(rowButton instanceof HTMLElement)) return null;
++	if (!(rowButton instanceof HTMLElement)) return target?.closest?.("[data-file-tree-virtualized-scroll]") ? { kind: "root", directoryPath: null, flattenedSegmentPath: null, hoveredPath: null } : null;
+ 	const hoveredPath = rowButton.dataset.itemPath ?? null;
+ 	if (hoveredPath == null) return null;
+ 	const flattenedSegment = target?.closest?.("[data-item-flattened-subitem]");
+@@ -415,19 +429,7 @@ function renderStyledRow(frame, row, key, options = {}) {
+ 	const decorationLaneEnabled = customDecoration != null || gitLaneActive || actionLaneEnabled;
+ 	const showDecorativeActionAffordance = actionLaneEnabled && contextMenuButtonVisibility === "always";
+ 	const isRenamingRow = renameView.getPath() === targetPath;
+-	const renamingValue = isRenamingRow ? renameView.getValue() : "";
+-	const renameInput = isSticky || !isRenamingRow ? null : /* @__PURE__ */ jsx(RenameInput, {
+-		ref: registerRenameInput,
+-		ariaLabel: labels.renameItem(getFileTreeRowAriaLabel(row)),
+-		isFlattened: row.isFlattened,
+-		value: renamingValue,
+-		onBlur: () => {
+-			renameView.commit();
+-		},
+-		onInput: (event) => {
+-			renameView.setValue(event.currentTarget.value);
+-		}
+-	});
++	const renameInput = isSticky || !isRenamingRow ? null : jsx(InlineEditInput, { session: controller.getEditSession(), registerInput: registerRenameInput });
+ 	const rowContent = renderFileTreeRowContent(row, resolveIcon, {
+ 		actionLaneEnabled,
+ 		customDecoration,
+@@ -439,8 +441,10 @@ function renderStyledRow(frame, row, key, options = {}) {
+ 		showDecorativeActionAffordance
+ 	});
+ 	const commonProps = {
++		"data-file-tree-editing": controller.getEditingPath() === targetPath ? "true" : undefined,
++		"data-file-tree-creating": controller.getCreatingPath() === targetPath ? "true" : undefined,
+ 		...computeFileTreeRowElementAttributes({
+-			ariaLabel: getFileTreeRowAriaLabel(row),
++			ariaLabel: controller.getCreatingPath() === targetPath ? "New item" : getFileTreeRowAriaLabel(row),
+ 			domId: row.isFocused ? getFileTreeFocusedRowDomId(instanceId, targetPath, isParked) : void 0,
+ 			extraStyle: style,
+ 			features: {
+@@ -464,7 +468,6 @@ function renderStyledRow(frame, row, key, options = {}) {
+ 			},
+ 			targetPath
+ 		}),
+-		key,
+ 		onContextMenu: contextMenuEnabled || dragAndDropEnabled ? (event) => {
+ 			if (shouldSuppressContextMenu()) {
+ 				event.preventDefault();
+@@ -490,7 +493,7 @@ function renderStyledRow(frame, row, key, options = {}) {
+ 	if (!isSticky && isRenamingRow) return /* @__PURE__ */ jsx("div", {
+ 		...commonProps,
+ 		children: rowContent
+-	});
++	}, key);
+ 	return /* @__PURE__ */ jsx("button", {
+ 		...commonProps,
+ 		type: "button",
+@@ -513,11 +516,11 @@ function renderStyledRow(frame, row, key, options = {}) {
+ 			onRowClick(event, row, targetPath, mode);
+ 		},
+ 		children: rowContent
+-	});
++	}, key);
+ }
+ function renderRangeChildren(frame, range, hiddenRowPaths) {
+ 	if (range.end < range.start) return [];
+-	return frame.controller.getVisibleRows(range.start, range.end).filter((row) => !hiddenRowPaths.has(getFileTreeRowPath(row))).map((row, slotIndex) => renderStyledRow(frame, row, range.start + slotIndex));
++	return frame.controller.getVisibleRows(range.start, range.end).filter((row) => !hiddenRowPaths.has(getFileTreeRowPath(row))).map((row) => renderStyledRow(frame, row, getFileTreeRowPath(row)));
+ }
+ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDirectories, directoriesWithGitChanges, icons, instanceId, itemHeight = FILE_TREE_DEFAULT_ITEM_HEIGHT, labels = DEFAULT_FILE_TREE_LABELS, overscan = 10, renamingEnabled = false, renderRowDecoration, searchBlurBehavior = "close", searchEnabled = false, searchFakeFocus = false, slotHost, stickyFolders = false, initialViewportHeight = 420 }) {
+ 	"use no memo";
+@@ -557,7 +560,7 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 	const touchSourceElementRef = useRef(null);
+ 	const touchStartPointRef = useRef(null);
+ 	const touchLongPressTimerRef = useRef(null);
+-	const ignoredInheritanceCache = useMemo(() => /* @__PURE__ */ new Map(), []);
++	const ignoredInheritanceCache = useMemo(() => /* @__PURE__ */ new Map(), [ignoredGitDirectories]);
+ 	const [, setControllerRevision] = useState(0);
+ 	const hasSeenInitialControllerSnapshotRef = useRef(false);
+ 	const [activeItemPath, setActiveItemPath] = useState(null);
+@@ -777,7 +780,7 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 		if (focusedRow == null) return false;
+ 		const liveViewportHeight = readMeasuredViewportHeight(scrollElement, resolvedViewportHeight);
+ 		const liveTotalHeight = controller.getVisibleCount() * itemHeight;
+-		const targetViewportOffset = targetOffset === "sticky-parents" ? focusedRow.ancestorPaths.length * itemHeight : computeFileTreeViewLayoutState({
++		const targetViewportOffset = targetOffset === "sticky-parents" ? Math.min(focusedRow.ancestorPaths.length, getStickyRowCount(itemHeight, liveViewportHeight)) * itemHeight : computeFileTreeViewLayoutState({
+ 			controller,
+ 			itemHeight,
+ 			overscan,
+@@ -928,6 +931,14 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 			event.dataTransfer.setData("text/plain", targetPath);
+ 			if (shouldUseCustomPointerDragImage()) {
+ 				const preview = createDragPreviewElement(dragSource);
++				const count = controller.getDragSession()?.draggedPaths.length ?? 1;
++				if (count > 1) {
++					const badge = document.createElement("span");
++					badge.textContent = String(count);
++					badge.dataset.fileTreeDragCount = "true";
++					Object.assign(badge.style, { marginLeft: "12px", borderRadius: "12px", background: "#0078d4", color: "white", padding: "0 7px", lineHeight: "22px" });
++					preview.append(badge);
++				}
+ 				const rect = dragSource.getBoundingClientRect();
+ 				Object.assign(preview.style, {
+ 					height: `${rect.height}px`,
+@@ -1197,6 +1208,8 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 				previousRenamingPathRef.current = null;
+ 				return;
+ 			case "reveal-canonical":
++				// A successful async rename can remove the source before the session closes.
++				if (controller.getEditSession()?.busy) return;
+ 				if (renamingPath != null) revealCanonicalRowAtStickyOffset(renamingPath, {
+ 					restoreTreeFocus: false,
+ 					targetOffset: "live-overlay"
+@@ -1208,7 +1221,8 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 					pendingStickyFocusPathRef.current = null;
+ 					previousRenamingPathRef.current = renamingPath;
+ 					focusElement(input);
+-					input.select();
++					const selection = controller.getEditSession()?.selection;
++					if (selection) input.setSelectionRange(...selection); else input.select();
+ 				}
+ 				return;
+ 		}
+@@ -1285,7 +1299,8 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 		const update = () => {
+ 			const nextItemCount = controller.getVisibleCount();
+ 			const nextViewportHeight = getCachedViewportHeight(measuredViewportHeightRef.current, initialViewportHeight);
+-			const maxScrollTop = Math.max(0, nextItemCount * itemHeight - nextViewportHeight);
++			const paddingBottom = Math.max(0, parseFloat(getComputedStyle(scrollElement).getPropertyValue("--trees-scroll-padding-bottom")) || 0);
++			const maxScrollTop = Math.max(0, nextItemCount * itemHeight + paddingBottom - nextViewportHeight);
+ 			if (scrollElement.scrollTop > maxScrollTop) scrollElement.scrollTop = maxScrollTop;
+ 			setLayoutState(computeFileTreeViewLayoutState({
+ 				controller,
+@@ -1293,7 +1308,8 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 				overscan,
+ 				scrollTop: Math.min(scrollElement.scrollTop, maxScrollTop),
+ 				stickyFolders,
+-				viewportHeight: nextViewportHeight
++				viewportHeight: nextViewportHeight,
++				paddingBottom
+ 			}));
+ 		};
+ 		if (!initialFocusedScrollAppliedRef.current) {
+@@ -1302,7 +1318,7 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 			if (initialFocusedIndex >= 0) {
+ 				const initialViewportHeightPx = getCachedViewportHeight(measuredViewportHeightRef.current, initialViewportHeight);
+ 				const initialFocusedRow = controller.getVisibleRows(initialFocusedIndex, initialFocusedIndex)[0] ?? null;
+-				const initialTopInset = stickyFolders && initialFocusedRow != null ? Math.max(0, Math.min(initialFocusedRow.ancestorPaths.length * itemHeight, Math.max(0, initialViewportHeightPx - itemHeight))) : 0;
++				const initialTopInset = stickyFolders && initialFocusedRow != null ? Math.max(0, Math.min(Math.min(initialFocusedRow.ancestorPaths.length, getStickyRowCount(itemHeight, initialViewportHeightPx)) * itemHeight, Math.max(0, initialViewportHeightPx - itemHeight))) : 0;
+ 				scrollFocusedRowIntoView(scrollElement, initialFocusedIndex, itemHeight, initialViewportHeightPx, initialTopInset);
+ 			}
+ 		}
+@@ -1516,7 +1532,7 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 			const scrollRequestIndex = scrollRequest.visibleIndex;
+ 			const scrollRequestRow = controller.getVisibleRows(scrollRequestIndex, scrollRequestIndex)[0] ?? null;
+ 			if (scrollRequestRow != null) {
+-				const scrollRequestTopInset = stickyFolders ? Math.max(0, Math.min(scrollRequestRow.ancestorPaths.length * itemHeight, Math.max(0, resolvedViewportHeight - itemHeight))) : stickyOverlayHeight;
++				const scrollRequestTopInset = stickyFolders ? Math.max(0, Math.min(Math.min(scrollRequestRow.ancestorPaths.length, getStickyRowCount(itemHeight, resolvedViewportHeight)) * itemHeight, Math.max(0, resolvedViewportHeight - itemHeight))) : stickyOverlayHeight;
+ 				shouldSuppressDomFocusForScrollRequest = true;
+ 				shouldUpdateViewportForScrollRequest = scrollFocusedRowToOffset(scrollElement, scrollRequestIndex, itemHeight, resolvedViewportHeight, totalScrollableHeight, scrollRequest.offset, scrollRequestTopInset);
+ 			}
+@@ -1635,7 +1651,7 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 		const resolvedTarget = controller.getDragSession()?.target ?? null;
+ 		scheduleDragHoverOpen(resolvedTarget);
+ 		updateDragPoint(event.clientX, event.clientY);
+-		if (event.dataTransfer != null) event.dataTransfer.dropEffect = "move";
++		if (event.dataTransfer != null) event.dataTransfer.dropEffect = controller.getDragSession()?.target == null ? "none" : "move";
+ 		event.preventDefault();
+ 	};
+ 	const handleTreeDragLeave = (event) => {
+@@ -1656,7 +1672,7 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 		stopDragAutoScroll();
+ 		dragRowSnapshotRef.current = null;
+ 	};
+-	const windowHeight = layoutSnapshot.window.height;
++	const windowHeight = layoutSnapshot.window.height + (layoutSnapshot.window.endIndex === layoutSnapshot.physical.totalRowCount - 1 ? Math.max(0, totalScrollableHeight - layoutSnapshot.physical.totalRowCount * itemHeight) : 0);
+ 	const windowOffsetTop = layoutSnapshot.window.offsetTop;
+ 	const windowStickyTopInset = Math.min(0, resolvedViewportHeight - windowHeight);
+ 	const windowStickyBottomInset = Math.min(0, resolvedViewportHeight - windowHeight - stickyOverlayHeight);
+@@ -1694,7 +1710,7 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 			isSearchOpen,
+ 			mode
+ 		});
+-		const shouldToggleDirectory = plan.toggleDirectory && row.kind === "directory";
++		const shouldToggleDirectory = plan.toggleDirectory && row.kind === "directory" && (mode !== "sticky" || event.target instanceof Element && event.target.closest('[data-item-section="icon"]') != null);
+ 		const mountedDirectoryPath = shouldToggleDirectory ? controller.resolveMountedDirectoryPathFromInput(targetPath) : null;
+ 		if (shouldToggleDirectory && mountedDirectoryPath == null) return;
+ 		const actionTargetPath = mountedDirectoryPath ?? targetPath;
+@@ -1791,6 +1807,7 @@ function FileTreeView({ composition, controller, gitStatusByPath, ignoredGitDire
+ 		"data-file-tree-context-menu-trigger-mode": contextMenuEnabled ? contextMenuTriggerMode : void 0,
+ 		"data-file-tree-has-context-menu-action-lane": contextMenuEnabled && contextMenuButtonTriggerEnabled ? "true" : void 0,
+ 		"data-file-tree-has-git-lane": gitLaneActive ? "true" : void 0,
++		"data-file-tree-root-drag-target": dragTarget?.kind === "root" ? "true" : void 0,
+ 		"data-file-tree-virtualized-root": "true",
+ 		onDragLeave: dragAndDropEnabled ? handleTreeDragLeave : void 0,
+ 		onDragOver: dragAndDropEnabled ? handleTreeDragOver : void 0,
+diff --git a/node_modules/@pierre/trees/dist/render/InlineEditInput.js b/node_modules/@pierre/trees/dist/render/InlineEditInput.js
+new file mode 100644
+index 0000000..0cc8461
+--- /dev/null
++++ b/node_modules/@pierre/trees/dist/render/InlineEditInput.js
+@@ -0,0 +1,141 @@
++import { h } from "preact";
++import { useLayoutEffect, useRef } from "preact/hooks";
++
++// A body-level message escapes the virtual scroller and its shadow root.
++// Position is read from the input on scroll/resize; no tree row heights change.
++export function InlineEditInput({ session, registerInput }) {
++  const inputRef = useRef(null);
++  const composing = useRef(false);
++  useLayoutEffect(() => {
++    const input = inputRef.current;
++    if (!input || !session.error) return;
++    const doc = input.ownerDocument;
++    const message = doc.createElement("div");
++    message.id = `creation-error-${session.name}`;
++    message.setAttribute("role", "alert");
++    message.dataset.fileTreeCreationError = "true";
++    message.dataset.fileTreeEditError = "true";
++    message.textContent = session.error;
++    Object.assign(message.style, {
++      position: "fixed",
++      zIndex: "10000",
++      boxSizing: "border-box",
++      padding: "5px 8px",
++      background: "#5a1d1d",
++      color: "#cccccc",
++      border: "1px solid #be1100",
++      font: getComputedStyle(input).font,
++      lineHeight: "20px",
++      overflowWrap: "anywhere",
++      maxHeight: "calc(100vh - 8px)",
++      overflowY: "auto",
++    });
++    message.addEventListener("pointerdown", (event) => event.preventDefault());
++    doc.body.append(message);
++    // ARIA ID references must live in the same shadow root as the input.
++    const description = doc.createElement("span");
++    description.id = message.id;
++    description.textContent = session.error;
++    Object.assign(description.style, {
++      position: "absolute",
++      width: "1px",
++      height: "1px",
++      clipPath: "inset(50%)",
++      overflow: "hidden",
++    });
++    input.after(description);
++    const host = input.getRootNode().host;
++    const scroller = input.getRootNode().querySelector("[data-file-tree-virtualized-scroll]");
++    const position = () => {
++      const rect = input.getBoundingClientRect();
++      const view = scroller.getBoundingClientRect();
++      const visible = rect.bottom > view.top && rect.top < view.bottom && rect.width > 0;
++      message.style.visibility = visible ? "visible" : "hidden";
++      const width = Math.max(
++        1,
++        Math.min(rect.width, doc.documentElement.clientWidth - rect.left - 4),
++      );
++      message.style.width = `${width}px`;
++      message.style.left = `${Math.max(0, rect.left)}px`;
++      const height = message.getBoundingClientRect().height;
++      const below = Math.min(view.bottom, doc.documentElement.clientHeight) - rect.bottom;
++      message.style.top = `${below >= height ? rect.bottom : Math.max(0, rect.top - height)}px`;
++    };
++    position();
++    const resize = new ResizeObserver(position);
++    resize.observe(host);
++    resize.observe(input);
++    const changes = new MutationObserver(position);
++    changes.observe(scroller, {
++      childList: true,
++      subtree: true,
++      attributes: true,
++      attributeFilter: ["style"],
++    });
++    scroller.addEventListener("scroll", position);
++    window.addEventListener("resize", position);
++    return () => {
++      resize.disconnect();
++      changes.disconnect();
++      scroller.removeEventListener("scroll", position);
++      window.removeEventListener("resize", position);
++      message.remove();
++      description.remove();
++    };
++  }, [session, session.error]);
++  return h("input", {
++    ref: (element) => {
++      inputRef.current = element;
++      registerInput(element);
++    },
++    "data-item-rename-input": true,
++    "data-file-tree-inline-edit-input": true,
++    "data-file-tree-creation-input": session.mode === "create" ? true : undefined,
++    "data-file-tree-rename-input": session.mode === "rename" ? true : undefined,
++    "aria-label": `${session.mode === "rename" ? "Rename " : ""}${session.options.kind === "newFolder" ? "Folder" : "File"} name. Press Enter to confirm or Escape to cancel.`,
++    "aria-invalid": !!session.error,
++    "aria-describedby": session.error ? `creation-error-${session.name}` : undefined,
++    "aria-busy": session.busy,
++    style: { borderColor: session.error ? "#be1100" : undefined },
++    value: session.value,
++    readOnly: session.busy,
++    spellcheck: false,
++    onInput: (event) => session.setValue(event.currentTarget.value),
++    onCompositionStart: () => {
++      composing.current = true;
++    },
++    onCompositionEnd: () => {
++      composing.current = false;
++    },
++    onKeyDown: (event) => {
++      if (event.isComposing || composing.current || event.keyCode === 229) {
++        event.stopPropagation();
++        return;
++      }
++      if (event.key === "Enter" || event.key === "Escape") {
++        event.preventDefault();
++        event.stopPropagation();
++        if (event.key === "Enter") void session.commit();
++        else {
++          const shadow = event.currentTarget.getRootNode();
++          session.cancel();
++          if (session.disposed)
++            requestAnimationFrame(() =>
++              shadow
++                .querySelector(
++                  '[data-item-focused="true"]:not([data-file-tree-sticky-row]):not([data-item-parked="true"])',
++                )
++                ?.focus({ preventScroll: true }),
++            );
++        }
++      }
++    },
++    onBlur: () => {
++      void session.commit(true);
++    },
++    onClick: (event) => event.stopPropagation(),
++    onMouseDown: (event) => event.stopPropagation(),
++    onPointerDown: (event) => event.stopPropagation(),
++    onContextMenu: (event) => event.stopPropagation(),
++  });
++}
+diff --git a/node_modules/@pierre/trees/dist/style.js b/node_modules/@pierre/trees/dist/style.js
+index 0a25aa3..2e00dea 100644
+--- a/node_modules/@pierre/trees/dist/style.js
++++ b/node_modules/@pierre/trees/dist/style.js
+@@ -1,5 +1,5 @@
+ //#region src/style.css?inline
+-var style_default = "@layer base {\n  :host {\n    --trees-accent: var(--trees-accent-override, #009fff);\n    --trees-fg: var(--trees-fg-override, var(--trees-theme-sidebar-fg, light-dark(#6c6c71, #adadb1)));\n    --trees-fg-muted: var(--trees-fg-muted-override, var(--trees-theme-sidebar-header-fg, #84848a));\n    --trees-bg: var(--trees-bg-override, var(--trees-theme-sidebar-bg, light-dark(#f8f8f8, #141415)));\n    --trees-bg-muted: var(--trees-bg-muted-override, var(--trees-theme-list-hover-bg, light-dark(color-mix(in lab,\n            var(--trees-accent) var(--trees-bg-alpha-light, 8%),\n            var(--trees-bg)), color-mix(in lab,\n            var(--trees-accent) var(--trees-bg-alpha-dark, 10%),\n            var(--trees-bg)))));\n    --trees-input-bg: var(--trees-input-bg-override, light-dark(#f8f8f8, #070707));\n    --trees-added-light: #16a994;\n    --trees-added-dark: #00cab1;\n    --trees-ignored-light: #adadb1;\n    --trees-ignored-dark: #4a4a4e;\n    --trees-modified-light: #1ca1c7;\n    --trees-modified-dark: #08c0ef;\n    --trees-renamed-light: #d5a910;\n    --trees-renamed-dark: #ffd452;\n    --trees-untracked-light: #16a994;\n    --trees-untracked-dark: #00cab1;\n    --trees-deleted-light: #ff2e3f;\n    --trees-deleted-dark: #ff6762;\n    --trees-border-color: var(--trees-border-color-override, var(--trees-theme-sidebar-border, light-dark(#eeeeef, #070707)));\n    --trees-indent-guide-bg: var(--trees-indent-guide-bg-override, color-mix(in lab, var(--trees-fg-muted) 25%, transparent));\n    --trees-density: var(--trees-density-override, 1);\n    --trees-border-radius: var(--trees-border-radius-override, calc(6px * var(--trees-density)));\n    --trees-font-family: var(--trees-font-family-override, system-ui);\n    --trees-font-size: var(--trees-font-size-override, 13px);\n    --trees-font-weight-regular: var(--trees-font-weight-regular-override, 400);\n    --trees-font-weight-semibold: var(--trees-font-weight-semibold-override, 600);\n    --trees-focus-ring-color: var(--trees-focus-ring-color-override, var(--trees-theme-focus-ring, var(--trees-accent)));\n    --trees-focus-ring-width: var(--trees-focus-ring-width-override, 1px);\n    --trees-focus-ring-offset: var(--trees-focus-ring-offset-override, -1px);\n    --trees-search-fg: var(--trees-search-fg-override, var(--trees-theme-input-fg, var(--trees-fg)));\n    --trees-search-font-weight: var(--trees-search-font-weight-override, 600);\n    --trees-search-bg: var(--trees-search-bg-override, var(--trees-theme-input-bg, var(--trees-input-bg)));\n    --trees-scrollbar-thumb: var(--trees-scrollbar-thumb-override, var(--trees-theme-scrollbar-thumb, color-mix(in lab, var(--trees-fg) 25%, var(--trees-bg))));\n    --trees-selected-fg: var(--trees-selected-fg-override, var(--trees-theme-list-active-selection-fg, var(--trees-fg)));\n    --trees-selected-bg: var(--trees-selected-bg-override, var(--trees-theme-list-active-selection-bg, light-dark(color-mix(in lab, var(--trees-accent) 12%, var(--trees-bg)), color-mix(in lab, var(--trees-accent) 15%, var(--trees-bg)))));\n    --trees-selected-focused-border-color: var(--trees-selected-focused-border-color-override, var(--trees-theme-focus-ring, var(--trees-accent)));\n    --trees-status-added: var(--trees-status-added-override, var(--trees-theme-git-added-fg, light-dark(var(--trees-added-light), var(--trees-added-dark))));\n    --trees-status-ignored: var(--trees-status-ignored-override, var(--trees-theme-git-ignored-fg, light-dark(var(--trees-ignored-light), var(--trees-ignored-dark))));\n    --trees-status-modified: var(--trees-status-modified-override, var(--trees-theme-git-modified-fg, light-dark(var(--trees-modified-light), var(--trees-modified-dark))));\n    --trees-status-renamed: var(--trees-status-renamed-override, var(--trees-theme-git-renamed-fg, light-dark(var(--trees-renamed-light), var(--trees-renamed-dark))));\n    --trees-status-untracked: var(--trees-status-untracked-override, var(--trees-theme-git-untracked-fg, light-dark(var(--trees-untracked-light), var(--trees-untracked-dark))));\n    --trees-status-deleted: var(--trees-status-deleted-override, var(--trees-theme-git-deleted-fg, light-dark(var(--trees-deleted-light), var(--trees-deleted-dark))));\n    --trees-git-modified-color: var(--trees-git-modified-color-override, var(--trees-status-modified));\n    --trees-git-added-color: var(--trees-git-added-color-override, var(--trees-status-added));\n    --trees-git-ignored-color: var(--trees-git-ignored-color-override, var(--trees-status-ignored));\n    --trees-git-deleted-color: var(--trees-git-deleted-color-override, var(--trees-status-deleted));\n    --trees-git-renamed-color: var(--trees-git-renamed-color-override, var(--trees-status-renamed));\n    --trees-git-untracked-color: var(--trees-git-untracked-color-override, var(--trees-status-untracked));\n    --trees-icon-gray: light-dark(#84848a, #adadb1);\n    --trees-icon-red: light-dark(#d52c36, #ff6762);\n    --trees-icon-vermilion: light-dark(#ff8c5b, #d5512f);\n    --trees-icon-orange: light-dark(#d47628, #ffa359);\n    --trees-icon-yellow: light-dark(#d5a910, #ffd452);\n    --trees-icon-green: light-dark(#199f43, #5ecc71);\n    --trees-icon-teal: light-dark(#17a5af, #64d1db);\n    --trees-icon-cyan: light-dark(#1ca1c7, #68cdf2);\n    --trees-icon-blue: light-dark(#1a85d4, #69b1ff);\n    --trees-icon-indigo: light-dark(#693acf, #9d6afb);\n    --trees-icon-purple: light-dark(#a631be, #d568ea);\n    --trees-icon-pink: light-dark(#d32a61, #ff678d);\n    --trees-icon-mauve: light-dark(#594c5b, #79697b);\n    --trees-file-icon-color-default: var(--trees-file-icon-color, var(--trees-icon-gray));\n    --trees-file-icon-color-astro: var(--trees-file-icon-color, var(--trees-icon-purple));\n    --trees-file-icon-color-babel: var(--trees-file-icon-color, var(--trees-icon-yellow));\n    --trees-file-icon-color-bash: var(--trees-file-icon-color, var(--trees-icon-green));\n    --trees-file-icon-color-biome: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-bootstrap: var(--trees-file-icon-color, var(--trees-icon-indigo));\n    --trees-file-icon-color-browserslist: var(--trees-file-icon-color, var(--trees-icon-yellow));\n    --trees-file-icon-color-bun: var(--trees-file-icon-color, var(--trees-icon-mauve));\n    --trees-file-icon-color-c: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-cpp: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-claude: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-css: var(--trees-file-icon-color, var(--trees-icon-indigo));\n    --trees-file-icon-color-database: var(--trees-file-icon-color, var(--trees-icon-purple));\n    --trees-file-icon-color-docker: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-eslint: var(--trees-file-icon-color, var(--trees-icon-indigo));\n    --trees-file-icon-color-git: var(--trees-file-icon-vermilion, var(--trees-icon-vermilion));\n    --trees-file-icon-color-go: var(--trees-file-icon-color, var(--trees-icon-cyan));\n    --trees-file-icon-color-graphql: var(--trees-file-icon-color, var(--trees-icon-pink));\n    --trees-file-icon-color-html: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-image: var(--trees-file-icon-color, var(--trees-icon-pink));\n    --trees-file-icon-color-javascript: var(--trees-file-icon-color, var(--trees-icon-yellow));\n    --trees-file-icon-color-json: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-markdown: var(--trees-file-icon-color, var(--trees-icon-green));\n    --trees-file-icon-color-mcp: var(--trees-file-icon-color, var(--trees-icon-teal));\n    --trees-file-icon-color-npm: var(--trees-file-icon-color, var(--trees-icon-red));\n    --trees-file-icon-color-oxc: var(--trees-file-icon-cyan, var(--trees-icon-cyan));\n    --trees-file-icon-color-postcss: var(--trees-file-icon-color, var(--trees-icon-red));\n    --trees-file-icon-color-prettier: var(--trees-file-icon-color, var(--trees-icon-teal));\n    --trees-file-icon-color-python: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-react: var(--trees-file-icon-color, var(--trees-icon-cyan));\n    --trees-file-icon-color-ruby: var(--trees-file-icon-color, var(--trees-icon-red));\n    --trees-file-icon-color-rust: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-sass: var(--trees-file-icon-color, var(--trees-icon-pink));\n    --trees-file-icon-color-svg: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-svelte: var(--trees-file-icon-color, var(--trees-icon-red));\n    --trees-file-icon-color-svgo: var(--trees-file-icon-color, var(--trees-icon-green));\n    --trees-file-icon-color-swift: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-table: var(--trees-file-icon-color, var(--trees-icon-teal));\n    --trees-file-icon-color-text: var(--trees-file-icon-color, var(--trees-icon-gray));\n    --trees-file-icon-color-tailwind: var(--trees-file-icon-color, var(--trees-icon-cyan));\n    --trees-file-icon-color-terraform: var(--trees-file-icon-color, var(--trees-icon-indigo));\n    --trees-file-icon-color-typescript: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-vite: var(--trees-file-icon-color, var(--trees-icon-purple));\n    --trees-file-icon-color-vscode: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-vue: var(--trees-file-icon-color, var(--trees-icon-green));\n    --trees-file-icon-color-wasm: var(--trees-file-icon-color, var(--trees-icon-indigo));\n    --trees-file-icon-color-webpack: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-yml: var(--trees-file-icon-color, var(--trees-icon-red));\n    --trees-file-icon-color-zig: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-zip: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-level-gap: var(--trees-level-gap-override, calc(8px * var(--trees-density)));\n    --trees-item-padding-x: var(--trees-item-padding-x-override, calc(8px * var(--trees-density)));\n    --trees-item-margin-x: var(--trees-item-margin-x-override, calc(2px * var(--trees-density)));\n    --trees-item-row-gap: var(--trees-item-row-gap-override, calc(6px * var(--trees-density)));\n    --trees-icon-width: var(--trees-icon-width-override, 16px);\n    --trees-icon-nudge: var(--trees-icon-nudge-override, calc(1px * var(--trees-density)));\n    --trees-row-height: var(--trees-item-height, 30px);\n    --trees-git-lane-width: var(--trees-git-lane-width-override, 12px);\n    --trees-action-lane-width: var(--trees-action-lane-width-override, calc(var(--trees-icon-width) + 2px));\n    --trees-context-menu-trigger-inline-offset: calc(var(--trees-padding-inline) + var(--trees-item-padding-x) -\n        var(--trees-focus-ring-width));\n    --trees-scrollbar-gutter: var(--trees-scrollbar-gutter-override, 6px);\n    --trees-padding-inline: var(--trees-padding-inline-override, 16px);\n    color-scheme: light dark;\n    font-size: var(--trees-font-size);\n    color: var(--trees-fg);\n    background-color: var(--trees-bg);\n    --truncate-marker-background-color: var(--trees-bg);\n    --truncate-marker-background-overlay-color: transparent;\n    font-family: var(--trees-font-family);\n    font-weight: var(--trees-font-weight-regular);\n    flex-direction: column;\n    display: flex;\n  }\n\n  :host([data-file-tree-virtualized=\"true\"]) {\n    height: 100%;\n    overflow: hidden;\n  }\n\n  [data-file-tree-virtualized-wrapper=\"true\"], [data-file-tree-virtualized-root=\"true\"] {\n    flex-direction: column;\n    height: 100%;\n    display: flex;\n    overflow: hidden;\n  }\n\n  [data-file-tree-virtualized-scroll=\"true\"], [data-file-tree-scrollbar-measure=\"true\"] {\n    --trees-scrollbar-thumb-current: transparent;\n    scrollbar-gutter: stable;\n    overflow-y: auto;\n\n    &:hover {\n      --trees-scrollbar-thumb-current: var(--trees-scrollbar-thumb);\n    }\n\n    &::-webkit-scrollbar {\n      width: var(--trees-scrollbar-gutter);\n      height: var(--trees-scrollbar-gutter);\n    }\n\n    &::-webkit-scrollbar-track {\n      background: none;\n    }\n\n    &::-webkit-scrollbar-thumb {\n      background-color: var(--trees-scrollbar-thumb-current);\n      border-radius: calc(var(--trees-scrollbar-gutter) / 2);\n      background-clip: content-box;\n      border: 1px solid #0000;\n    }\n\n    &::-webkit-scrollbar-corner {\n      background-color: #0000;\n    }\n  }\n\n  [data-file-tree-scrollbar-measure=\"true\"] {\n    visibility: hidden;\n    pointer-events: none;\n    width: 100px;\n    height: 100px;\n    position: absolute;\n    top: 0;\n    left: 0;\n  }\n\n  @supports ((-moz-appearance: none)) {\n    [data-file-tree-virtualized-scroll=\"true\"], [data-file-tree-scrollbar-measure=\"true\"] {\n      scrollbar-width: thin;\n      scrollbar-color: var(--trees-scrollbar-thumb-current) transparent;\n    }\n  }\n\n  [data-file-tree-virtualized-scroll=\"true\"] {\n    min-height: 0;\n    padding-inline: max(calc(var(--trees-padding-inline) - var(--trees-item-margin-x)),\n        0px)\n      /* NOTE(amadeus): We can assume that all Webkit based browser gutters\n       * will align to the value of '--trees-scrollbar-gutter', however if not, then\n       * `--trees-scrollbar-gutter-measured` should correct it. Mostly we are\n       * hoping to avoid SSR alignment jumps if possible. In non-SSR'd environments\n       * `--trees-scrollbar-gutter-measured` should always be immediately available.\n       */\n      max(calc(var(--trees-padding-inline) - var(--trees-item-margin-x) -\n            var(--trees-scrollbar-gutter-measured, var(--trees-scrollbar-gutter))),\n        0px);\n    flex: 1 1 0;\n    position: relative;\n    overflow-y: auto;\n  }\n\n  @supports ((-moz-appearance: none)) {\n    [data-file-tree-virtualized-scroll=\"true\"] {\n      padding-inline: max(calc(var(--trees-padding-inline) - var(--trees-item-margin-x)),\n          0px)\n        /* NOTE(amadeus): However on Firefox it can vary a little bit, but most\n         * likely the majority of cases will default to a 0px width scrollbar lets\n         * inherit that first to avoid SSR jumps. In non-SSR'd environments\n         * `--trees-scrollbar-gutter-measured` should always be immediately available.\n         */\n        max(calc(var(--trees-padding-inline) - var(--trees-item-margin-x) -\n              var(--trees-scrollbar-gutter-measured, 0px)),\n          0px);\n    }\n  }\n\n  [data-file-tree-sticky-overlay=\"true\"] {\n    z-index: 4;\n    pointer-events: none;\n    height: 0;\n    position: sticky;\n    top: 0;\n    overflow: visible;\n  }\n\n  [data-file-tree-virtualized-root=\"true\"][data-scroll-at-top=\"true\"]:not([data-overlay-reveal]) [data-file-tree-sticky-overlay=\"true\"] {\n    visibility: hidden;\n  }\n\n  [data-file-tree-sticky-overlay-content=\"true\"] {\n    background-color: var(--trees-bg);\n    pointer-events: none;\n    position: relative;\n  }\n\n  [data-file-tree-virtualized-list=\"true\"] {\n    background-color: var(--trees-bg);\n    overflow-anchor: none;\n    width: 100%;\n    min-height: 100%;\n    position: relative;\n\n    &[data-is-scrolling] {\n      pointer-events: none;\n    }\n  }\n\n  [data-file-tree-virtualized-sticky-offset=\"true\"] {\n    contain: layout size;\n  }\n\n  [data-file-tree-virtualized-sticky=\"true\"] {\n    isolation: isolate;\n    will-change: transform;\n    flex-direction: column;\n    width: 100%;\n    display: flex;\n    position: sticky;\n    top: 0;\n  }\n\n  [data-file-tree-search-container] {\n    padding: 0;\n    padding-inline: var(--trees-padding-inline);\n    margin-bottom: var(--trees-item-row-gap);\n    display: flex;\n  }\n\n  [data-file-tree-search-input] {\n    --trees-focus-ring-width: 2px;\n    font-family: var(--trees-font-family);\n    font-size: var(--trees-font-size);\n    height: var(--trees-row-height);\n    padding-inline: var(--trees-item-padding-x);\n    line-height: var(--trees-row-height);\n    color: var(--trees-search-fg);\n    background-color: var(--trees-search-bg);\n    border: 1px solid var(--trees-border-color);\n    border-radius: var(--trees-border-radius);\n    outline: none;\n    flex: 1;\n    margin-block: 1px;\n\n    &::placeholder {\n      color: color-mix(in lab,\n        var(--trees-search-fg) 65%,\n        var(--trees-search-bg));\n    }\n\n    &:focus-visible, &[data-file-tree-search-input-fake-focus=\"true\"] {\n      outline: var(--trees-focus-ring-width) solid var(--trees-focus-ring-color);\n      outline-offset: var(--trees-focus-ring-offset);\n    }\n  }\n\n  [role=\"tree\"] {\n    gap: var(--trees-gap-override, 0);\n    flex-direction: column;\n    display: flex;\n    position: relative;\n  }\n\n  [data-type=\"item\"] {\n    color: inherit;\n    font-family: var(--trees-font-family);\n    font-size: var(--trees-font-size);\n    text-align: start;\n    background-color: var(--trees-bg);\n    padding: 0 var(--trees-item-padding-x);\n    margin: 0 var(--trees-item-margin-x);\n    cursor: pointer;\n    user-select: none;\n    -webkit-touch-callout: none;\n    touch-action: manipulation;\n    flex: 0 0 var(--trees-row-height);\n    height: var(--trees-row-height);\n    line-height: var(--trees-row-height);\n    align-items: center;\n    gap: var(--trees-item-row-gap);\n    border-radius: var(--trees-border-radius);\n    --truncate-marker-background-color: var(--trees-bg);\n    --truncate-marker-background-overlay-color: transparent;\n    --truncate-marker-block-inset: 0px;\n    border: none;\n    outline: none;\n    display: flex;\n    position: relative;\n\n    &:hover, &[data-item-context-hover=\"true\"] {\n      background-color: var(--trees-bg-muted);\n      --truncate-marker-background-overlay-color: var(--trees-bg-muted);\n    }\n\n    &[data-item-focused=\"true\"], &:focus-visible {\n      z-index: 2;\n\n      & [data-item-flattened-subitems] {\n        --truncate-marker-block-inset: var(--trees-focus-ring-width);\n      }\n\n      &:before {\n        content: \"\";\n        border-radius: var(--trees-border-radius);\n        outline: var(--trees-focus-ring-width) solid\n          var(--trees-focus-ring-color);\n        outline-offset: var(--trees-focus-ring-offset);\n        pointer-events: none;\n        display: block;\n        position: absolute;\n        inset: 0;\n      }\n\n      &[data-item-selected=\"true\"]:before {\n        outline-color: var(--trees-selected-focused-border-color);\n      }\n    }\n\n    &[data-item-selected=\"true\"] {\n      color: var(--trees-selected-fg);\n      background-color: var(--trees-selected-bg);\n      --truncate-marker-background-overlay-color: var(--trees-selected-bg);\n      z-index: 3;\n\n      & [data-item-section=\"icon\"] {\n        color: var(--trees-selected-fg);\n      }\n    }\n\n    &[data-item-search-match=\"true\"] {\n      font-weight: var(--trees-search-font-weight);\n    }\n  }\n\n  [data-type=\"item\"][data-file-tree-sticky-row=\"true\"] {\n    pointer-events: auto;\n  }\n\n  [data-file-tree-virtualized-root=\"true\"][data-is-scrolling] [data-type=\"item\"][data-file-tree-sticky-row=\"true\"] {\n    pointer-events: none;\n  }\n\n  [data-file-tree-virtualized-root=\"true\"][data-is-scrolling] [data-type=\"item\"][data-file-tree-sticky-row=\"true\"]:hover:not([data-item-selected=\"true\"]), [data-file-tree-virtualized-root=\"true\"][data-is-scrolling] [data-type=\"item\"][data-file-tree-sticky-row=\"true\"][data-item-context-hover=\"true\"]:not([data-item-selected=\"true\"]) {\n    background-color: var(--trees-bg);\n    --truncate-marker-background-overlay-color: transparent;\n  }\n\n  [data-item-selected=\"true\"]:has( + [data-item-selected=\"true\"]) {\n    border-bottom-right-radius: 0;\n    border-bottom-left-radius: 0;\n  }\n\n  [data-item-selected=\"true\"] + [data-item-selected=\"true\"] {\n    border-top-left-radius: 0;\n    border-top-right-radius: 0;\n  }\n\n  [data-item-flattened-subitems] {\n    align-items: center;\n    gap: 2px;\n    display: inline-flex;\n  }\n\n  [data-item-flattened-subitem]:hover, [data-item-flattened-subitem-drag-target=\"true\"] {\n    text-decoration: underline;\n  }\n\n  [data-item-section=\"icon\"] {\n    color: var(--trees-fg-muted);\n    fill: currentColor;\n    width: var(--trees-icon-width);\n    flex-shrink: 0;\n    justify-content: center;\n    align-items: center;\n    display: flex;\n  }\n\n  :where([data-item-section=\"icon\"] > [data-icon-token]) {\n    color: var(--trees-fg-muted);\n  }\n\n  [data-file-tree-colored-icons=\"true\"] {\n    & [data-icon-token=\"astro\"] {\n      color: var(--trees-file-icon-color-astro);\n    }\n\n    & [data-icon-token=\"babel\"] {\n      color: var(--trees-file-icon-color-babel);\n    }\n\n    & [data-icon-token=\"bash\"] {\n      color: var(--trees-file-icon-color-bash);\n    }\n\n    & [data-icon-token=\"biome\"] {\n      color: var(--trees-file-icon-color-biome);\n    }\n\n    & [data-icon-token=\"bootstrap\"] {\n      color: var(--trees-file-icon-color-bootstrap);\n    }\n\n    & [data-icon-token=\"browserslist\"] {\n      color: var(--trees-file-icon-color-browserslist);\n    }\n\n    & [data-icon-token=\"bun\"] {\n      color: var(--trees-file-icon-color-bun);\n    }\n\n    & [data-icon-token=\"c\"] {\n      color: var(--trees-file-icon-color-c);\n    }\n\n    & [data-icon-token=\"cpp\"] {\n      color: var(--trees-file-icon-color-cpp);\n    }\n\n    & [data-icon-token=\"claude\"] {\n      color: var(--trees-file-icon-color-claude);\n    }\n\n    & [data-icon-token=\"css\"] {\n      color: var(--trees-file-icon-color-css);\n    }\n\n    & [data-icon-token=\"database\"] {\n      color: var(--trees-file-icon-color-database);\n    }\n\n    & [data-icon-token=\"default\"] {\n      color: var(--trees-file-icon-color-default);\n    }\n\n    & [data-icon-token=\"docker\"] {\n      color: var(--trees-file-icon-color-docker);\n    }\n\n    & [data-icon-token=\"eslint\"] {\n      color: var(--trees-file-icon-color-eslint);\n    }\n\n    & [data-icon-token=\"git\"] {\n      color: var(--trees-file-icon-color-git);\n    }\n\n    & [data-icon-token=\"go\"] {\n      color: var(--trees-file-icon-color-go);\n    }\n\n    & [data-icon-token=\"graphql\"] {\n      color: var(--trees-file-icon-color-graphql);\n    }\n\n    & [data-icon-token=\"html\"] {\n      color: var(--trees-file-icon-color-html);\n    }\n\n    & [data-icon-token=\"image\"] {\n      color: var(--trees-file-icon-color-image);\n    }\n\n    & [data-icon-token=\"javascript\"] {\n      color: var(--trees-file-icon-color-javascript);\n    }\n\n    & [data-icon-token=\"json\"] {\n      color: var(--trees-file-icon-color-json);\n    }\n\n    & [data-icon-token=\"markdown\"] {\n      color: var(--trees-file-icon-color-markdown);\n    }\n\n    & [data-icon-token=\"mcp\"] {\n      color: var(--trees-file-icon-color-mcp);\n    }\n\n    & [data-icon-token=\"npm\"] {\n      color: var(--trees-file-icon-color-npm);\n    }\n\n    & [data-icon-token=\"oxc\"] {\n      color: var(--trees-file-icon-color-oxc);\n    }\n\n    & [data-icon-token=\"postcss\"] {\n      color: var(--trees-file-icon-color-postcss);\n    }\n\n    & [data-icon-token=\"prettier\"] {\n      color: var(--trees-file-icon-color-prettier);\n    }\n\n    & [data-icon-token=\"python\"] {\n      color: var(--trees-file-icon-color-python);\n    }\n\n    & [data-icon-token=\"react\"] {\n      color: var(--trees-file-icon-color-react);\n    }\n\n    & [data-icon-token=\"ruby\"] {\n      color: var(--trees-file-icon-color-ruby);\n    }\n\n    & [data-icon-token=\"rust\"] {\n      color: var(--trees-file-icon-color-rust);\n    }\n\n    & [data-icon-token=\"sass\"] {\n      color: var(--trees-file-icon-color-sass);\n    }\n\n    & [data-icon-token=\"svg\"] {\n      color: var(--trees-file-icon-color-svg);\n    }\n\n    & [data-icon-token=\"svelte\"] {\n      color: var(--trees-file-icon-color-svelte);\n    }\n\n    & [data-icon-token=\"svgo\"] {\n      color: var(--trees-file-icon-color-svgo);\n    }\n\n    & [data-icon-token=\"swift\"] {\n      color: var(--trees-file-icon-color-swift);\n    }\n\n    & [data-icon-token=\"table\"] {\n      color: var(--trees-file-icon-color-table);\n    }\n\n    & [data-icon-token=\"text\"] {\n      color: var(--trees-file-icon-color-text);\n    }\n\n    & [data-icon-token=\"tailwind\"] {\n      color: var(--trees-file-icon-color-tailwind);\n    }\n\n    & [data-icon-token=\"terraform\"] {\n      color: var(--trees-file-icon-color-terraform);\n    }\n\n    & [data-icon-token=\"typescript\"] {\n      color: var(--trees-file-icon-color-typescript);\n    }\n\n    & [data-icon-token=\"vite\"] {\n      color: var(--trees-file-icon-color-vite);\n    }\n\n    & [data-icon-token=\"vscode\"] {\n      color: var(--trees-file-icon-color-vscode);\n    }\n\n    & [data-icon-token=\"vue\"] {\n      color: var(--trees-file-icon-color-vue);\n    }\n\n    & [data-icon-token=\"wasm\"] {\n      color: var(--trees-file-icon-color-wasm);\n    }\n\n    & [data-icon-token=\"webpack\"] {\n      color: var(--trees-file-icon-color-webpack);\n    }\n\n    & [data-icon-token=\"yml\"] {\n      color: var(--trees-file-icon-color-yml);\n    }\n\n    & [data-icon-token=\"zig\"] {\n      color: var(--trees-file-icon-color-zig);\n    }\n\n    & [data-icon-token=\"zip\"] {\n      color: var(--trees-file-icon-color-zip);\n    }\n  }\n\n  [data-icon-name=\"file-tree-icon-chevron\"] {\n    &[data-align-capitals=\"false\"] {\n      transform: translate(0, var(--trees-icon-nudge));\n    }\n\n    &[data-align-capitals=\"true\"] {\n      transform: translate(0);\n    }\n  }\n\n  [data-item-section=\"content\"] {\n    text-align: start;\n    text-overflow: ellipsis;\n    flex: 0 auto;\n    min-width: 0;\n    max-width: 100%;\n    overflow: hidden;\n  }\n\n  [data-item-section=\"decoration\"] {\n    text-align: end;\n    min-width: 0;\n    color: var(--trees-fg-muted);\n    flex: 1 1 0;\n    justify-content: flex-end;\n    display: flex;\n    overflow: hidden;\n  }\n\n  [data-item-section=\"decoration\"] > span {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    justify-content: flex-end;\n    align-items: center;\n    min-width: 0;\n    max-width: 100%;\n    display: inline-flex;\n    overflow: hidden;\n  }\n\n  [data-item-section=\"git\"], [data-item-section=\"action\"] {\n    flex: none;\n    justify-content: center;\n    align-items: center;\n    display: flex;\n  }\n\n  [data-item-section=\"git\"] {\n    width: var(--trees-git-lane-width);\n  }\n\n  [data-item-section=\"action\"] {\n    width: var(--trees-action-lane-width);\n    color: var(--trees-fg-muted);\n    fill: currentColor;\n    pointer-events: none;\n  }\n\n  [data-item-section=\"git\"] > span, [data-item-section=\"action\"] > span {\n    justify-content: center;\n    align-items: center;\n    width: 100%;\n    display: inline-flex;\n  }\n\n  [data-item-action-affordance=\"decorative\"] {\n    opacity: .85;\n  }\n\n  [data-item-rename-input] {\n    appearance: none;\n    width: 100%;\n    min-width: 0;\n    height: calc(var(--trees-row-height) - 4px);\n    font-family: inherit;\n    font-size: inherit;\n    color: inherit;\n    box-sizing: border-box;\n    background-color: #0000;\n    border: 0;\n    outline: none;\n    padding-inline: 6px;\n  }\n\n  [data-item-section=\"content\"]:has([data-item-rename-input]) ~ [data-item-section=\"action\"], [data-item-section=\"content\"]:has([data-item-rename-input]) ~ [data-item-section=\"decoration\"] {\n    display: none;\n  }\n\n  [aria-expanded=\"false\"][data-item-type=\"folder\"] > [data-item-section=\"icon\"] > [data-icon-name=\"file-tree-icon-chevron\"] {\n    &[data-align-capitals=\"true\"] {\n      transform: rotate(-90deg)\n        translate(calc(var(--trees-icon-nudge) / 2),\n          calc(var(--trees-icon-nudge) / 2));\n    }\n\n    &[data-align-capitals=\"false\"] {\n      transform: rotate(-90deg)\n        translate(calc(var(--trees-icon-nudge) / 2 * -1),\n          calc(var(--trees-icon-nudge) / 2));\n    }\n  }\n\n  [data-item-section=\"spacing\"] {\n    height: var(--trees-row-height);\n    padding-left: calc(calc(var(--trees-icon-width) / 2) - .5px);\n    flex-direction: row;\n    justify-content: center;\n    align-items: center;\n    display: flex;\n\n    &:empty {\n      padding-left: 0;\n    }\n  }\n\n  [data-item-section=\"spacing-item\"] {\n    border-left: 1px solid var(--trees-indent-guide-bg);\n    height: 100%;\n    margin-right: calc(var(--trees-level-gap) - 1px);\n    opacity: 0;\n    transition: opacity .15s;\n    display: inline-block;\n    transform: translateX(-.25px);\n\n    & + & {\n      margin-left: calc(var(--trees-item-row-gap) + calc(var(--trees-icon-width) / 2) - .5px);\n    }\n  }\n\n  :host(:hover) [data-item-section=\"spacing-item\"] {\n    opacity: .75;\n  }\n\n  [data-item-contains-git-change=\"true\"] > [data-item-section=\"git\"] {\n    color: var(--trees-git-modified-color);\n    opacity: .5;\n    fill: currentColor;\n  }\n\n  [data-item-git-status] {\n    & > :where([data-item-section=\"icon\"]) > :where(:not([data-icon-name=\"file-tree-icon-chevron\"])), & > [data-item-section=\"content\"] {\n      color: var(--trees-item-git-status-color);\n    }\n\n    & > [data-item-section=\"git\"] {\n      color: var(--trees-item-git-status-color);\n      font-weight: var(--trees-font-weight-semibold);\n    }\n  }\n\n  [data-item-git-status=\"added\"] {\n    --trees-item-git-status-color: var(--trees-git-added-color);\n  }\n\n  [data-item-git-status=\"deleted\"] {\n    --trees-item-git-status-color: var(--trees-git-deleted-color);\n  }\n\n  [data-item-git-status=\"ignored\"] {\n    --trees-item-git-status-color: var(--trees-git-ignored-color);\n\n    & > [data-item-section=\"icon\"] {\n      opacity: .5;\n    }\n  }\n\n  [data-item-section=\"git\"] [data-icon-name=\"file-tree-icon-dot\"] {\n    transform: translateY(calc(.65ex - 50%));\n  }\n\n  [data-item-git-status=\"modified\"] {\n    --trees-item-git-status-color: var(--trees-git-modified-color);\n  }\n\n  [data-item-git-status=\"renamed\"] {\n    --trees-item-git-status-color: var(--trees-git-renamed-color);\n  }\n\n  [data-item-git-status=\"untracked\"] {\n    --trees-item-git-status-color: var(--trees-git-untracked-color);\n  }\n\n  [data-item-drag-target=\"true\"] {\n    background-color: var(--trees-selected-bg);\n  }\n\n  [data-item-dragging=\"true\"] {\n    opacity: .5;\n  }\n\n  [data-item-section=\"lock\"] {\n    color: var(--trees-fg-muted);\n    flex: none;\n    align-items: center;\n    margin-left: auto;\n    display: flex;\n  }\n\n  [data-item-section=\"lock\"] svg {\n    display: block;\n  }\n\n  [data-type=\"header-slot\"] {\n    flex: none;\n    display: block;\n  }\n\n  [data-type=\"context-menu-wash\"] {\n    z-index: 3;\n    touch-action: none;\n    background-color: #0000;\n    position: absolute;\n    inset: 0;\n  }\n\n  [data-type=\"context-menu-anchor\"] {\n    top: 0;\n    right: var(--trees-context-menu-trigger-inline-offset);\n    z-index: 4;\n    align-items: center;\n    display: none;\n    position: absolute;\n\n    &[data-visible=\"true\"] {\n      display: flex;\n    }\n  }\n\n  [data-file-tree-virtualized-root=\"true\"][data-is-scrolling] [data-type=\"context-menu-anchor\"] {\n    display: none;\n  }\n\n  [data-type=\"context-menu-anchor\"] > slot[name=\"context-menu\"] {\n    flex: 0 0 0;\n    width: 0;\n    min-width: 0;\n    display: block;\n    overflow: visible;\n  }\n\n  [data-type=\"context-menu-trigger\"] {\n    all: unset;\n    width: var(--trees-action-lane-width);\n    color: var(--trees-fg-muted);\n    fill: currentColor;\n    cursor: pointer;\n    font-family: var(--trees-font-family);\n    font-size: var(--trees-font-size);\n    border-top-right-radius: var(--trees-border-radius);\n    border-bottom-right-radius: var(--trees-border-radius);\n    margin: var(--trees-focus-ring-width);\n    height: calc(var(--trees-row-height) - var(--trees-focus-ring-width) * 2);\n    border-width: 0;\n    justify-content: center;\n    align-items: center;\n    transition: color .12s;\n    display: flex;\n  }\n\n  [data-type=\"context-menu-trigger\"]:hover, [data-type=\"context-menu-trigger\"][aria-expanded=\"true\"] {\n    color: var(--trees-fg);\n  }\n\n  [data-truncate-container] {\n    --truncate-internal-marker-fade-width: var(--truncate-marker-fade-width, 2px);\n    --truncate-internal-marker-gap: var(--truncate-marker-gap, 0px);\n    --truncate-internal-marker-opacity: var(--truncate-marker-opacity, 50%);\n    --truncate-internal-middle-marker-opacity: var(--truncate-middle-marker-opacity, 80%);\n    --truncate-internal-marker-background-color: var(--truncate-marker-background-color, light-dark(#fff, #000));\n    --truncate-internal-marker-background-overlay-color: var(--truncate-marker-background-overlay-color, transparent);\n    --truncate-internal-marker-block-inset: var(--truncate-marker-block-inset, 0px);\n    --truncate-internal-marker-fade-out-duration: var(--truncate-marker-fade-out-duration, 0s);\n    --truncate-internal-marker-fade-in-duration: var(--truncate-marker-fade-in-duration, .1s);\n    --truncate-internal-fade-marker-color: var(--truncate-fade-marker-color, #000);\n    --truncate-internal-fade-marker-width: var(--truncate-fade-marker-width, .2lh);\n    --truncate-internal-single-line-height: 1lh;\n    height: var(--truncate-internal-single-line-height);\n    min-width: 0;\n    margin-top: -1px;\n    margin-bottom: -1px;\n    overflow: hidden;\n  }\n\n  [data-truncate-marker] {\n    height: var(--truncate-internal-single-line-height);\n    padding-block: var(--truncate-internal-marker-block-inset);\n    box-sizing: border-box;\n    z-index: 2;\n    color: color-mix(in srgb,\n      currentColor var(--truncate-internal-marker-opacity),\n      transparent);\n    opacity: 0;\n    transition: opacity var(--truncate-internal-marker-fade-out-duration)\n      ease-in-out;\n    background-clip: content-box;\n    align-items: center;\n    display: flex;\n    position: absolute;\n  }\n\n  @container measure (height > 1lh) {\n    [data-truncate-marker] {\n      opacity: 1;\n      transition: opacity var(--truncate-internal-marker-fade-in-duration)\n        ease-in-out;\n    }\n  }\n\n  [data-truncate-grid] {\n    display: grid;\n    position: relative;\n  }\n\n  [data-truncate-content=\"visible\"] {\n    white-space: nowrap;\n  }\n\n  [data-truncate-content=\"overflow\"] {\n    opacity: 0;\n    pointer-events: none;\n    user-select: none;\n    word-break: break-all;\n    margin-top: calc(-1 * var(--truncate-internal-single-line-height));\n  }\n\n  [data-truncate-marker-cell] {\n    user-select: none;\n    pointer-events: none;\n    overflow: visible;\n    container: measure / size;\n  }\n\n  [data-truncate-container=\"truncate\"] {\n    & [data-truncate-grid] {\n      grid-template-columns: minmax(0, max-content) 0;\n    }\n\n    & [data-truncate-marker] {\n      right: 0;\n    }\n\n    & [data-truncate-fade] {\n      margin-right: calc(-2 * var(--truncate-internal-fade-marker-width));\n    }\n  }\n\n  [data-truncate-container=\"fruncate\"] {\n    & [data-truncate-grid] {\n      grid-template-columns: 0 minmax(0, max-content) auto;\n    }\n\n    & [data-truncate-content] {\n      direction: rtl;\n    }\n\n    & [data-truncate-content] > span {\n      unicode-bidi: plaintext;\n    }\n\n    & [data-truncate-fade] {\n      margin-left: calc(-2 * var(--truncate-internal-fade-marker-width));\n    }\n  }\n\n  [data-truncate-variant=\"default\"] {\n    & [data-truncate-marker] {\n      background-color: var(--truncate-internal-marker-background-color);\n      background-image: linear-gradient(var(--truncate-internal-marker-background-overlay-color),\n        var(--truncate-internal-marker-background-overlay-color));\n    }\n\n    & [data-truncate-marker]:after, & [data-truncate-marker]:before {\n      content: \"\";\n      width: calc(var(--truncate-internal-marker-fade-width) +\n          var(--truncate-internal-marker-gap));\n      height: max(0px,\n        calc(var(--truncate-internal-single-line-height) -\n            var(--truncate-internal-marker-block-inset) * 2));\n      background-color: var(--truncate-internal-marker-background-color);\n      background-image: linear-gradient(var(--truncate-internal-marker-background-overlay-color),\n        var(--truncate-internal-marker-background-overlay-color));\n      -webkit-mask-image: linear-gradient(var(--truncate-internal-fade-dir),\n        #000 0%,\n        #000 var(--truncate-internal-marker-gap),\n        transparent 100%);\n      mask-image: linear-gradient(var(--truncate-internal-fade-dir),\n        #000 0%,\n        #000 var(--truncate-internal-marker-gap),\n        transparent 100%);\n      position: absolute;\n      inset-block-start: var(--truncate-internal-marker-block-inset);\n    }\n\n    & [data-truncate-marker]:after {\n      --truncate-internal-fade-dir: to right;\n      right: calc(-1 *\n          (\n            var(--truncate-internal-marker-fade-width) +\n              var(--truncate-internal-marker-gap)\n          ));\n    }\n\n    & [data-truncate-marker]:before {\n      --truncate-internal-fade-dir: to left;\n      left: calc(-1 *\n          (\n            var(--truncate-internal-marker-fade-width) +\n              var(--truncate-internal-marker-gap)\n          ));\n    }\n  }\n\n  [data-truncate-variant=\"fade\"] {\n    & [data-truncate-marker] {\n      background: none;\n    }\n  }\n\n  [data-truncate-fade] {\n    box-shadow: 0 0 calc(var(--truncate-internal-fade-marker-width) / 2)\n        var(--truncate-internal-fade-marker-color),\n      0 0 var(--truncate-internal-fade-marker-width)\n        var(--truncate-internal-fade-marker-color);\n    width: calc(var(--truncate-internal-fade-marker-width) * 2);\n    height: calc(var(--truncate-internal-single-line-height) -\n        (var(--truncate-internal-fade-marker-width) * 2));\n    margin: var(--truncate-internal-fade-marker-width) 0;\n  }\n\n  [data-truncate-group-container=\"middle\"] {\n    & [data-truncate-container] {\n      --truncate-marker-opacity: var(--truncate-internal-middle-marker-opacity);\n    }\n\n    min-width: 0;\n    display: flex;\n\n    & > div {\n      min-width: 0;\n    }\n\n    & > div[data-truncate-segment-priority=\"1\"] {\n      flex: 0 1 max-content;\n    }\n\n    & > div[data-truncate-segment-priority=\"2\"] {\n      flex: 0 999999 max-content;\n    }\n  }\n}\n\n@layer theme, unsafe;\n";
++var style_default = "@layer base {\n  :host {\n    --trees-accent: var(--trees-accent-override, #009fff);\n    --trees-fg: var(--trees-fg-override, var(--trees-theme-sidebar-fg, light-dark(#6c6c71, #adadb1)));\n    --trees-fg-muted: var(--trees-fg-muted-override, var(--trees-theme-sidebar-header-fg, #84848a));\n    --trees-bg: var(--trees-bg-override, var(--trees-theme-sidebar-bg, light-dark(#f8f8f8, #141415)));\n    --trees-bg-muted: var(--trees-bg-muted-override, var(--trees-theme-list-hover-bg, light-dark(color-mix(in lab,\n            var(--trees-accent) var(--trees-bg-alpha-light, 8%),\n            var(--trees-bg)), color-mix(in lab,\n            var(--trees-accent) var(--trees-bg-alpha-dark, 10%),\n            var(--trees-bg)))));\n    --trees-input-bg: var(--trees-input-bg-override, light-dark(#f8f8f8, #070707));\n    --trees-added-light: #16a994;\n    --trees-added-dark: #00cab1;\n    --trees-ignored-light: #adadb1;\n    --trees-ignored-dark: #4a4a4e;\n    --trees-modified-light: #1ca1c7;\n    --trees-modified-dark: #08c0ef;\n    --trees-renamed-light: #d5a910;\n    --trees-renamed-dark: #ffd452;\n    --trees-untracked-light: #16a994;\n    --trees-untracked-dark: #00cab1;\n    --trees-deleted-light: #ff2e3f;\n    --trees-deleted-dark: #ff6762;\n    --trees-border-color: var(--trees-border-color-override, var(--trees-theme-sidebar-border, light-dark(#eeeeef, #070707)));\n    --trees-indent-guide-bg: var(--trees-indent-guide-bg-override, color-mix(in lab, var(--trees-fg-muted) 25%, transparent));\n    --trees-density: var(--trees-density-override, 1);\n    --trees-border-radius: var(--trees-border-radius-override, calc(6px * var(--trees-density)));\n    --trees-font-family: var(--trees-font-family-override, system-ui);\n    --trees-font-size: var(--trees-font-size-override, 13px);\n    --trees-font-weight-regular: var(--trees-font-weight-regular-override, 400);\n    --trees-font-weight-semibold: var(--trees-font-weight-semibold-override, 600);\n    --trees-focus-ring-color: var(--trees-focus-ring-color-override, var(--trees-theme-focus-ring, var(--trees-accent)));\n    --trees-focus-ring-width: var(--trees-focus-ring-width-override, 1px);\n    --trees-focus-ring-offset: var(--trees-focus-ring-offset-override, -1px);\n    --trees-search-fg: var(--trees-search-fg-override, var(--trees-theme-input-fg, var(--trees-fg)));\n    --trees-search-font-weight: var(--trees-search-font-weight-override, 600);\n    --trees-search-bg: var(--trees-search-bg-override, var(--trees-theme-input-bg, var(--trees-input-bg)));\n    --trees-scrollbar-thumb: var(--trees-scrollbar-thumb-override, var(--trees-theme-scrollbar-thumb, color-mix(in lab, var(--trees-fg) 25%, var(--trees-bg))));\n    --trees-selected-fg: var(--trees-selected-fg-override, var(--trees-theme-list-active-selection-fg, var(--trees-fg)));\n    --trees-selected-bg: var(--trees-selected-bg-override, var(--trees-theme-list-active-selection-bg, light-dark(color-mix(in lab, var(--trees-accent) 12%, var(--trees-bg)), color-mix(in lab, var(--trees-accent) 15%, var(--trees-bg)))));\n    --trees-selected-focused-border-color: var(--trees-selected-focused-border-color-override, var(--trees-theme-focus-ring, var(--trees-accent)));\n    --trees-status-added: var(--trees-status-added-override, var(--trees-theme-git-added-fg, light-dark(var(--trees-added-light), var(--trees-added-dark))));\n    --trees-status-ignored: var(--trees-status-ignored-override, var(--trees-theme-git-ignored-fg, light-dark(var(--trees-ignored-light), var(--trees-ignored-dark))));\n    --trees-status-modified: var(--trees-status-modified-override, var(--trees-theme-git-modified-fg, light-dark(var(--trees-modified-light), var(--trees-modified-dark))));\n    --trees-status-renamed: var(--trees-status-renamed-override, var(--trees-theme-git-renamed-fg, light-dark(var(--trees-renamed-light), var(--trees-renamed-dark))));\n    --trees-status-untracked: var(--trees-status-untracked-override, var(--trees-theme-git-untracked-fg, light-dark(var(--trees-untracked-light), var(--trees-untracked-dark))));\n    --trees-status-deleted: var(--trees-status-deleted-override, var(--trees-theme-git-deleted-fg, light-dark(var(--trees-deleted-light), var(--trees-deleted-dark))));\n    --trees-git-modified-color: var(--trees-git-modified-color-override, var(--trees-status-modified));\n    --trees-git-added-color: var(--trees-git-added-color-override, var(--trees-status-added));\n    --trees-git-ignored-color: var(--trees-git-ignored-color-override, var(--trees-status-ignored));\n    --trees-git-deleted-color: var(--trees-git-deleted-color-override, var(--trees-status-deleted));\n    --trees-git-renamed-color: var(--trees-git-renamed-color-override, var(--trees-status-renamed));\n    --trees-git-untracked-color: var(--trees-git-untracked-color-override, var(--trees-status-untracked));\n    --trees-icon-gray: light-dark(#84848a, #adadb1);\n    --trees-icon-red: light-dark(#d52c36, #ff6762);\n    --trees-icon-vermilion: light-dark(#ff8c5b, #d5512f);\n    --trees-icon-orange: light-dark(#d47628, #ffa359);\n    --trees-icon-yellow: light-dark(#d5a910, #ffd452);\n    --trees-icon-green: light-dark(#199f43, #5ecc71);\n    --trees-icon-teal: light-dark(#17a5af, #64d1db);\n    --trees-icon-cyan: light-dark(#1ca1c7, #68cdf2);\n    --trees-icon-blue: light-dark(#1a85d4, #69b1ff);\n    --trees-icon-indigo: light-dark(#693acf, #9d6afb);\n    --trees-icon-purple: light-dark(#a631be, #d568ea);\n    --trees-icon-pink: light-dark(#d32a61, #ff678d);\n    --trees-icon-mauve: light-dark(#594c5b, #79697b);\n    --trees-file-icon-color-default: var(--trees-file-icon-color, var(--trees-icon-gray));\n    --trees-file-icon-color-astro: var(--trees-file-icon-color, var(--trees-icon-purple));\n    --trees-file-icon-color-babel: var(--trees-file-icon-color, var(--trees-icon-yellow));\n    --trees-file-icon-color-bash: var(--trees-file-icon-color, var(--trees-icon-green));\n    --trees-file-icon-color-biome: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-bootstrap: var(--trees-file-icon-color, var(--trees-icon-indigo));\n    --trees-file-icon-color-browserslist: var(--trees-file-icon-color, var(--trees-icon-yellow));\n    --trees-file-icon-color-bun: var(--trees-file-icon-color, var(--trees-icon-mauve));\n    --trees-file-icon-color-c: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-cpp: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-claude: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-css: var(--trees-file-icon-color, var(--trees-icon-indigo));\n    --trees-file-icon-color-database: var(--trees-file-icon-color, var(--trees-icon-purple));\n    --trees-file-icon-color-docker: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-eslint: var(--trees-file-icon-color, var(--trees-icon-indigo));\n    --trees-file-icon-color-git: var(--trees-file-icon-vermilion, var(--trees-icon-vermilion));\n    --trees-file-icon-color-go: var(--trees-file-icon-color, var(--trees-icon-cyan));\n    --trees-file-icon-color-graphql: var(--trees-file-icon-color, var(--trees-icon-pink));\n    --trees-file-icon-color-html: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-image: var(--trees-file-icon-color, var(--trees-icon-pink));\n    --trees-file-icon-color-javascript: var(--trees-file-icon-color, var(--trees-icon-yellow));\n    --trees-file-icon-color-json: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-markdown: var(--trees-file-icon-color, var(--trees-icon-green));\n    --trees-file-icon-color-mcp: var(--trees-file-icon-color, var(--trees-icon-teal));\n    --trees-file-icon-color-npm: var(--trees-file-icon-color, var(--trees-icon-red));\n    --trees-file-icon-color-oxc: var(--trees-file-icon-cyan, var(--trees-icon-cyan));\n    --trees-file-icon-color-postcss: var(--trees-file-icon-color, var(--trees-icon-red));\n    --trees-file-icon-color-prettier: var(--trees-file-icon-color, var(--trees-icon-teal));\n    --trees-file-icon-color-python: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-react: var(--trees-file-icon-color, var(--trees-icon-cyan));\n    --trees-file-icon-color-ruby: var(--trees-file-icon-color, var(--trees-icon-red));\n    --trees-file-icon-color-rust: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-sass: var(--trees-file-icon-color, var(--trees-icon-pink));\n    --trees-file-icon-color-svg: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-svelte: var(--trees-file-icon-color, var(--trees-icon-red));\n    --trees-file-icon-color-svgo: var(--trees-file-icon-color, var(--trees-icon-green));\n    --trees-file-icon-color-swift: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-table: var(--trees-file-icon-color, var(--trees-icon-teal));\n    --trees-file-icon-color-text: var(--trees-file-icon-color, var(--trees-icon-gray));\n    --trees-file-icon-color-tailwind: var(--trees-file-icon-color, var(--trees-icon-cyan));\n    --trees-file-icon-color-terraform: var(--trees-file-icon-color, var(--trees-icon-indigo));\n    --trees-file-icon-color-typescript: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-vite: var(--trees-file-icon-color, var(--trees-icon-purple));\n    --trees-file-icon-color-vscode: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-vue: var(--trees-file-icon-color, var(--trees-icon-green));\n    --trees-file-icon-color-wasm: var(--trees-file-icon-color, var(--trees-icon-indigo));\n    --trees-file-icon-color-webpack: var(--trees-file-icon-color, var(--trees-icon-blue));\n    --trees-file-icon-color-yml: var(--trees-file-icon-color, var(--trees-icon-red));\n    --trees-file-icon-color-zig: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-file-icon-color-zip: var(--trees-file-icon-color, var(--trees-icon-orange));\n    --trees-level-gap: var(--trees-level-gap-override, calc(8px * var(--trees-density)));\n    --trees-item-padding-x: var(--trees-item-padding-x-override, calc(8px * var(--trees-density)));\n    --trees-item-margin-x: var(--trees-item-margin-x-override, calc(2px * var(--trees-density)));\n    --trees-item-row-gap: var(--trees-item-row-gap-override, calc(6px * var(--trees-density)));\n    --trees-icon-width: var(--trees-icon-width-override, 16px);\n    --trees-icon-nudge: var(--trees-icon-nudge-override, calc(1px * var(--trees-density)));\n    --trees-row-height: var(--trees-item-height, 30px);\n    --trees-git-lane-width: var(--trees-git-lane-width-override, 12px);\n    --trees-action-lane-width: var(--trees-action-lane-width-override, calc(var(--trees-icon-width) + 2px));\n    --trees-context-menu-trigger-inline-offset: calc(var(--trees-padding-inline) + var(--trees-item-padding-x) -\n        var(--trees-focus-ring-width));\n    --trees-scrollbar-gutter: var(--trees-scrollbar-gutter-override, 6px);\n    --trees-padding-inline: var(--trees-padding-inline-override, 16px);\n    color-scheme: light dark;\n    font-size: var(--trees-font-size);\n    color: var(--trees-fg);\n    background-color: var(--trees-bg);\n    --truncate-marker-background-color: var(--trees-bg);\n    --truncate-marker-background-overlay-color: transparent;\n    font-family: var(--trees-font-family);\n    font-weight: var(--trees-font-weight-regular);\n    flex-direction: column;\n    display: flex;\n  }\n\n  :host([data-file-tree-virtualized=\"true\"]) {\n    height: 100%;\n    overflow: hidden;\n  }\n\n  [data-file-tree-virtualized-wrapper=\"true\"], [data-file-tree-virtualized-root=\"true\"] {\n    flex-direction: column;\n    height: 100%;\n    display: flex;\n    overflow: hidden;\n  }\n\n  [data-file-tree-virtualized-scroll=\"true\"], [data-file-tree-scrollbar-measure=\"true\"] {\n    --trees-scrollbar-thumb-current: transparent;\n    scrollbar-gutter: stable;\n    overflow-y: auto;\n\n    &:hover {\n      --trees-scrollbar-thumb-current: var(--trees-scrollbar-thumb);\n    }\n\n    &::-webkit-scrollbar {\n      width: var(--trees-scrollbar-gutter);\n      height: var(--trees-scrollbar-gutter);\n    }\n\n    &::-webkit-scrollbar-track {\n      background: none;\n    }\n\n    &::-webkit-scrollbar-thumb {\n      background-color: var(--trees-scrollbar-thumb-current);\n      border-radius: calc(var(--trees-scrollbar-gutter) / 2);\n      background-clip: content-box;\n      border: 1px solid #0000;\n    }\n\n    &::-webkit-scrollbar-corner {\n      background-color: #0000;\n    }\n  }\n\n  [data-file-tree-scrollbar-measure=\"true\"] {\n    visibility: hidden;\n    pointer-events: none;\n    width: 100px;\n    height: 100px;\n    position: absolute;\n    top: 0;\n    left: 0;\n  }\n\n  @supports ((-moz-appearance: none)) {\n    [data-file-tree-virtualized-scroll=\"true\"], [data-file-tree-scrollbar-measure=\"true\"] {\n      scrollbar-width: thin;\n      scrollbar-color: var(--trees-scrollbar-thumb-current) transparent;\n    }\n  }\n\n  [data-file-tree-virtualized-scroll=\"true\"] {\n    min-height: 0;\n    padding-inline: max(calc(var(--trees-padding-inline) - var(--trees-item-margin-x)),\n        0px)\n      /* NOTE(amadeus): We can assume that all Webkit based browser gutters\n       * will align to the value of '--trees-scrollbar-gutter', however if not, then\n       * `--trees-scrollbar-gutter-measured` should correct it. Mostly we are\n       * hoping to avoid SSR alignment jumps if possible. In non-SSR'd environments\n       * `--trees-scrollbar-gutter-measured` should always be immediately available.\n       */\n      max(calc(var(--trees-padding-inline) - var(--trees-item-margin-x) -\n            var(--trees-scrollbar-gutter-measured, var(--trees-scrollbar-gutter))),\n        0px);\n    flex: 1 1 0;\n    position: relative;\n    overflow-y: auto;\n  }\n\n  @supports ((-moz-appearance: none)) {\n    [data-file-tree-virtualized-scroll=\"true\"] {\n      padding-inline: max(calc(var(--trees-padding-inline) - var(--trees-item-margin-x)),\n          0px)\n        /* NOTE(amadeus): However on Firefox it can vary a little bit, but most\n         * likely the majority of cases will default to a 0px width scrollbar lets\n         * inherit that first to avoid SSR jumps. In non-SSR'd environments\n         * `--trees-scrollbar-gutter-measured` should always be immediately available.\n         */\n        max(calc(var(--trees-padding-inline) - var(--trees-item-margin-x) -\n              var(--trees-scrollbar-gutter-measured, 0px)),\n          0px);\n    }\n  }\n\n  [data-file-tree-sticky-overlay=\"true\"] {\n    z-index: 4;\n    pointer-events: none;\n    height: 0;\n    position: sticky;\n    top: 0;\n    overflow: visible;\n  }\n\n  [data-file-tree-virtualized-root=\"true\"][data-scroll-at-top=\"true\"]:not([data-overlay-reveal]) [data-file-tree-sticky-overlay=\"true\"] {\n    visibility: hidden;\n  }\n\n  [data-file-tree-sticky-overlay-content=\"true\"] {\n    background-color: var(--trees-bg);\n    pointer-events: none;\n    position: relative;\n  }\n\n  [data-file-tree-virtualized-list=\"true\"] {\n    background-color: var(--trees-bg);\n    overflow-anchor: none;\n    width: 100%;\n    min-height: 100%;\n    position: relative;\n\n    &[data-is-scrolling] {\n      pointer-events: none;\n    }\n  }\n\n  [data-file-tree-virtualized-sticky-offset=\"true\"] {\n    contain: layout size;\n  }\n\n  [data-file-tree-virtualized-sticky=\"true\"] {\n    isolation: isolate;\n    will-change: transform;\n    flex-direction: column;\n    width: 100%;\n    display: flex;\n    position: sticky;\n    top: 0;\n  }\n\n  [data-file-tree-search-container] {\n    padding: 0;\n    padding-inline: var(--trees-padding-inline);\n    margin-bottom: var(--trees-item-row-gap);\n    display: flex;\n  }\n\n  [data-file-tree-search-input] {\n    --trees-focus-ring-width: 2px;\n    font-family: var(--trees-font-family);\n    font-size: var(--trees-font-size);\n    height: var(--trees-row-height);\n    padding-inline: var(--trees-item-padding-x);\n    line-height: var(--trees-row-height);\n    color: var(--trees-search-fg);\n    background-color: var(--trees-search-bg);\n    border: 1px solid var(--trees-border-color);\n    border-radius: var(--trees-border-radius);\n    outline: none;\n    flex: 1;\n    margin-block: 1px;\n\n    &::placeholder {\n      color: color-mix(in lab,\n        var(--trees-search-fg) 65%,\n        var(--trees-search-bg));\n    }\n\n    &:focus-visible, &[data-file-tree-search-input-fake-focus=\"true\"] {\n      outline: var(--trees-focus-ring-width) solid var(--trees-focus-ring-color);\n      outline-offset: var(--trees-focus-ring-offset);\n    }\n  }\n\n  [role=\"tree\"] {\n    gap: var(--trees-gap-override, 0);\n    flex-direction: column;\n    display: flex;\n    position: relative;\n  }\n\n  [data-type=\"item\"] {\n    color: inherit;\n    font-family: var(--trees-font-family);\n    font-size: var(--trees-font-size);\n    text-align: start;\n    background-color: var(--trees-bg);\n    padding: 0 var(--trees-item-padding-x);\n    margin: 0 var(--trees-item-margin-x);\n    cursor: pointer;\n    user-select: none;\n    -webkit-touch-callout: none;\n    touch-action: manipulation;\n    flex: 0 0 var(--trees-row-height);\n    height: var(--trees-row-height);\n    line-height: var(--trees-row-height);\n    align-items: center;\n    gap: var(--trees-item-row-gap);\n    border-radius: var(--trees-border-radius);\n    --truncate-marker-background-color: var(--trees-bg);\n    --truncate-marker-background-overlay-color: transparent;\n    --truncate-marker-block-inset: 0px;\n    border: none;\n    outline: none;\n    display: flex;\n    position: relative;\n\n    &:hover, &[data-item-context-hover=\"true\"] {\n      background-color: var(--trees-bg-muted);\n      --truncate-marker-background-overlay-color: var(--trees-bg-muted);\n    }\n\n    &[data-item-focused=\"true\"], &:focus-visible {\n      z-index: 2;\n\n      & [data-item-flattened-subitems] {\n        --truncate-marker-block-inset: var(--trees-focus-ring-width);\n      }\n\n      &:before {\n        content: \"\";\n        border-radius: var(--trees-border-radius);\n        outline: var(--trees-focus-ring-width) solid\n          var(--trees-focus-ring-color);\n        outline-offset: var(--trees-focus-ring-offset);\n        pointer-events: none;\n        display: block;\n        position: absolute;\n        inset: 0;\n      }\n\n      &[data-item-selected=\"true\"]:before {\n        outline-color: var(--trees-selected-focused-border-color);\n      }\n    }\n\n    &[data-item-selected=\"true\"] {\n      color: var(--trees-selected-fg);\n      background-color: var(--trees-selected-bg);\n      --truncate-marker-background-overlay-color: var(--trees-selected-bg);\n      z-index: 3;\n\n      & [data-item-section=\"icon\"] {\n        color: var(--trees-selected-fg);\n      }\n    }\n\n    &[data-item-search-match=\"true\"] {\n      font-weight: var(--trees-search-font-weight);\n    }\n  }\n\n  [data-type=\"item\"][data-file-tree-sticky-row=\"true\"] {\n    pointer-events: auto;\n  }\n\n  [data-file-tree-virtualized-root=\"true\"][data-is-scrolling] [data-type=\"item\"][data-file-tree-sticky-row=\"true\"] {\n    pointer-events: none;\n  }\n\n  [data-file-tree-virtualized-root=\"true\"][data-is-scrolling] [data-type=\"item\"][data-file-tree-sticky-row=\"true\"]:hover:not([data-item-selected=\"true\"]), [data-file-tree-virtualized-root=\"true\"][data-is-scrolling] [data-type=\"item\"][data-file-tree-sticky-row=\"true\"][data-item-context-hover=\"true\"]:not([data-item-selected=\"true\"]) {\n    background-color: var(--trees-bg);\n    --truncate-marker-background-overlay-color: transparent;\n  }\n\n  [data-item-selected=\"true\"]:has( + [data-item-selected=\"true\"]) {\n    border-bottom-right-radius: 0;\n    border-bottom-left-radius: 0;\n  }\n\n  [data-item-selected=\"true\"] + [data-item-selected=\"true\"] {\n    border-top-left-radius: 0;\n    border-top-right-radius: 0;\n  }\n\n  [data-item-flattened-subitems] {\n    align-items: center;\n    gap: 2px;\n    display: inline-flex;\n  }\n\n  [data-item-flattened-subitem]:hover, [data-item-flattened-subitem-drag-target=\"true\"] {\n    text-decoration: underline;\n  }\n\n  [data-item-section=\"icon\"] {\n    color: var(--trees-fg-muted);\n    fill: currentColor;\n    width: var(--trees-icon-width);\n    flex-shrink: 0;\n    justify-content: center;\n    align-items: center;\n    display: flex;\n  }\n\n  :where([data-item-section=\"icon\"] > [data-icon-token]) {\n    color: var(--trees-fg-muted);\n  }\n\n  [data-file-tree-colored-icons=\"true\"] {\n    & [data-icon-token=\"astro\"] {\n      color: var(--trees-file-icon-color-astro);\n    }\n\n    & [data-icon-token=\"babel\"] {\n      color: var(--trees-file-icon-color-babel);\n    }\n\n    & [data-icon-token=\"bash\"] {\n      color: var(--trees-file-icon-color-bash);\n    }\n\n    & [data-icon-token=\"biome\"] {\n      color: var(--trees-file-icon-color-biome);\n    }\n\n    & [data-icon-token=\"bootstrap\"] {\n      color: var(--trees-file-icon-color-bootstrap);\n    }\n\n    & [data-icon-token=\"browserslist\"] {\n      color: var(--trees-file-icon-color-browserslist);\n    }\n\n    & [data-icon-token=\"bun\"] {\n      color: var(--trees-file-icon-color-bun);\n    }\n\n    & [data-icon-token=\"c\"] {\n      color: var(--trees-file-icon-color-c);\n    }\n\n    & [data-icon-token=\"cpp\"] {\n      color: var(--trees-file-icon-color-cpp);\n    }\n\n    & [data-icon-token=\"claude\"] {\n      color: var(--trees-file-icon-color-claude);\n    }\n\n    & [data-icon-token=\"css\"] {\n      color: var(--trees-file-icon-color-css);\n    }\n\n    & [data-icon-token=\"database\"] {\n      color: var(--trees-file-icon-color-database);\n    }\n\n    & [data-icon-token=\"default\"] {\n      color: var(--trees-file-icon-color-default);\n    }\n\n    & [data-icon-token=\"docker\"] {\n      color: var(--trees-file-icon-color-docker);\n    }\n\n    & [data-icon-token=\"eslint\"] {\n      color: var(--trees-file-icon-color-eslint);\n    }\n\n    & [data-icon-token=\"git\"] {\n      color: var(--trees-file-icon-color-git);\n    }\n\n    & [data-icon-token=\"go\"] {\n      color: var(--trees-file-icon-color-go);\n    }\n\n    & [data-icon-token=\"graphql\"] {\n      color: var(--trees-file-icon-color-graphql);\n    }\n\n    & [data-icon-token=\"html\"] {\n      color: var(--trees-file-icon-color-html);\n    }\n\n    & [data-icon-token=\"image\"] {\n      color: var(--trees-file-icon-color-image);\n    }\n\n    & [data-icon-token=\"javascript\"] {\n      color: var(--trees-file-icon-color-javascript);\n    }\n\n    & [data-icon-token=\"json\"] {\n      color: var(--trees-file-icon-color-json);\n    }\n\n    & [data-icon-token=\"markdown\"] {\n      color: var(--trees-file-icon-color-markdown);\n    }\n\n    & [data-icon-token=\"mcp\"] {\n      color: var(--trees-file-icon-color-mcp);\n    }\n\n    & [data-icon-token=\"npm\"] {\n      color: var(--trees-file-icon-color-npm);\n    }\n\n    & [data-icon-token=\"oxc\"] {\n      color: var(--trees-file-icon-color-oxc);\n    }\n\n    & [data-icon-token=\"postcss\"] {\n      color: var(--trees-file-icon-color-postcss);\n    }\n\n    & [data-icon-token=\"prettier\"] {\n      color: var(--trees-file-icon-color-prettier);\n    }\n\n    & [data-icon-token=\"python\"] {\n      color: var(--trees-file-icon-color-python);\n    }\n\n    & [data-icon-token=\"react\"] {\n      color: var(--trees-file-icon-color-react);\n    }\n\n    & [data-icon-token=\"ruby\"] {\n      color: var(--trees-file-icon-color-ruby);\n    }\n\n    & [data-icon-token=\"rust\"] {\n      color: var(--trees-file-icon-color-rust);\n    }\n\n    & [data-icon-token=\"sass\"] {\n      color: var(--trees-file-icon-color-sass);\n    }\n\n    & [data-icon-token=\"svg\"] {\n      color: var(--trees-file-icon-color-svg);\n    }\n\n    & [data-icon-token=\"svelte\"] {\n      color: var(--trees-file-icon-color-svelte);\n    }\n\n    & [data-icon-token=\"svgo\"] {\n      color: var(--trees-file-icon-color-svgo);\n    }\n\n    & [data-icon-token=\"swift\"] {\n      color: var(--trees-file-icon-color-swift);\n    }\n\n    & [data-icon-token=\"table\"] {\n      color: var(--trees-file-icon-color-table);\n    }\n\n    & [data-icon-token=\"text\"] {\n      color: var(--trees-file-icon-color-text);\n    }\n\n    & [data-icon-token=\"tailwind\"] {\n      color: var(--trees-file-icon-color-tailwind);\n    }\n\n    & [data-icon-token=\"terraform\"] {\n      color: var(--trees-file-icon-color-terraform);\n    }\n\n    & [data-icon-token=\"typescript\"] {\n      color: var(--trees-file-icon-color-typescript);\n    }\n\n    & [data-icon-token=\"vite\"] {\n      color: var(--trees-file-icon-color-vite);\n    }\n\n    & [data-icon-token=\"vscode\"] {\n      color: var(--trees-file-icon-color-vscode);\n    }\n\n    & [data-icon-token=\"vue\"] {\n      color: var(--trees-file-icon-color-vue);\n    }\n\n    & [data-icon-token=\"wasm\"] {\n      color: var(--trees-file-icon-color-wasm);\n    }\n\n    & [data-icon-token=\"webpack\"] {\n      color: var(--trees-file-icon-color-webpack);\n    }\n\n    & [data-icon-token=\"yml\"] {\n      color: var(--trees-file-icon-color-yml);\n    }\n\n    & [data-icon-token=\"zig\"] {\n      color: var(--trees-file-icon-color-zig);\n    }\n\n    & [data-icon-token=\"zip\"] {\n      color: var(--trees-file-icon-color-zip);\n    }\n  }\n\n  [data-icon-name=\"file-tree-icon-chevron\"] {\n    &[data-align-capitals=\"false\"] {\n      transform: translate(0, var(--trees-icon-nudge));\n    }\n\n    &[data-align-capitals=\"true\"] {\n      transform: translate(0);\n    }\n  }\n\n  [data-item-section=\"content\"] {\n    text-align: start;\n    text-overflow: ellipsis;\n    flex: 0 auto;\n    min-width: 0;\n    max-width: 100%;\n    overflow: hidden;\n  }\n\n  [data-item-section=\"decoration\"] {\n    text-align: end;\n    min-width: 0;\n    color: var(--trees-fg-muted);\n    flex: 1 1 0;\n    justify-content: flex-end;\n    display: flex;\n    overflow: hidden;\n  }\n\n  [data-item-section=\"decoration\"] > span {\n    text-overflow: ellipsis;\n    white-space: nowrap;\n    justify-content: flex-end;\n    align-items: center;\n    min-width: 0;\n    max-width: 100%;\n    display: inline-flex;\n    overflow: hidden;\n  }\n\n  [data-item-section=\"git\"], [data-item-section=\"action\"] {\n    flex: none;\n    justify-content: center;\n    align-items: center;\n    display: flex;\n  }\n\n  [data-item-section=\"git\"] {\n    width: var(--trees-git-lane-width);\n  }\n\n  [data-item-section=\"action\"] {\n    width: var(--trees-action-lane-width);\n    color: var(--trees-fg-muted);\n    fill: currentColor;\n    pointer-events: none;\n  }\n\n  [data-item-section=\"git\"] > span, [data-item-section=\"action\"] > span {\n    justify-content: center;\n    align-items: center;\n    width: 100%;\n    display: inline-flex;\n  }\n\n  [data-item-action-affordance=\"decorative\"] {\n    opacity: .85;\n  }\n\n  [data-item-rename-input] {\n    appearance: none;\n    width: 100%;\n    min-width: 0;\n    height: calc(var(--trees-row-height) - 4px);\n    font-family: inherit;\n    font-size: inherit;\n    color: inherit;\n    box-sizing: border-box;\n    background-color: #0000;\n    border: 0;\n    outline: none;\n    padding-inline: 6px;\n  }\n\n  [data-item-section=\"content\"]:has([data-item-rename-input]) ~ [data-item-section=\"action\"], [data-item-section=\"content\"]:has([data-item-rename-input]) ~ [data-item-section=\"decoration\"] {\n    display: none;\n  }\n\n  [aria-expanded=\"false\"][data-item-type=\"folder\"] > [data-item-section=\"icon\"] > [data-icon-name=\"file-tree-icon-chevron\"] {\n    &[data-align-capitals=\"true\"] {\n      transform: rotate(-90deg)\n        translate(calc(var(--trees-icon-nudge) / 2),\n          calc(var(--trees-icon-nudge) / 2));\n    }\n\n    &[data-align-capitals=\"false\"] {\n      transform: rotate(-90deg)\n        translate(calc(var(--trees-icon-nudge) / 2 * -1),\n          calc(var(--trees-icon-nudge) / 2));\n    }\n  }\n\n  [data-item-section=\"spacing\"] {\n    height: var(--trees-row-height);\n    padding-left: calc(calc(var(--trees-icon-width) / 2) - .5px);\n    flex-direction: row;\n    justify-content: center;\n    align-items: center;\n    display: flex;\n\n    &:empty {\n      padding-left: 0;\n    }\n  }\n\n  [data-item-section=\"spacing-item\"] {\n    border-left: 1px solid var(--trees-indent-guide-bg);\n    height: 100%;\n    margin-right: calc(var(--trees-level-gap) - 1px);\n    opacity: 0;\n    transition: opacity .15s;\n    display: inline-block;\n    transform: translateX(-.25px);\n\n    & + & {\n      margin-left: calc(var(--trees-item-row-gap) + calc(var(--trees-icon-width) / 2) - .5px);\n    }\n  }\n\n  :host(:hover) [data-item-section=\"spacing-item\"] {\n    opacity: .75;\n  }\n\n  [data-item-contains-git-change=\"true\"] > [data-item-section=\"git\"] {\n    color: var(--trees-git-modified-color);\n    opacity: .5;\n    fill: currentColor;\n  }\n\n  [data-item-git-status] {\n    & > :where([data-item-section=\"icon\"]) > :where(:not([data-icon-name=\"file-tree-icon-chevron\"])), & > [data-item-section=\"content\"] {\n      color: var(--trees-item-git-status-color);\n    }\n\n    & > [data-item-section=\"git\"] {\n      color: var(--trees-item-git-status-color);\n      font-weight: var(--trees-font-weight-semibold);\n    }\n  }\n\n  [data-item-git-status=\"added\"] {\n    --trees-item-git-status-color: var(--trees-git-added-color);\n  }\n\n  [data-item-git-status=\"conflicted\"] {\n    --trees-item-git-status-color: var(--trees-theme-git-conflict-fg, var(--trees-git-modified-color));\n  }\n\n  [data-item-git-status=\"deleted\"] {\n    --trees-item-git-status-color: var(--trees-git-deleted-color);\n  }\n\n  [data-item-git-status=\"ignored\"] {\n    --trees-item-git-status-color: var(--trees-git-ignored-color);\n\n    & > [data-item-section=\"icon\"] {\n      opacity: .5;\n    }\n  }\n\n  [data-item-section=\"git\"] [data-icon-name=\"file-tree-icon-dot\"] {\n    transform: translateY(calc(.65ex - 50%));\n  }\n\n  [data-item-git-status=\"modified\"] {\n    --trees-item-git-status-color: var(--trees-git-modified-color);\n  }\n\n  [data-item-git-status=\"renamed\"] {\n    --trees-item-git-status-color: var(--trees-git-renamed-color);\n  }\n\n  [data-item-git-status=\"untracked\"] {\n    --trees-item-git-status-color: var(--trees-git-untracked-color);\n  }\n\n  [data-item-drag-target=\"true\"] {\n    background-color: var(--trees-selected-bg);\n  }\n\n  [data-item-dragging=\"true\"] {\n    opacity: .5;\n  }\n\n  [data-item-section=\"lock\"] {\n    color: var(--trees-fg-muted);\n    flex: none;\n    align-items: center;\n    margin-left: auto;\n    display: flex;\n  }\n\n  [data-item-section=\"lock\"] svg {\n    display: block;\n  }\n\n  [data-type=\"header-slot\"] {\n    flex: none;\n    display: block;\n  }\n\n  [data-type=\"context-menu-wash\"] {\n    z-index: 3;\n    touch-action: none;\n    background-color: #0000;\n    position: absolute;\n    inset: 0;\n  }\n\n  [data-type=\"context-menu-anchor\"] {\n    top: 0;\n    right: var(--trees-context-menu-trigger-inline-offset);\n    z-index: 4;\n    align-items: center;\n    display: none;\n    position: absolute;\n\n    &[data-visible=\"true\"] {\n      display: flex;\n    }\n  }\n\n  [data-file-tree-virtualized-root=\"true\"][data-is-scrolling] [data-type=\"context-menu-anchor\"] {\n    display: none;\n  }\n\n  [data-type=\"context-menu-anchor\"] > slot[name=\"context-menu\"] {\n    flex: 0 0 0;\n    width: 0;\n    min-width: 0;\n    display: block;\n    overflow: visible;\n  }\n\n  [data-type=\"context-menu-trigger\"] {\n    all: unset;\n    width: var(--trees-action-lane-width);\n    color: var(--trees-fg-muted);\n    fill: currentColor;\n    cursor: pointer;\n    font-family: var(--trees-font-family);\n    font-size: var(--trees-font-size);\n    border-top-right-radius: var(--trees-border-radius);\n    border-bottom-right-radius: var(--trees-border-radius);\n    margin: var(--trees-focus-ring-width);\n    height: calc(var(--trees-row-height) - var(--trees-focus-ring-width) * 2);\n    border-width: 0;\n    justify-content: center;\n    align-items: center;\n    transition: color .12s;\n    display: flex;\n  }\n\n  [data-type=\"context-menu-trigger\"]:hover, [data-type=\"context-menu-trigger\"][aria-expanded=\"true\"] {\n    color: var(--trees-fg);\n  }\n\n  [data-truncate-container] {\n    --truncate-internal-marker-fade-width: var(--truncate-marker-fade-width, 2px);\n    --truncate-internal-marker-gap: var(--truncate-marker-gap, 0px);\n    --truncate-internal-marker-opacity: var(--truncate-marker-opacity, 50%);\n    --truncate-internal-middle-marker-opacity: var(--truncate-middle-marker-opacity, 80%);\n    --truncate-internal-marker-background-color: var(--truncate-marker-background-color, light-dark(#fff, #000));\n    --truncate-internal-marker-background-overlay-color: var(--truncate-marker-background-overlay-color, transparent);\n    --truncate-internal-marker-block-inset: var(--truncate-marker-block-inset, 0px);\n    --truncate-internal-marker-fade-out-duration: var(--truncate-marker-fade-out-duration, 0s);\n    --truncate-internal-marker-fade-in-duration: var(--truncate-marker-fade-in-duration, .1s);\n    --truncate-internal-fade-marker-color: var(--truncate-fade-marker-color, #000);\n    --truncate-internal-fade-marker-width: var(--truncate-fade-marker-width, .2lh);\n    --truncate-internal-single-line-height: 1lh;\n    height: var(--truncate-internal-single-line-height);\n    min-width: 0;\n    margin-top: -1px;\n    margin-bottom: -1px;\n    overflow: hidden;\n  }\n\n  [data-truncate-marker] {\n    height: var(--truncate-internal-single-line-height);\n    padding-block: var(--truncate-internal-marker-block-inset);\n    box-sizing: border-box;\n    z-index: 2;\n    color: color-mix(in srgb,\n      currentColor var(--truncate-internal-marker-opacity),\n      transparent);\n    opacity: 0;\n    transition: opacity var(--truncate-internal-marker-fade-out-duration)\n      ease-in-out;\n    background-clip: content-box;\n    align-items: center;\n    display: flex;\n    position: absolute;\n  }\n\n  @container measure (height > 1lh) {\n    [data-truncate-marker] {\n      opacity: 1;\n      transition: opacity var(--truncate-internal-marker-fade-in-duration)\n        ease-in-out;\n    }\n  }\n\n  [data-truncate-grid] {\n    display: grid;\n    position: relative;\n  }\n\n  [data-truncate-content=\"visible\"] {\n    white-space: nowrap;\n  }\n\n  [data-truncate-content=\"overflow\"] {\n    opacity: 0;\n    pointer-events: none;\n    user-select: none;\n    word-break: break-all;\n    margin-top: calc(-1 * var(--truncate-internal-single-line-height));\n  }\n\n  [data-truncate-marker-cell] {\n    user-select: none;\n    pointer-events: none;\n    overflow: visible;\n    container: measure / size;\n  }\n\n  [data-truncate-container=\"truncate\"] {\n    & [data-truncate-grid] {\n      grid-template-columns: minmax(0, max-content) 0;\n    }\n\n    & [data-truncate-marker] {\n      right: 0;\n    }\n\n    & [data-truncate-fade] {\n      margin-right: calc(-2 * var(--truncate-internal-fade-marker-width));\n    }\n  }\n\n  [data-truncate-container=\"fruncate\"] {\n    & [data-truncate-grid] {\n      grid-template-columns: 0 minmax(0, max-content) auto;\n    }\n\n    & [data-truncate-content] {\n      direction: rtl;\n    }\n\n    & [data-truncate-content] > span {\n      unicode-bidi: plaintext;\n    }\n\n    & [data-truncate-fade] {\n      margin-left: calc(-2 * var(--truncate-internal-fade-marker-width));\n    }\n  }\n\n  [data-truncate-variant=\"default\"] {\n    & [data-truncate-marker] {\n      background-color: var(--truncate-internal-marker-background-color);\n      background-image: linear-gradient(var(--truncate-internal-marker-background-overlay-color),\n        var(--truncate-internal-marker-background-overlay-color));\n    }\n\n    & [data-truncate-marker]:after, & [data-truncate-marker]:before {\n      content: \"\";\n      width: calc(var(--truncate-internal-marker-fade-width) +\n          var(--truncate-internal-marker-gap));\n      height: max(0px,\n        calc(var(--truncate-internal-single-line-height) -\n            var(--truncate-internal-marker-block-inset) * 2));\n      background-color: var(--truncate-internal-marker-background-color);\n      background-image: linear-gradient(var(--truncate-internal-marker-background-overlay-color),\n        var(--truncate-internal-marker-background-overlay-color));\n      -webkit-mask-image: linear-gradient(var(--truncate-internal-fade-dir),\n        #000 0%,\n        #000 var(--truncate-internal-marker-gap),\n        transparent 100%);\n      mask-image: linear-gradient(var(--truncate-internal-fade-dir),\n        #000 0%,\n        #000 var(--truncate-internal-marker-gap),\n        transparent 100%);\n      position: absolute;\n      inset-block-start: var(--truncate-internal-marker-block-inset);\n    }\n\n    & [data-truncate-marker]:after {\n      --truncate-internal-fade-dir: to right;\n      right: calc(-1 *\n          (\n            var(--truncate-internal-marker-fade-width) +\n              var(--truncate-internal-marker-gap)\n          ));\n    }\n\n    & [data-truncate-marker]:before {\n      --truncate-internal-fade-dir: to left;\n      left: calc(-1 *\n          (\n            var(--truncate-internal-marker-fade-width) +\n              var(--truncate-internal-marker-gap)\n          ));\n    }\n  }\n\n  [data-truncate-variant=\"fade\"] {\n    & [data-truncate-marker] {\n      background: none;\n    }\n  }\n\n  [data-truncate-fade] {\n    box-shadow: 0 0 calc(var(--truncate-internal-fade-marker-width) / 2)\n        var(--truncate-internal-fade-marker-color),\n      0 0 var(--truncate-internal-fade-marker-width)\n        var(--truncate-internal-fade-marker-color);\n    width: calc(var(--truncate-internal-fade-marker-width) * 2);\n    height: calc(var(--truncate-internal-single-line-height) -\n        (var(--truncate-internal-fade-marker-width) * 2));\n    margin: var(--truncate-internal-fade-marker-width) 0;\n  }\n\n  [data-truncate-group-container=\"middle\"] {\n    & [data-truncate-container] {\n      --truncate-marker-opacity: var(--truncate-internal-middle-marker-opacity);\n    }\n\n    min-width: 0;\n    display: flex;\n\n    & > div {\n      min-width: 0;\n    }\n\n    & > div[data-truncate-segment-priority=\"1\"] {\n      flex: 0 1 max-content;\n    }\n\n    & > div[data-truncate-segment-priority=\"2\"] {\n      flex: 0 999999 max-content;\n    }\n  }\n}\n\n@layer theme, unsafe;\n";
+ //#endregion
+ export { style_default as default };
+ 
+diff --git a/node_modules/@pierre/trees/dist/utils/fileTreeLabels.js b/node_modules/@pierre/trees/dist/utils/fileTreeLabels.js
+index 9f545f3..9fe9b59 100644
+--- a/node_modules/@pierre/trees/dist/utils/fileTreeLabels.js
++++ b/node_modules/@pierre/trees/dist/utils/fileTreeLabels.js
+@@ -4,6 +4,7 @@ const DEFAULT_FILE_TREE_LABELS = Object.freeze({
+ 	contextMenuTrigger: "Options",
+ 	renameItem: (itemName) => `Rename ${itemName}`,
+ 	gitStatusTitles: Object.freeze({
++		conflicted: "Git: Unmerged changes",
+ 		added: "Git status: added",
+ 		deleted: "Git status: deleted",
+ 		ignored: "Git status: ignored",
+@@ -22,6 +23,7 @@ function resolveFileTreeLabels(labels) {
+ 		contextMenuTrigger: labels.contextMenuTrigger ?? defaults.contextMenuTrigger,
+ 		renameItem: labels.renameItem ?? defaults.renameItem,
+ 		gitStatusTitles: titles == null ? defaults.gitStatusTitles : {
++			conflicted: titles.conflicted ?? defaults.gitStatusTitles.conflicted,
+ 			added: titles.added ?? defaults.gitStatusTitles.added,
+ 			deleted: titles.deleted ?? defaults.gitStatusTitles.deleted,
+ 			ignored: titles.ignored ?? defaults.gitStatusTitles.ignored,
+diff --git a/node_modules/@pierre/trees/dist/utils/gitStatusPresentation.js b/node_modules/@pierre/trees/dist/utils/gitStatusPresentation.js
+index 0070f34..5b811fd 100644
+--- a/node_modules/@pierre/trees/dist/utils/gitStatusPresentation.js
++++ b/node_modules/@pierre/trees/dist/utils/gitStatusPresentation.js
+@@ -1,5 +1,6 @@
+ //#region src/utils/gitStatusPresentation.ts
+ const GIT_STATUS_LABEL = {
++	conflicted: "!",
+ 	added: "A",
+ 	deleted: "D",
+ 	ignored: null,
+diff --git a/node_modules/@pierre/trees/dist/utils/themeToTreeStyles.js b/node_modules/@pierre/trees/dist/utils/themeToTreeStyles.js
+index 1dfc5ff..0d19ea2 100644
+--- a/node_modules/@pierre/trees/dist/utils/themeToTreeStyles.js
++++ b/node_modules/@pierre/trees/dist/utils/themeToTreeStyles.js
+@@ -46,6 +46,7 @@ function themeToTreeStyles(theme) {
+ 	const sidebarBgLower = sidebarBg?.toLowerCase();
+ 	const selectionBg = rawSelectionBg != null && rawSelectionBg.toLowerCase() === sidebarBgLower ? focusBackground ?? editorSelectionBg : rawSelectionBg ?? editorSelectionBg;
+ 	const result = {
++		"--trees-theme-git-conflict-fg": colors["gitDecoration.conflictingResourceForeground"] ?? "",
+ 		colorScheme: isDark ? "dark" : "light",
+ 		backgroundColor: sidebarBg ?? "",
+ 		color: sidebarFg ?? "",
