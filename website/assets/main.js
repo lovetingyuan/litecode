@@ -1,5 +1,26 @@
 (() => {
   const root = document.documentElement;
+  const userAgent = navigator.userAgent;
+  // iPadOS can report a desktop Mac user agent.
+  const isIPad = /Macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1;
+  if (!isIPad && !/Android|iPhone|iPad|iPod|CrOS/i.test(userAgent)) {
+    const platform = navigator.userAgentData?.platform || userAgent;
+    const desktopOS = [
+      ["Windows", /Windows/i],
+      ["macOS", /macOS|Macintosh/i],
+      ["Linux", /Linux/i],
+    ].find(([, pattern]) => pattern.test(platform))?.[0];
+    if (desktopOS) {
+      const label = root.lang === "zh-CN" ? `下载 ${desktopOS} 版` : `Download for ${desktopOS}`;
+      for (const element of document.querySelectorAll("[data-download-label]")) {
+        element.textContent = label;
+      }
+    }
+  }
+})();
+
+(() => {
+  const root = document.documentElement;
   const systemTheme = matchMedia("(prefers-color-scheme: dark)");
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   const theme = document.querySelector("#theme");

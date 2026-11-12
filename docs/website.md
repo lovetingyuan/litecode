@@ -47,7 +47,7 @@ References: [GitHub custom domains](https://docs.github.com/en/pages/configuring
 - The canonical domain is `https://litecode.tingyuan.in/`. Each language has its own canonical URL and reciprocal `hreflang` links. If the domain changes, update HTML metadata, structured data, the 404 return links, sitemap, robots and CNAME together.
 - The 404 page uses canonical absolute links so returning home also works from arbitrarily nested missing paths. During project-path-only staging, those return links intentionally lead to the future canonical site.
 - All download buttons point to `https://github.com/lovetingyuan/litecode/releases`; no filenames, version numbers or package sizes are hardcoded. Publishing this site does not publish the software.
-- Software claims are bounded to Windows 11 x64 and existing features. No built in AI assistant, full VS Code extension compatibility, benchmark or licensing claim is made.
+- Download buttons show Windows, macOS, or Linux based on the browser's platform information. The generic download label also works on other devices and with JavaScript disabled.
 
 ## Asset sources and screenshots
 

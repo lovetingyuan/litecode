@@ -351,21 +351,6 @@ p {
 .button:active {
   transform: translateY(1px);
 }
-.text-link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s2);
-  color: var(--muted);
-  text-decoration: none;
-  font-size: 14px;
-}
-.text-link:hover {
-  color: var(--blue);
-}
-.text-link svg {
-  width: 16px;
-  height: 16px;
-}
 .download-note {
   margin-top: var(--s4);
   color: var(--muted);

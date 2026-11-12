@@ -1,7 +1,6 @@
 ---
 name: trees
-description:
-  Use when an app uses @pierre/trees to render or control a file tree, including
+description: Use when an app uses @pierre/trees to render or control a file tree, including
   React, vanilla JavaScript, SSR, web components, selection, search, rename,
   drag and drop, icons, git status, and themes.
 ---

@@ -958,18 +958,13 @@ export const commands: Command[] = [
     label: "About LiteCode",
     menu: "Help",
     run: () =>
-      ask(
-        "About LiteCode",
-        `LiteCode ${__APP_VERSION__} · ${__GIT_HASH__}`,
-        ["Close"],
-        {
-          defaultChoice: "Close",
-          links: [
-            { label: "Homepage", url: "https://litecode.tingyuan.in" },
-            { label: "GitHub", url: "https://github.com/lovetingyuan/litecode" },
-          ],
-        },
-      ),
+      ask("About LiteCode", `LiteCode ${__APP_VERSION__} · ${__GIT_HASH__}`, ["Close"], {
+        defaultChoice: "Close",
+        links: [
+          { label: "Homepage", url: "https://litecode.tingyuan.in" },
+          { label: "GitHub", url: "https://github.com/lovetingyuan/litecode" },
+        ],
+      }),
   },
   {
     id: "litecode.openLogsFolder",

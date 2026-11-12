@@ -95,12 +95,13 @@ export function usePackageManager(doc: Doc) {
         }
       }
     }
-    void Promise.all(Array.from({ length: Math.min(4, dependencies.length) }, () => worker()))
-      .finally(() => {
-        if (!disposed) {
-          setRegistryLoading(false);
-        }
-      });
+    void Promise.all(
+      Array.from({ length: Math.min(4, dependencies.length) }, () => worker()),
+    ).finally(() => {
+      if (!disposed) {
+        setRegistryLoading(false);
+      }
+    });
     return () => {
       disposed = true;
       setRegistryLoading(false);

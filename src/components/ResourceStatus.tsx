@@ -35,9 +35,7 @@ export function ResourceStatus() {
             className={`flex flex-col gap-3 w-64 max-w-[min(calc(100vw_-_16px),_var(--available-width))] max-h-[var(--available-height)] overflow-auto p-3 bg-widget text-foreground border border-strong rounded-[4px] ${workbenchStyles["workspace-popup"]}`}
             initialFocus={false}
           >
-            <Popover.Title className="text-[13px] font-semibold">
-              LiteCode Resources
-            </Popover.Title>
+            <Popover.Title className="text-[13px] font-semibold">LiteCode Resources</Popover.Title>
             <Popover.Description className="text-[12px] text-subtle">
               App and WebView processes
             </Popover.Description>
