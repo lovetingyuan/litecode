@@ -7,6 +7,7 @@ import {
   relative,
   renameDocuments,
 } from "../editor/documents";
+import { retryWithoutTypeScriptWatchers } from "../editor/languages";
 import { ask } from "../components/dialog";
 import type { FileMove } from "./explorerMove";
 import type { CopyReport } from "./explorerClipboard";
@@ -30,13 +31,26 @@ export async function deleteInternalFiles(paths: string[], onDeleted: (path: str
         run: async () => {
           const release = await beginDocumentDelete([...remaining]);
           let failure: unknown;
-          try {
+          async function recycleRemaining() {
             for (const path of remaining) {
               await call("file_operation", { operation: { kind: "delete", path } });
               remaining.delete(path);
               closeDeletedDocuments([path]);
               onDeleted(path);
             }
+          }
+          try {
+            await recycleRemaining().catch((error: unknown) => {
+              if (
+                typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                error.code === "recycleSourceBusy"
+              ) {
+                return retryWithoutTypeScriptWatchers(recycleRemaining, error);
+              }
+              throw error;
+            });
           } catch (error) {
             failure = error;
             throw error;

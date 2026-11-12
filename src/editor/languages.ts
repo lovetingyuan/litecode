@@ -66,6 +66,7 @@ const failureDetails = new Map<string, string>();
 const references = new Map<string, { dispose(): void }>();
 let languageEpoch = 0;
 let stopping: Promise<void> | undefined;
+let startsPaused = false;
 let vueEnabled = false;
 let enablingVue: Promise<void> | undefined;
 const typescriptLanguages = ["typescript", "javascript", "typescriptreact", "javascriptreact"];
@@ -241,7 +242,7 @@ function languageServerKind(serverId: string) {
 }
 
 export async function ensureLanguage(id: string, language: string) {
-  if (!desktop || stopping || !serviceLanguages.has(language)) {
+  if (!desktop || stopping || startsPaused || !serviceLanguages.has(language)) {
     return;
   }
   const m = models.get(id);
@@ -599,10 +600,28 @@ export async function stopLanguages() {
 
 export async function restartLanguages() {
   await stopLanguages();
+  await resumeLanguages();
+}
+
+async function resumeLanguages() {
   for (const doc of Object.values(useApp.getState().docs)) {
     if (!doc.large) {
       await ensureLanguage(doc.id, doc.language);
     }
+  }
+}
+
+export async function retryWithoutTypeScriptWatchers(run: () => Promise<void>, error: unknown) {
+  if (startsPaused || (!clients.has("typescript") && !starting.has("typescript"))) {
+    throw error;
+  }
+  startsPaused = true;
+  try {
+    await stopLanguages();
+    await run();
+  } finally {
+    startsPaused = false;
+    void resumeLanguages().catch((error) => logError("language_resume_failed", error));
   }
 }
 

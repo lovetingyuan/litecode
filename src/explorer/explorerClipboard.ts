@@ -96,10 +96,17 @@ export function createExplorerClipboard(services: ClipboardServices) {
             (parent) => parent !== path && path.startsWith(parent.replace(/\/$/, "") + "/"),
           ),
       );
-      const moves = sources.map((path) => ({
-        from: path,
-        to: directory.replace(/\/$/, "") + "/" + path.replace(/\/$/, "").split("/").pop()!,
-      }));
+      const targetDirectory = directory.replace(/\/$/, "");
+      const moves = sources.map((path) => {
+        const sourcePath = path.replace(/\/$/, "");
+        return {
+          from: path,
+          to:
+            !source.cut && sourcePath === targetDirectory
+              ? sourcePath
+              : targetDirectory + "/" + sourcePath.split("/").pop()!,
+        };
+      });
       const unchanged = moves.filter(
         (move) => source.cut && move.from.replace(/\/$/, "") === move.to,
       );

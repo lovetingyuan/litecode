@@ -749,21 +749,27 @@ pub async fn file_operation(
 ) -> Result<Option<String>> {
     crate::state::blocking(window, move |window, state| {
         if operation.kind == "delete" {
-            return crate::file_delete::recycle(
-                &state,
-                window.label(),
-                &operation.path,
-                |source| {
-                    trash::delete(source).map_err(|error| {
-                AppError::new(
-                    "recycle",
-                    format!(
-                        "Could not move to Recycle Bin; nothing was permanently deleted: {error}"
-                    ),
-                )
+            return crate::file_delete::recycle(state, window.label(), &operation.path, |source| {
+                trash::delete(source).map_err(|error| {
+                    let (code, reason) = match error {
+                        trash::Error::Os { code, description } => {
+                            // A watched child directory can surface as access denied on Windows.
+                            let retryable =
+                                cfg!(windows) && matches!(code as u32, 0x80270021 | 0x80270027);
+                            (
+                                if retryable {
+                                    "recycleSourceBusy"
+                                } else {
+                                    "recycle"
+                                },
+                                description,
+                            )
+                        }
+                        error => ("recycle", error.to_string()),
+                    };
+                    AppError::new(code, format!("Could not move to Recycle Bin. {reason}"))
+                })
             })
-                },
-            )
             .map(|_| None);
         }
         let _disk = state.disk_lock.write_recover();
