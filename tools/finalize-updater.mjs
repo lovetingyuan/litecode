@@ -12,7 +12,7 @@ const requiredPlatforms = [
   "linux-x86_64-deb",
 ];
 
-export function finalizeManifest(manifest, release, notes) {
+export function finalizeManifest(manifest, release, notes, repository) {
   const version = release.tag_name?.slice(1);
   if (
     !/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(release.tag_name) ||
@@ -29,20 +29,18 @@ export function finalizeManifest(manifest, release, notes) {
     throw new Error("Manifest is missing a required update platform.");
   }
   const assets = release.assets.filter((asset) => asset.state === "uploaded" && asset.size > 0);
+  // Drafts can return browser URLs under an untagged-* ref that disappears on publication.
+  const downloadBase = `https://github.com/${repository}/releases/download/${release.tag_name}`;
+  const downloadUrl = (asset) => `${downloadBase}/${encodeURIComponent(asset.name)}`;
   const platforms = {};
   for (const [key, entry] of Object.entries(manifest.platforms)) {
-    const asset = assets.find(
-      (item) => entry.url === item.url || entry.url === item.browser_download_url,
+    const asset = assets.find((item) =>
+      [item.url, item.browser_download_url, downloadUrl(item)].includes(entry.url),
     );
-    if (
-      !asset ||
-      !asset.browser_download_url?.startsWith("https://github.com/") ||
-      typeof entry.signature !== "string" ||
-      !entry.signature.trim()
-    ) {
+    if (!asset || typeof entry.signature !== "string" || !entry.signature.trim()) {
       throw new Error(`Missing signed release asset for platform ${key}.`);
     }
-    platforms[key] = { ...entry, url: asset.browser_download_url };
+    platforms[key] = { ...entry, url: downloadUrl(asset) };
   }
   return { ...manifest, notes: body, platforms };
 }
@@ -91,7 +89,7 @@ async function main(args) {
   ]);
   const manifest = JSON.parse(original);
   const notes = await readFile(notesFile, "utf8");
-  const finalized = finalizeManifest(manifest, release, notes);
+  const finalized = finalizeManifest(manifest, release, notes, repository);
   const directory = fileURLToPath(new URL(`../tmp/release/${tag}/`, import.meta.url));
   await mkdir(directory, { recursive: true });
   await writeFile(path.join(directory, "latest.original.json"), original);
