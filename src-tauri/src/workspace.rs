@@ -24,7 +24,16 @@ pub struct DirectorySnapshot {
     pub session: u64,
     pub directory: String,
     pub paths: Vec<String>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub symlinks: HashMap<String, SymbolicLink>,
     pub warnings: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolicLink {
+    pub target: Option<String>,
+    pub is_directory: bool,
 }
 
 pub fn read_directory(root: &Path, directory: &str, session: u64) -> Result<DirectorySnapshot> {
@@ -68,9 +77,10 @@ pub fn read_directory(root: &Path, directory: &str, session: u64) -> Result<Dire
             format!("{directory}/")
         },
         paths: vec![],
+        symlinks: HashMap::new(),
         warnings: vec![],
     };
-    for entry in std::fs::read_dir(target)? {
+    for entry in std::fs::read_dir(&target)? {
         let entry = match entry {
             Ok(entry) => entry,
             Err(error) => {
@@ -82,12 +92,33 @@ pub fn read_directory(root: &Path, directory: &str, session: u64) -> Result<Dire
             continue;
         }
         match entry.file_type() {
-            Ok(kind) => snapshot.paths.push(format!(
-                "{}{}{}",
-                snapshot.directory,
-                entry.file_name().to_string_lossy(),
-                if kind.is_dir() { "/" } else { "" }
-            )),
+            Ok(kind) => {
+                let path = format!(
+                    "{}{}{}",
+                    snapshot.directory,
+                    entry.file_name().to_string_lossy(),
+                    if kind.is_dir() { "/" } else { "" }
+                );
+                if kind.is_symlink() {
+                    let target = std::fs::read_link(entry.path()).ok().map(|link_target| {
+                        crate::tools::process_path(&target.join(link_target))
+                            .to_string_lossy()
+                            .into_owned()
+                    });
+                    #[cfg(windows)]
+                    let is_directory = std::os::windows::fs::FileTypeExt::is_symlink_dir(&kind);
+                    #[cfg(not(windows))]
+                    let is_directory = entry.path().is_dir();
+                    snapshot.symlinks.insert(
+                        path.clone(),
+                        SymbolicLink {
+                            target,
+                            is_directory,
+                        },
+                    );
+                }
+                snapshot.paths.push(path);
+            }
             Err(error) => snapshot.warnings.push(error.to_string()),
         }
     }

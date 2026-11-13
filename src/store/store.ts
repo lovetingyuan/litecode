@@ -68,6 +68,7 @@ type State = {
   quick: string | QuickPick | null;
   notice: string | null;
   noticeLink: string | null;
+  noticeOpenFolder: (() => void) | null;
   searchSessions: SearchSession[];
   activeSearchId: string;
   nextSearchNumber: number;
@@ -122,6 +123,7 @@ export const useApp = create<State>((set) => ({
   quick: null,
   notice: null,
   noticeLink: null,
+  noticeOpenFolder: null,
   keybindings: [],
   dataDir: "",
   searchSessions: [initialSearch()],
@@ -168,4 +170,5 @@ export const activeDoc = () => {
   const id = s.groups.find((g) => g.id === s.activeGroup)?.active;
   return id ? s.docs[id] : undefined;
 };
-export const notify = (message: string) => setApp({ notice: message, noticeLink: null });
+export const notify = (message: string, openFolder: (() => void) | null = null) =>
+  setApp({ notice: message, noticeLink: null, noticeOpenFolder: openFolder });

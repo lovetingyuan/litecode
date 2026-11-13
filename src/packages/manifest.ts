@@ -1,4 +1,9 @@
-import type { DependencySection, PackageDependency, PackageManifest } from "../types/packages";
+import type {
+  DependencySection,
+  PackageDependency,
+  PackageManifest,
+  PackageRegistry,
+} from "../types/packages";
 
 export const dependencySections: DependencySection[] = [
   "dependencies",
@@ -86,15 +91,10 @@ export function isMajorUpgrade(current: string, latest: string) {
 }
 
 export function isDependencyCurrent(
-  dependency: PackageDependency,
   installed: string | undefined,
-  latest: string | null | undefined,
+  metadata: Pick<PackageRegistry, "latest" | "declaredAllowsLatest"> | undefined,
 ) {
-  return (
-    !!latest &&
-    installed === latest &&
-    dependency.registryVersion.replace(/^[~^=v]\s*/, "") === latest
-  );
+  return !!metadata?.declaredAllowsLatest && !!metadata.latest && installed === metadata.latest;
 }
 
 export function updateArguments(dependency: PackageDependency, latest: string) {

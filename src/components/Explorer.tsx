@@ -50,7 +50,8 @@ import { Icon, IconButton } from "./ui";
 import {
   refreshTree,
   attachWorkspaceTree,
-  directoryDecoration,
+  workspaceLinkNotice,
+  workspaceRowDecoration,
   ensureWorkspacePath,
   loadedWorkspacePaths,
   workspaceDirectories,
@@ -162,8 +163,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
     stickyFolders: true,
     icons: treeIcons,
     search: false,
-    renderRowDecoration: ({ row }) =>
-      row.kind === "directory" ? directoryDecoration(row.path) : null,
+    renderRowDecoration: ({ row }) => workspaceRowDecoration(row.path, row.kind === "directory"),
     unsafeCSS: `
       ${sidebarScrollbarCSS}
       [data-file-tree-sticky-overlay-content]{box-shadow:0 3px 3px -3px var(--lc-shadow-solid)}
@@ -198,7 +198,7 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
       onDropRequest: (e) => {
         void requestMove(e);
       },
-      onDropError: notify,
+      onDropError: (error) => notify(error),
     },
     composition: {
       contextMenu: {
@@ -866,6 +866,22 @@ export function Explorer({ openFolder }: Readonly<{ openFolder: () => void }>) {
       !rootRef.current
     ) {
       return false;
+    }
+    const linkNotice = workspaceLinkNotice(path, true);
+    if (linkNotice) {
+      const { message, target } = linkNotice;
+      const workspaceLink = join(rootRef.current, path);
+      notify(
+        message,
+        target
+          ? () => {
+              void call("open_directory", { path: target, workspaceLink }).catch((error) =>
+                notify(errorMessage(error)),
+              );
+            }
+          : null,
+      );
+      return true;
     }
     void openPath(join(rootRef.current, path), { pinned, preserveFocus: !pinned }).catch((e) =>
       notify(errorMessage(e)),

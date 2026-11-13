@@ -43,8 +43,25 @@ export function workspaceDirectories() {
 export function loadedWorkspacePaths() {
   return [...(workspaceDirectories()?.paths() ?? [])];
 }
-export function directoryDecoration(path: string) {
-  const entry = workspaceDirectories()?.directories.get(directoryPath(path));
+export function workspaceLinkNotice(path: string, directoryOnly = false) {
+  const link = workspaceDirectories()?.directories.get(parentDirectory(path))?.symlinks?.get(path);
+  if (!link || (directoryOnly && !link.isDirectory)) {
+    return null;
+  }
+  const label = link.isDirectory ? "Folder symbolic link" : "Symbolic link";
+  return {
+    target: link.target,
+    message: link.target ? `${label} → ${link.target}` : `${label} · Target unavailable`,
+  };
+}
+export function workspaceRowDecoration(path: string, isDirectory: boolean) {
+  const notice = workspaceLinkNotice(path);
+  if (notice) {
+    return { text: "↗", title: notice.message };
+  }
+  const entry = isDirectory
+    ? workspaceDirectories()?.directories.get(directoryPath(path))
+    : undefined;
   if (entry?.status === "failed") {
     return { text: "!", title: `${entry.error}. Collapse and expand this folder to retry.` };
   }

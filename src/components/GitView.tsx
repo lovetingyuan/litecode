@@ -127,6 +127,28 @@ function GitRemoteAddress({
   );
 }
 
+function BranchDifference({
+  difference,
+}: Readonly<{ difference: ReturnType<typeof branchDifference> }>) {
+  return (
+    <span>
+      {difference && (
+        <>
+          (
+          <span className={difference.behind > 0 ? "text-link" : undefined}>
+            ↓{difference.behind} behind
+          </span>
+          {" · "}
+          <span className={difference.ahead > 0 ? "text-git-added" : undefined}>
+            ↑{difference.ahead} ahead
+          </span>
+          )
+        </>
+      )}
+    </span>
+  );
+}
+
 export function GitView() {
   const root = useApp((s) => s.root);
   const git = useApp((s) => s.gitState);
@@ -405,6 +427,7 @@ export function GitView() {
   }
   const branchDisabled =
     !!syncBusy || branchPending || !currentInfo || !!info?.operation || !!repository?.operation;
+  const difference = repository ? branchDifference(info, repository) : null;
   const chooseBranch = (branches: GitInfo["branches"]) =>
     choose(
       "Select Local Tracking Branch",
@@ -540,7 +563,7 @@ export function GitView() {
                 {repository.branch ?? "No commits yet"}
                 {repository.detached ? " (detached)" : ""}
               </strong>
-              <span>{branchDifference(info, repository)}</span>
+              <BranchDifference difference={difference} />
             </div>
             <div
               className={`git-sync-actions flex flex-wrap gap-[5px] ${gitStyles["git-sync-actions"]}`}

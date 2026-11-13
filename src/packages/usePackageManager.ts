@@ -85,7 +85,13 @@ export function usePackageManager(doc: Doc) {
         try {
           result = await packageRegistry(dependency, snapshot?.installed[dependency.name]);
         } catch (error) {
-          result = { latest: null, repository: null, warnings: [], errors: [errorMessage(error)] };
+          result = {
+            latest: null,
+            declaredAllowsLatest: false,
+            repository: null,
+            warnings: [],
+            errors: [errorMessage(error)],
+          };
         }
         if (!disposed) {
           setRegistry((state) => ({

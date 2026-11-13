@@ -14,12 +14,18 @@ pub(crate) fn recycle(
     recycler: impl FnOnce(&Path) -> Result<()>,
 ) -> Result<()> {
     let _disk = state.disk_lock.write_recover();
-    // Authorization resolves links. Check the user's selected entry first so a
-    // grant for its referent can never turn "delete link" into "delete target".
     let selected = Path::new(path);
-    let metadata = fs::symlink_metadata(selected)?;
-    if metadata.file_type().is_symlink() {
-        return Err(link_error());
+    if let Some((parent, name)) = selected.parent().zip(selected.file_name()) {
+        let entry = parent.join(name);
+        if fs::symlink_metadata(&entry)?.file_type().is_symlink() {
+            // Authorize the containing directory without resolving the link itself.
+            let parent = state.authorize(label, &parent.to_string_lossy())?;
+            let source = parent.join(name);
+            if key(selected).trim_end_matches('/') != key(&source) {
+                return Err(link_error());
+            }
+            return recycler(&source);
+        }
     }
     let resolved = fs::canonicalize(selected)?;
     if key(selected).trim_end_matches('/') != key(&resolved).trim_end_matches('/') {
@@ -50,7 +56,7 @@ pub(crate) fn recycle(
 fn link_error() -> AppError {
     AppError::new(
         "path",
-        "Deleting symbolic links, directory junctions or items through directory links is not supported; nothing was deleted.",
+        "Cannot delete items through directory links. Nothing was deleted.",
     )
 }
 
@@ -141,21 +147,38 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn junctions_and_paths_through_them_preserve_the_real_target() {
+    fn junctions_are_recycled_as_entries_and_paths_through_them_are_rejected() {
         let (_temp, state, root) = fixture();
         let real = root.join("important");
         fs::create_dir(&real).unwrap();
         fs::write(real.join("a.txt"), "important bytes").unwrap();
         let link = root.join("shortcut");
         junction(&link, &real);
-        for path in [&link, &link.join("a.txt")] {
+        let snapshot = crate::workspace::read_directory(&root, "", 0).unwrap();
+        let link_info = &snapshot.symlinks["shortcut"];
+        assert!(link_info.is_directory);
+        assert_eq!(
+            link_info.target.as_deref(),
+            Some(crate::tools::process_path(&real).to_string_lossy().as_ref())
+        );
+        assert!(crate::workspace::read_directory(&root, "shortcut", 0).is_err());
+        let nested = real.join("nested");
+        let other = root.join("other");
+        fs::create_dir(&other).unwrap();
+        junction(&nested, &other);
+        for path in [link.join("a.txt"), link.join("nested")] {
             assert!(
-                recycle(&state, "test", &visible(path), |_| panic!(
-                    "link reached recycler"
+                recycle(&state, "test", &visible(&path), |_| panic!(
+                    "path through a link reached recycler"
                 ))
                 .is_err()
             );
         }
+        recycle(&state, "test", &visible(&link), |source| {
+            assert_eq!(source, link);
+            Ok(())
+        })
+        .unwrap();
         assert_eq!(
             fs::read_to_string(real.join("a.txt")).unwrap(),
             "important bytes"
@@ -165,15 +188,17 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn outside_and_broken_junctions_never_reach_recycler() {
+    fn junctions_with_outside_or_missing_targets_are_authorized_by_their_location() {
         let (_temp, state, root) = fixture();
         let outside = tempfile::tempdir().unwrap();
         fs::write(outside.path().join("secret"), "secret").unwrap();
         let link = root.join("outside");
         junction(&link, outside.path());
+        let outside_link = outside.path().join("shortcut");
+        junction(&outside_link, &root);
         assert!(
-            recycle(&state, "test", &visible(&link), |_| panic!(
-                "outside target recycled"
+            recycle(&state, "test", &visible(&outside_link), |_| panic!(
+                "outside link reached recycler"
             ))
             .is_err()
         );
@@ -182,12 +207,13 @@ mod tests {
         let broken = root.join("broken");
         junction(&broken, &missing);
         fs::remove_dir(&missing).unwrap();
-        assert!(
-            recycle(&state, "test", &visible(&broken), |_| panic!(
-                "broken link recycled"
-            ))
-            .is_err()
-        );
+        for entry in [&link, &broken] {
+            recycle(&state, "test", &visible(entry), |source| {
+                assert_eq!(source, entry);
+                Ok(())
+            })
+            .unwrap();
+        }
         assert_eq!(
             fs::read_to_string(outside.path().join("secret")).unwrap(),
             "secret"
@@ -195,29 +221,31 @@ mod tests {
         assert!(fs::symlink_metadata(&broken).is_ok());
     }
 
-    #[cfg(windows)]
     #[test]
-    #[ignore = "Requires Windows Developer Mode or symlink privilege"]
-    fn file_symlinks_never_reach_recycler() {
+    #[cfg_attr(
+        windows,
+        ignore = "Requires Windows Developer Mode or symlink privilege"
+    )]
+    fn file_symlinks_are_recycled_as_entries() {
         let (_temp, state, root) = fixture();
         let target = root.join("important.txt");
         fs::write(&target, "keep").unwrap();
         let link = root.join("link.txt");
+        #[cfg(windows)]
         std::os::windows::fs::symlink_file(&target, &link).unwrap();
-        assert!(
-            recycle(&state, "test", &visible(&link), |_| panic!(
-                "file symlink recycled"
-            ))
-            .is_err()
-        );
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let check_link = || {
+            recycle(&state, "test", &visible(&link), |source| {
+                assert_eq!(source, link);
+                Ok(())
+            })
+            .unwrap();
+        };
+        check_link();
         assert_eq!(fs::read_to_string(&target).unwrap(), "keep");
         fs::remove_file(&target).unwrap();
-        assert!(
-            recycle(&state, "test", &visible(&link), |_| panic!(
-                "broken symlink recycled"
-            ))
-            .is_err()
-        );
+        check_link();
         assert!(fs::symlink_metadata(link).is_ok());
     }
 }

@@ -199,11 +199,13 @@ export type GitOperation =
   | { kind: "switch" | "deleteBranch"; branch: string }
   | { kind: "createBranch"; name: string; start?: string }
   | { kind: "continue" | "abort" };
+export type WorkspaceSymbolicLink = { target: string | null; isDirectory: boolean };
 export type DirectorySnapshot = {
   root: string;
   session: number;
   directory: string;
   paths: string[];
+  symlinks?: Record<string, WorkspaceSymbolicLink>;
   warnings: string[];
 };
 export type WorkspaceChanges = {

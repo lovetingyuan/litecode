@@ -366,7 +366,7 @@
   color: var(--welcome-link, var(--lc-link));
   text-decoration: underline;
 }
-.notification :global(.icon-button) {
+.notification > :global(.icon-button) {
   margin-top: -3px;
 }
 .context-menu {

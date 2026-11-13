@@ -30,6 +30,7 @@ export type PackageSnapshot = {
 };
 export type PackageRegistry = {
   latest: string | null;
+  declaredAllowsLatest: boolean;
   repository: string | null;
   warnings: string[];
   errors: string[];

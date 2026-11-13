@@ -39,7 +39,7 @@ export function branchSwitchTarget(branch: GitBranch, branches: GitBranch[]): Sw
   };
 }
 
-export function branchDifference(info: GitInfo | null, repository: GitRepository): string {
+export function branchDifference(info: GitInfo | null, repository: GitRepository) {
   if (
     !info ||
     repository.detached ||
@@ -49,9 +49,9 @@ export function branchDifference(info: GitInfo | null, repository: GitRepository
     info.ahead === null ||
     info.behind === null
   ) {
-    return "";
+    return null;
   }
-  return `(↓${info.behind} behind · ↑${info.ahead} ahead)`;
+  return { behind: info.behind, ahead: info.ahead };
 }
 
 // Dialogs and pickers may outlive their workspace or selected repository.

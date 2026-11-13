@@ -1,6 +1,7 @@
-import type { DirectorySnapshot } from "../types/types";
+import type { DirectorySnapshot, WorkspaceSymbolicLink } from "../types/types";
 export type DirectoryState = {
   paths: string[];
+  symlinks?: ReadonlyMap<string, WorkspaceSymbolicLink>;
   status: "unloaded" | "loading" | "loaded" | "stale" | "failed";
   error?: string;
   warnings: string[];
@@ -107,6 +108,7 @@ export class DirectoryCache {
       this.revision++;
     }
     entry.paths = result.paths;
+    entry.symlinks = result.symlinks && new Map(Object.entries(result.symlinks));
     entry.warnings = result.warnings;
   }
 
@@ -249,6 +251,8 @@ export class DirectoryCache {
       this.directories.set(directoryPath(to + (path + "/").slice(from.length)), {
         ...entry,
         paths: entry.paths.map((child) => to + child.slice(from.length)),
+        // Reload link targets because relative targets depend on the parent directory.
+        symlinks: undefined,
         promise: undefined,
         dirty: true,
         status: "stale",

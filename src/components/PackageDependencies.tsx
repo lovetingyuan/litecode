@@ -76,9 +76,8 @@ export function PackageDependencies({
             (dependency) =>
               !hideUpToDate ||
               !isDependencyCurrent(
-                dependency,
                 installed?.[dependency.name],
-                registry[`${section}:${dependency.name}`]?.latest,
+                registry[`${section}:${dependency.name}`],
               ),
           );
           const expanded = !collapsed[section];
@@ -120,7 +119,7 @@ export function PackageDependencies({
                     !!latest && isMajorUpgrade(actual ?? dependency.registryVersion, latest);
                   const warnings = metadata?.warnings.join("\n\n");
                   const errors = metadata?.errors.join("\n\n");
-                  const current = isDependencyCurrent(dependency, actual, latest);
+                  const current = isDependencyCurrent(actual, metadata);
                   let latestLabel = "Not on npm";
                   if (dependency.registryName) {
                     latestLabel = metadata ? "Unavailable" : "Loading…";

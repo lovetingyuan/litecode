@@ -817,6 +817,18 @@ export default function App() {
             <Icon name="info" />
             <p className="select-text">
               {s.notice}
+              {s.noticeOpenFolder && (
+                <button
+                  type="button"
+                  className="icon-button ml-1 inline-flex size-5 items-center justify-center align-middle"
+                  onClick={s.noticeOpenFolder}
+                  aria-label="Open in System File Manager"
+                  title="Open in System File Manager"
+                >
+                  {/* Override the shared 16px icon size for the inline action. */}
+                  <Icon name="link-external" className="text-[12px]!" />
+                </button>
+              )}
               {s.noticeLink &&
                 [
                   { label: "Homepage", url: "https://litecode.tingyuan.in" },
@@ -841,7 +853,7 @@ export default function App() {
             <IconButton
               icon="close"
               label="Dismiss Notification"
-              onClick={() => setApp({ notice: null })}
+              onClick={() => setApp({ notice: null, noticeOpenFolder: null })}
             />
           </div>
         )}

@@ -229,6 +229,7 @@ async fn declared_metadata(name: &str, declared: &str) -> Result<Value> {
 #[serde(rename_all = "camelCase")]
 pub struct PackageRegistry {
     latest: Option<String>,
+    declared_allows_latest: bool,
     repository: Option<String>,
     warnings: Vec<String>,
     errors: Vec<String>,
@@ -253,6 +254,7 @@ pub async fn package_registry(
     );
     let mut result = PackageRegistry {
         latest: None,
+        declared_allows_latest: false,
         repository: None,
         warnings: vec![],
         errors: vec![],
@@ -276,6 +278,20 @@ pub async fn package_registry(
             .push(format!("Latest version unavailable: {}", error.message)),
     }
     let mut versions = BTreeMap::new();
+    if let Some(latest) = result.latest.as_deref() {
+        result.declared_allows_latest = declared == "latest"
+            || declared_package
+                .as_ref()
+                .ok()
+                .and_then(|package| package.get("version"))
+                .and_then(Value::as_str)
+                == Some(latest)
+            || latest.parse::<node_semver::Version>().is_ok_and(|version| {
+                declared
+                    .parse::<node_semver::Range>()
+                    .is_ok_and(|range| version.satisfies(&range))
+            });
+    }
     match declared_package {
         Ok(package) => {
             if let Some(version) = package.get("version").and_then(Value::as_str) {

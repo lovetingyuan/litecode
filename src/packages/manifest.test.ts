@@ -9,18 +9,13 @@ import {
 } from "./manifest";
 
 describe("Package manifests and update commands", () => {
-  it("only treats a dependency as current when installed and declared versions match a known latest version", () => {
-    const [dependency] = parseManifest('{"dependencies":{"react":"^19.0.0"}}').dependencies;
-    expect(isDependencyCurrent(dependency, "19.0.0", "19.0.0")).toBe(true);
-    expect(isDependencyCurrent(dependency, "19.0.0", undefined)).toBe(false);
-    expect(isDependencyCurrent(dependency, undefined, "19.0.0")).toBe(false);
-    expect(isDependencyCurrent(dependency, "18.0.0", "19.0.0")).toBe(false);
-    expect(
-      isDependencyCurrent({ ...dependency, registryVersion: "^18.0.0" }, "19.0.0", "19.0.0"),
-    ).toBe(false);
-    expect(
-      isDependencyCurrent({ ...dependency, registryVersion: "~19.0.0" }, "19.0.0", "19.0.0"),
-    ).toBe(true);
+  it("treats the latest installation as current when the declaration allows it", () => {
+    const metadata = { latest: "19.0.0", declaredAllowsLatest: true };
+    expect(isDependencyCurrent("19.0.0", metadata)).toBe(true);
+    expect(isDependencyCurrent("19.0.0", undefined)).toBe(false);
+    expect(isDependencyCurrent(undefined, metadata)).toBe(false);
+    expect(isDependencyCurrent("18.0.0", metadata)).toBe(false);
+    expect(isDependencyCurrent("19.0.0", { ...metadata, declaredAllowsLatest: false })).toBe(false);
   });
   it("keeps dependency sections, aliases and non-registry dependencies distinct", () => {
     const manifest = parseManifest(

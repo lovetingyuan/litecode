@@ -832,8 +832,32 @@ pub async fn open_directory(
     window: WebviewWindow,
     state: State<'_, AppState>,
     path: String,
+    workspace_link: Option<String>,
 ) -> Result<()> {
-    let directory = state.authorize(window.label(), &path)?;
+    let directory = if let Some(link) = workspace_link {
+        let link = Path::new(&link);
+        let (Some(parent), Some(name)) = (link.parent(), link.file_name()) else {
+            return Err(AppError::new("path", "Invalid folder symbolic link."));
+        };
+        let parent = state.authorize(window.label(), &visible_path(parent))?;
+        let link = parent.join(name);
+        if !fs::symlink_metadata(&link)?.file_type().is_symlink() {
+            return Err(AppError::new(
+                "path",
+                "The folder symbolic link has changed.",
+            ));
+        }
+        let directory = canonical(&link)?;
+        if directory != canonical(Path::new(&path))? {
+            return Err(AppError::new(
+                "path",
+                "The folder symbolic link has changed.",
+            ));
+        }
+        directory
+    } else {
+        state.authorize(window.label(), &path)?
+    };
     if !directory.is_dir() {
         return Err(AppError::new(
             "path",
