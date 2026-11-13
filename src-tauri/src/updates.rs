@@ -16,6 +16,7 @@ use tokio::sync::Notify;
 
 const CHECK_INTERVAL: Duration = Duration::from_secs(60);
 const RETRY_DELAY: Duration = Duration::from_secs(30 * 60);
+const DOWNLOAD_RETRIES: u8 = 3;
 
 #[derive(Default)]
 struct CheckSchedule {
@@ -395,24 +396,38 @@ pub async fn install_update(app: AppHandle, state: State<'_, Updates>) -> Result
         s.error = None;
     });
     let result = async {
-        let mut downloaded = 0;
-        let mut last_event = Instant::now() - Duration::from_secs(1);
-        let bytes = update
-            .download(
-                |chunk, total| {
-                    downloaded += chunk as u64;
-                    if last_event.elapsed() >= Duration::from_millis(100) {
-                        state.publish(&app, |s| {
-                            s.downloaded = downloaded;
-                            s.total = total;
-                        });
-                        last_event = Instant::now();
-                    }
-                },
-                || {},
-            )
-            .await
-            .map_err(update_error)?;
+        let mut retries_left = DOWNLOAD_RETRIES;
+        let bytes = loop {
+            let mut downloaded = 0;
+            let mut last_event = Instant::now() - Duration::from_secs(1);
+            let download = update
+                .download(
+                    |chunk, total| {
+                        downloaded += chunk as u64;
+                        if last_event.elapsed() >= Duration::from_millis(100) {
+                            state.publish(&app, |s| {
+                                s.downloaded = downloaded;
+                                s.total = total;
+                            });
+                            last_event = Instant::now();
+                        }
+                    },
+                    || {},
+                )
+                .await;
+            match download {
+                Ok(bytes) => break bytes,
+                Err(error) if retries_left == 0 => return Err(update_error(error)),
+                Err(_) => {
+                    retries_left -= 1;
+                    state.publish(&app, |s| {
+                        s.downloaded = 0;
+                        s.total = None;
+                    });
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        };
         state.publish(&app, |s| {
             s.downloaded = bytes.len() as u64;
         });

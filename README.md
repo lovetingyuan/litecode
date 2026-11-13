@@ -4,7 +4,7 @@ A lightweight, open-source VS Code alternative built with Tauri.
 
 **Website:** [litecode.tingyuan.in](https://litecode.tingyuan.in/en/) · **Download:** [GitHub Releases](https://github.com/lovetingyuan/litecode/releases)
 
-![LiteCode feature demo](docs/images/demo.gif)
+![LiteCode v0.2.3 demo showing split editing, quick file navigation, code completion, workspace search, Git diffs, Markdown preview, and split terminals](docs/images/demo.gif)
 
 ## Why LiteCode
 
