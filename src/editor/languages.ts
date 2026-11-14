@@ -9,6 +9,11 @@ import {
 import { MonacoLanguageClient } from "monaco-languageclient";
 import * as vscode from "vscode";
 import {
+  MessageType,
+  ShowMessageNotification,
+  ShowMessageRequest,
+} from "vscode-languageserver-protocol";
+import {
   RegisteredFileSystemProvider,
   registerFileSystemOverlay,
   FileType,
@@ -35,6 +40,22 @@ class IpcReader extends AbstractMessageReader {
     };
   }
   accept(message: Message) {
+    if (
+      "method" in message &&
+      (message.method === ShowMessageNotification.method ||
+        message.method === ShowMessageRequest.method) &&
+      "params" in message &&
+      typeof message.params === "object" &&
+      message.params !== null &&
+      "message" in message.params &&
+      "type" in message.params &&
+      (message.params.type === MessageType.Error || message.params.type === MessageType.Warning)
+    ) {
+      message.params.message = errorMessage(
+        message.params.message,
+        "The language service reported a problem.",
+      );
+    }
     this.callback?.(message);
   }
   close() {
@@ -59,11 +80,20 @@ class IpcWriter extends AbstractMessageWriter {
     this.fireClose();
   }
 }
+
+class LanguageClient extends MonacoLanguageClient {
+  override error(message: string, data?: unknown) {
+    // The client can force a notification with raw RPC data. LiteCode owns the user-facing copy.
+    super.error(message, data, false);
+  }
+}
+
 const clients = new Map<string, MonacoLanguageClient>();
 const starting = new Map<string, Promise<void>>();
 const failures = new Set<string>();
 const failureDetails = new Map<string, string>();
 const references = new Map<string, { dispose(): void }>();
+const startupTimeout = "Language server initialization timed out after 30 seconds.";
 let languageEpoch = 0;
 let stopping: Promise<void> | undefined;
 let startsPaused = false;
@@ -304,6 +334,25 @@ function languageSelector(serverId: string, language: string) {
     : [language];
 }
 
+function reportLanguageStartFailure(serverId: string, error: unknown, clientCreated: boolean) {
+  const timedOut = error instanceof Error && error.message === startupTimeout;
+  logError("language_initialization_failed", error, { command: serverId, omitDetails: !timedOut });
+  failures.add(serverId);
+  const fallback = `Could not start the ${serverId} language service.`;
+  const message = clientCreated && !timedOut ? fallback : errorMessage(error, fallback);
+  failureDetails.set(serverId, message);
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "workspaceTrust"
+  ) {
+    setApp({ languageStatus: "Restricted Mode" });
+  } else {
+    notify(message);
+  }
+}
+
 async function startLanguage(
   serverId: string,
   language: string,
@@ -320,24 +369,20 @@ async function startLanguage(
     let client: MonacoLanguageClient | undefined;
     const reader = new IpcReader();
     const writer = new IpcWriter(serverId);
-    const logs: string[] = [];
     const handleEvent = (event: { sequence: number; kind: string; message: Message | string }) => {
       if (event.kind === "message") {
-        reader.accept(event.message as Message);
-        void call("lsp_ack", { serverId, sequence: event.sequence }).catch(() => {});
-      } else if (event.kind === "log") {
-        if (logs.length >= 50) {
-          logs.shift();
+        if (event.message && typeof event.message === "object") {
+          reader.accept(event.message);
         }
-        logs.push(String(event.message));
+        void call("lsp_ack", { serverId, sequence: event.sequence }).catch(() => {});
       } else if (event.kind === "exit") {
         reader.close();
         if (epoch === languageEpoch && clients.get(serverId) === client) {
           clients.delete(serverId);
           setApp({ languageStatus: `${serverId} stopped` });
         }
-      } else {
-        notify(`${serverId}: ${String(event.message)}`);
+      } else if (event.kind === "error" && epoch === languageEpoch) {
+        notify(`Could not communicate with the ${serverId} language service.`);
       }
     };
     try {
@@ -354,7 +399,7 @@ async function startLanguage(
         return;
       }
       const selector = languageSelector(serverId, language);
-      client = new MonacoLanguageClient({
+      client = new LanguageClient({
         id: serverId,
         name: description,
         messageTransports: { reader, writer },
@@ -368,6 +413,7 @@ async function startLanguage(
               }
             : undefined,
           initializationOptions: { schemas: settingsSchemas(), ...initializationOptions },
+          initializationFailedHandler: () => false,
           middleware: {
             workspace: {
               configuration: async (params) =>
@@ -396,13 +442,13 @@ async function startLanguage(
                   arguments: [command, args],
                 });
               response = result?.body ?? null;
-            } catch (e) {
+            } catch {
               if (epoch === languageEpoch) {
                 logError("vue_typescript_request_failed", {
                   code: "lspProtocol",
                   message: "Vue TypeScript request failed",
                 });
-                notify(`Vue TypeScript: ${errorMessage(e)}`);
+                notify("Vue could not get TypeScript information.");
               }
             } finally {
               // Always respond, including errors, so Vue can release its pending request.
@@ -420,17 +466,14 @@ async function startLanguage(
         await Promise.race([
           client.start(),
           new Promise<never>((_, reject) => {
-            timeout = setTimeout(
-              () => reject(new Error("Language server initialization timed out after 30 seconds")),
-              30_000,
-            );
+            timeout = setTimeout(() => reject(new Error(startupTimeout)), 30_000);
           }),
         ]);
       } finally {
         clearTimeout(timeout);
       }
       if (!client.isRunning()) {
-        throw new Error(`${description} did not start. ${logs.slice(-8).join("\n")}`);
+        throw new Error(`${description} did not start.`);
       }
       if (epoch === languageEpoch) {
         clients.set(serverId, client);
@@ -441,20 +484,7 @@ async function startLanguage(
       }
     } catch (e) {
       if (epoch === languageEpoch) {
-        logError("language_initialization_failed", e, {
-          command: serverId,
-          omitDetails: !(
-            e instanceof Error &&
-            e.message === "Language server initialization timed out after 30 seconds"
-          ),
-        });
-        failures.add(serverId);
-        failureDetails.set(serverId, `${errorMessage(e)}\n${logs.join("\n")}`);
-        if ((e as { code?: string })?.code === "workspaceTrust") {
-          setApp({ languageStatus: "Restricted Mode" });
-        } else {
-          notify(errorMessage(e));
-        }
+        reportLanguageStartFailure(serverId, e, client !== undefined);
       }
       await call("lsp_stop", { serverId }).catch(() => {});
     } finally {

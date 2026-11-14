@@ -26,6 +26,19 @@ it("normalizes errors without serializing arbitrary payloads", async () => {
   expect(normalizeLogError({ text: "private" }).message).toBe("Unknown error");
 });
 
+it("keeps stack traces out of user-facing errors while retaining the original for logging", async () => {
+  const { errorMessage, stripErrorStack } = await import("./errorMessage");
+  const { normalizeLogError } = await import("./logging");
+  const message =
+    "Error: Could not load the project.\r\n    at getProject (D:/src/tsserver.js:3:11)";
+  expect(errorMessage({ code: -32603, message })).toBe("Could not load the project.");
+  expect(stripErrorStack(message)).toBe("Error: Could not load the project.");
+  expect(errorMessage({ code: -32603, message: "getProject@file:///src/tsserver.js:3:11" })).toBe(
+    "The operation failed. (-32603)",
+  );
+  expect(normalizeLogError({ message }).message).toBe(message);
+});
+
 it("ignores expected control flow and native-owned update errors", async () => {
   const { logError, logCommandError } = await import("./logging");
   for (const code of [

@@ -393,7 +393,7 @@ impl SearchRun<'_> {
             .kill_on_drop(true)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+            .stderr(std::process::Stdio::null());
         #[cfg(windows)]
         command.creation_flags(0x08000000);
         let mut child = command.spawn().map_err(|e| {
@@ -411,12 +411,6 @@ impl SearchRun<'_> {
         } else {
             drop(child.stdin.take());
         }
-        let stderr = child.stderr.take().unwrap();
-        let error_reader = tokio::spawn(async move {
-            let mut bytes = vec![];
-            let _ = stderr.take(16384).read_to_end(&mut bytes).await;
-            String::from_utf8_lossy(&bytes).to_string()
-        });
         let mut reader = BufReader::new(child.stdout.take().unwrap());
         let mut flush = tokio::time::interval(Duration::from_millis(40));
         flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -472,16 +466,12 @@ impl SearchRun<'_> {
             }
         }
         let status = child.wait().await?;
-        let stderr = error_reader.await.unwrap_or_default();
-        if status.code().is_some_and(|c| c > 1)
+        if !status.success()
+            && status.code() != Some(1)
             && !task.cancelled.load(Ordering::Acquire)
             && !batch.limited
         {
-            batch.errors.push(if stderr.is_empty() {
-                format!("ripgrep exited with {status}")
-            } else {
-                stderr
-            });
+            batch.errors.push(format!("The search could not finish ({status})."));
         }
         Ok(())
     }

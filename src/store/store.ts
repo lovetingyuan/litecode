@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { stripErrorStack } from "../core/errorMessage";
 import type {
   Doc,
   Group,
@@ -171,4 +172,8 @@ export const activeDoc = () => {
   return id ? s.docs[id] : undefined;
 };
 export const notify = (message: string, openFolder: (() => void) | null = null) =>
-  setApp({ notice: message, noticeLink: null, noticeOpenFolder: openFolder });
+  setApp({
+    notice: stripErrorStack(message) || "The operation failed.",
+    noticeLink: null,
+    noticeOpenFolder: openFolder,
+  });

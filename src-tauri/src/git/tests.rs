@@ -783,7 +783,8 @@ fn hooks_fail_without_losing_the_index() {
         },
     )
     .unwrap_err();
-    assert!(error.message.contains("blocked-by-test-hook"));
+    assert!(error.message.starts_with("The Git command failed"));
+    assert!(!error.message.contains("blocked-by-test-hook"));
     assert!(changes(&root).changes[0].index_status.is_some());
 }
 

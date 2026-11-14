@@ -611,7 +611,9 @@ function createRuntime(id: string): Runtime {
         removeTerminal(id);
         return;
       }
-      const message = event.error ?? `Shell exited with code ${event.exitCode ?? "unknown"}.`;
+      const message = event.error
+        ? errorMessage(event.error, "The terminal session failed.")
+        : `Shell exited with code ${event.exitCode ?? "unknown"}.`;
       patchPane(id, {
         status: event.kind === "exit" ? "exited" : "error",
         exitCode: event.exitCode ?? undefined,

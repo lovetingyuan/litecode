@@ -1,4 +1,4 @@
-import { call } from "../core/bridge";
+import { call, errorMessage } from "../core/bridge";
 import type { PackageDependency, PackageRegistry } from "../types/packages";
 
 const cache = new Map<string, { time: number; request: Promise<PackageRegistry> }>();
@@ -35,7 +35,10 @@ export function packageRegistry(dependency: PackageDependency, installed?: strin
       name: dependency.registryName,
       declared: dependency.registryVersion,
       installed: installed ?? null,
-    }),
+    }).then((result) => ({
+      ...result,
+      errors: result.errors.map((error) => errorMessage(error, "Could not check the package.")),
+    })),
   );
   const entry = { request, time: Date.now() };
   cache.set(key, entry);

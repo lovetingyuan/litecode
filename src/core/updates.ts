@@ -39,7 +39,10 @@ export const updateLocked = (phase: UpdateSnapshot["phase"]) =>
   phase === "preparing" || phase === "installing";
 export function acceptUpdate(snapshot: UpdateSnapshot) {
   if (snapshot.revision >= useUpdates.getState().revision) {
-    useUpdates.setState(snapshot);
+    useUpdates.setState({
+      ...snapshot,
+      error: snapshot.error ? errorMessage(snapshot.error, "The update failed.") : null,
+    });
   }
 }
 

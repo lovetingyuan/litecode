@@ -77,11 +77,10 @@ pub(super) async fn run(
             // a child that fills its output pipe before reading stdin.
             let (stdout, stderr, ()) = tokio::try_join!(read_tail(stdout), read_tail(stderr), write)?;
             let status = child.wait().await?;
-            let text = format!("{}{}", String::from_utf8_lossy(&stdout), String::from_utf8_lossy(&stderr));
             if !status.success() {
-                return Err(super::git_error(if text.trim().is_empty() { format!("Git exited with {status}") } else { text }));
+                return Err(super::git_error(format!("The Git command failed ({status}).")));
             }
-            Ok(text)
+            Ok(format!("{}{}", String::from_utf8_lossy(&stdout), String::from_utf8_lossy(&stderr)))
         } => result,
         _ = cancelled.wait_for(|value| *value) => Err(AppError::new("cancelled", "Git operation cancelled. Refresh before retrying.")),
         _ = tokio::time::sleep(timeout) => Err(AppError::new("gitTimeout", "Git timed out. Check credentials or hooks, then refresh before retrying.")),

@@ -1,6 +1,9 @@
 import { invoke, isTauri, Channel, convertFileSrc } from "@tauri-apps/api/core";
 import type { Bootstrap, SearchBatch } from "../types/types";
 import { logCommandError } from "./logging";
+import { errorMessage } from "./errorMessage";
+
+export { errorMessage };
 
 export const desktop = isTauri();
 export const mediaSource = (path: string) => convertFileSrc(path, "media");
@@ -20,7 +23,12 @@ export async function call<T>(command: string, args?: Record<string, unknown>): 
 }
 export const channel = (fn: (batch: SearchBatch) => void) => {
   const c = new Channel<SearchBatch>();
-  c.onmessage = fn;
+  c.onmessage = (batch) => {
+    if (batch.errors.length) {
+      batch.errors = batch.errors.map((error) => errorMessage(error, "Search failed."));
+    }
+    fn(batch);
+  };
   return c;
 };
 export function bootstrap(): Promise<Bootstrap> {
@@ -37,9 +45,4 @@ export function bootstrap(): Promise<Bootstrap> {
     warnings: [],
     dataDir: "",
   });
-}
-export function errorMessage(error: unknown): string {
-  return typeof error === "object" && error && "message" in error
-    ? String(error.message)
-    : String(error);
 }

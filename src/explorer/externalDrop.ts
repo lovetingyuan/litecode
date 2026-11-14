@@ -1,3 +1,4 @@
+import { errorMessage } from "../core/errorMessage";
 import type { CopyReport } from "./explorerClipboard";
 
 export type DropItem = { path: string; directory: boolean };
@@ -28,12 +29,6 @@ type CopyServices = {
   ) => Promise<string | null>;
   copy: (index: number, plan: ExternalCopyPlan) => Promise<{ from: string; to: string }>;
 };
-
-function dropErrorMessage(error: unknown) {
-  return typeof error === "object" && error && "message" in error
-    ? String(error.message)
-    : String(error);
-}
 
 function cancelledDropChoice(signal: AbortSignal, choice: string | null) {
   return signal.aborted || !choice || choice === "Cancel";
@@ -75,7 +70,7 @@ export async function copyDroppedItems(
     } catch (error) {
       report.failed.push({
         path: item.path,
-        message: dropErrorMessage(error),
+        message: errorMessage(error, "Could not copy the item."),
       });
     }
     return true;
@@ -115,7 +110,7 @@ export async function openDroppedItems(
     } catch (error) {
       failed.push({
         path: item.path,
-        message: dropErrorMessage(error),
+        message: errorMessage(error, "Could not open the item."),
       });
     }
   }

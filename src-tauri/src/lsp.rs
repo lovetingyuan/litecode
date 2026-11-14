@@ -103,7 +103,6 @@ pub async fn lsp_start(
     let (
         mut stdin,
         stdout,
-        stderr,
         mut receiver,
         pending,
         mut child,
@@ -127,7 +126,7 @@ pub async fn lsp_start(
             .kill_on_drop(true)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+            .stderr(std::process::Stdio::null());
         if let Some(root) = &spec.root {
             command.current_dir(tools::process_path(root));
         }
@@ -144,7 +143,6 @@ pub async fn lsp_start(
             .ok_or_else(|| AppError::new("process", "Server exited before startup"))?;
         let stdin = child.stdin.take().unwrap();
         let stdout = child.stdout.take().unwrap();
-        let stderr = child.stderr.take().unwrap();
         let (sender, receiver) = mpsc::channel::<Value>(64);
         let pending = Arc::new(Mutex::new(HashMap::new()));
         state.servers.lock_recover().insert(
@@ -160,7 +158,6 @@ pub async fn lsp_start(
         Ok((
             stdin,
             stdout,
-            stderr,
             receiver,
             pending,
             child,
@@ -202,27 +199,6 @@ pub async fn lsp_start(
             }
             result
         });
-        let event_channel = on_event.clone();
-        let log = tokio::spawn(async move {
-            let mut stderr = stderr;
-            let mut buffer = [0; 8192];
-            let mut count = 0;
-            while let Ok(size) = stderr.read(&mut buffer).await {
-                if size == 0 {
-                    break;
-                }
-                count += 1;
-                if count <= 1000 {
-                    let _ = event_channel.send(ServerEvent {
-                        sequence: 0,
-                        kind: "log".into(),
-                        message: Value::String(
-                            String::from_utf8_lossy(&buffer[..size]).into_owned(),
-                        ),
-                    });
-                }
-            }
-        });
         let semaphore = Arc::new(Semaphore::new(32));
         let reader_channel = on_event.clone();
         let mut output = tokio::spawn(async move {
@@ -255,7 +231,7 @@ pub async fn lsp_start(
                     match result {
                         Ok(Err(error)) => {
                             if active() { crate::logging::error("language_reader_failed", Some(&owner), &error.code, &error.message); }
-                            let _ = on_event.send(ServerEvent { sequence: 0, kind: "error".into(), message: Value::String(error.message) });
+                            let _ = on_event.send(ServerEvent { sequence: 0, kind: "error".into(), message: Value::Null });
                         }
                         Err(error) if active() => crate::logging::error("language_reader_task_failed", Some(&owner), "task", &error.to_string()),
                         Ok(Ok(())) if active() => crate::logging::error("language_server_exited", Some(&owner), "lsp", &format!("Language service {key} closed its output unexpectedly")),
@@ -273,7 +249,6 @@ pub async fn lsp_start(
         let _ = child.wait().await;
         writer.abort();
         output.abort();
-        log.abort();
         let _ = on_event.send(ServerEvent {
             sequence: 0,
             kind: "exit".into(),

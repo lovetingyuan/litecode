@@ -4,9 +4,8 @@ use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use serde_json::Value;
 use std::{path::Path, sync::atomic::Ordering};
 use tokio::{
-    io::{AsyncReadExt, BufReader},
+    io::BufReader,
     process::{Child, ChildStdout, Command},
-    task::JoinHandle,
 };
 
 struct Exclusion {
@@ -253,7 +252,7 @@ pub(super) fn enumeration_settings(query: &Query, settings: &Value) -> Value {
 pub(super) struct CandidateFiles {
     child: Child,
     reader: BufReader<ChildStdout>,
-    errors: Option<JoinHandle<String>>,
+    done: bool,
 }
 
 impl CandidateFiles {
@@ -265,28 +264,22 @@ impl CandidateFiles {
             .current_dir(root)
             .kill_on_drop(true)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+            .stderr(std::process::Stdio::null());
         #[cfg(windows)]
         command.creation_flags(0x08000000);
         let mut child = command
             .spawn()
             .map_err(|e| AppError::new("searchTool", format!("Cannot list search files: {e}")))?;
         let reader = BufReader::new(child.stdout.take().unwrap());
-        let stderr = child.stderr.take().unwrap();
-        let errors = tokio::spawn(async move {
-            let mut bytes = vec![];
-            let _ = stderr.take(16384).read_to_end(&mut bytes).await;
-            String::from_utf8_lossy(&bytes).into_owned()
-        });
         Ok(Self {
             child,
             reader,
-            errors: Some(errors),
+            done: false,
         })
     }
 
     pub(super) async fn next(&mut self, task: &super::SearchTask) -> Result<Option<String>> {
-        if task.cancelled.load(Ordering::Acquire) || self.errors.is_none() {
+        if task.cancelled.load(Ordering::Acquire) || self.done {
             return Ok(None);
         }
         if let Some(mut bytes) = super::read_record(&mut self.reader, task, 0).await? {
@@ -307,11 +300,11 @@ impl CandidateFiles {
             return Ok(None);
         }
         let status = self.child.wait().await?;
-        let errors = self.errors.take().unwrap().await.unwrap_or_default();
+        self.done = true;
         if !status.success() && status.code() != Some(1) {
             return Err(AppError::new(
                 "searchFiles",
-                format!("Cannot list search files: {errors}"),
+                format!("Could not list files for the search ({status})."),
             ));
         }
         Ok(None)

@@ -76,6 +76,7 @@ async fn enumerate(rg: &Path, root: &Path, settings: &Value) -> Result<Vec<Strin
     command
         .args(arguments(settings))
         .current_dir(root)
+        .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
     #[cfg(windows)]
     command.creation_flags(0x08000000);
@@ -86,10 +87,7 @@ async fn enumerate(rg: &Path, root: &Path, settings: &Value) -> Result<Vec<Strin
     if !output.status.success() && output.status.code() != Some(1) {
         return Err(AppError::new(
             "quickFiles",
-            format!(
-                "Cannot list workspace files: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ),
+            format!("Could not list workspace files ({}).", output.status),
         ));
     }
     Ok(output

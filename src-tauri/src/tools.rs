@@ -401,7 +401,7 @@ pub async fn format_document(
             .kill_on_drop(true)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+            .stderr(std::process::Stdio::null());
         #[cfg(windows)]
         command.creation_flags(0x08000000);
         let child = {
@@ -435,7 +435,7 @@ pub async fn format_document(
     if !output.status.success() {
         return Err(AppError::new(
             "formatter",
-            String::from_utf8_lossy(&output.stderr).to_string(),
+            "Could not format the document. Check its syntax and formatter settings.",
         ));
     }
     String::from_utf8(output.stdout).map_err(|e| AppError::new("encoding", e.to_string()))
@@ -552,7 +552,8 @@ pub async fn install_tools(
                 std::env::var("PATH").unwrap_or_default()
             ),
         )
-        .kill_on_drop(true);
+        .kill_on_drop(true)
+        .stderr(std::process::Stdio::null());
     #[cfg(windows)]
     command.creation_flags(0x08000000);
     let output = tokio::time::timeout(std::time::Duration::from_secs(300), command.output())
@@ -566,7 +567,7 @@ pub async fn install_tools(
     if !output.status.success() {
         return Err(AppError::new(
             "install",
-            String::from_utf8_lossy(&output.stderr).to_string(),
+            "Could not install language tools. Check your connection and try again.",
         ));
     }
     let destination = tools.join("languages");

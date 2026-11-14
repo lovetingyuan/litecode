@@ -1,3 +1,4 @@
+import { errorMessage } from "../core/errorMessage";
 import type { DirectorySnapshot, WorkspaceSymbolicLink } from "../types/types";
 export type DirectoryState = {
   paths: string[];
@@ -161,16 +162,7 @@ export class DirectoryCache {
         return "stop";
       }
       entry.status = "failed";
-      entry.error =
-        error instanceof Error
-          ? error.message
-          : String(
-              (
-                error as {
-                  message?: string;
-                }
-              )?.message ?? error,
-            );
+      entry.error = errorMessage(error, "Could not load the folder.");
     }
     return "continue";
   }

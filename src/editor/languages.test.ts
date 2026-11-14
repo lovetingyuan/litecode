@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { editor } from "monaco-editor";
+import { notify } from "../store/store";
 
 type ClientOptions = {
   messageTransports: { reader: { listen: (callback: (message: unknown) => void) => unknown } };
@@ -69,7 +70,11 @@ vi.mock("@codingame/monaco-vscode-files-service-override", () => ({
   RegisteredFileSystemProvider: class {},
 }));
 vi.mock("@codingame/monaco-vscode-api/monaco", () => ({ createModelReference: mocks.reference }));
-vi.mock("../core/bridge", () => ({ call: mocks.call, desktop: true, errorMessage: String }));
+vi.mock("../core/bridge", async () => ({
+  ...(await import("../core/errorMessage")),
+  call: mocks.call,
+  desktop: true,
+}));
 vi.mock("../components/dialog", () => ({ ask: mocks.ask }));
 vi.mock("../store/store", () => ({
   useApp: { getState: () => mocks.state },
@@ -242,8 +247,11 @@ it("passes native initialization options and forwards Vue requests to TypeScript
     arguments: ["_vue:projectInfo", { file: "C:/a/App.vue" }],
   });
   expect(vue.sendNotification).toHaveBeenLastCalledWith("tsserver/response", [1, { result: true }]);
-  typescript.sendRequest.mockRejectedValueOnce(new Error("TypeScript stopped"));
+  typescript.sendRequest.mockRejectedValueOnce(
+    new Error("Request failed: Debug Failure.\n    at getProject (D:/project/tsserver.js:3:11)"),
+  );
   await forward([2, "_vue:projectInfo", {}]);
+  expect(notify).toHaveBeenLastCalledWith("Vue could not get TypeScript information.");
   expect(vue.sendNotification).toHaveBeenLastCalledWith("tsserver/response", [2, null]);
 });
 
@@ -304,12 +312,32 @@ it("recreates the real Channel after a trust rejection and delivers messages wit
       method: "textDocument/publishDiagnostics",
       params: { uri: "file:///C:/a/main.ts", diagnostics: [] },
     },
+    {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "window/showMessageRequest",
+      params: {
+        type: 1,
+        message:
+          "Error: Could not load the project.\n    at getProject (D:/project/tsserver.js:3:11)",
+        actions: [{ title: "Retry" }],
+      },
+    },
   ];
   messages.forEach((message, index) =>
     deliver({ index, message: { kind: "message", sequence: index + 1, message } }),
   );
-  expect(mocks.messages).toEqual(messages);
-  expect(mocks.call).toHaveBeenCalledWith("lsp_ack", { serverId: "typescript", sequence: 2 });
+  expect(mocks.messages).toEqual([
+    messages[0],
+    messages[1],
+    {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "window/showMessageRequest",
+      params: { type: 1, message: "Could not load the project.", actions: [{ title: "Retry" }] },
+    },
+  ]);
+  expect(mocks.call).toHaveBeenCalledWith("lsp_ack", { serverId: "typescript", sequence: 3 });
   expect(languageReport().services).toEqual([
     { id: "typescript", running: true, capabilities: undefined },
   ]);
