@@ -7,6 +7,12 @@ pub struct AppError {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trust_path: Option<String>,
+    #[cfg(windows)]
+    #[serde(skip)]
+    pub(crate) os_error: Option<i32>,
+    #[cfg(windows)]
+    #[serde(skip)]
+    pub(crate) io_stage: Option<&'static str>,
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;
@@ -17,6 +23,22 @@ impl AppError {
             code: code.into(),
             message: message.into(),
             trust_path: None,
+            #[cfg(windows)]
+            os_error: None,
+            #[cfg(windows)]
+            io_stage: None,
+        }
+    }
+
+    pub(crate) fn io_at(_stage: &'static str) -> impl FnOnce(std::io::Error) -> Self {
+        move |error| {
+            let error = Self::from(error);
+            #[cfg(windows)]
+            let error = Self {
+                io_stage: Some(_stage),
+                ..error
+            };
+            error
         }
     }
 }
@@ -28,7 +50,13 @@ impl From<std::io::Error> for AppError {
             std::io::ErrorKind::PermissionDenied => "permissionDenied",
             _ => "io",
         };
-        Self::new(code, e.to_string())
+        let app_error = Self::new(code, e.to_string());
+        #[cfg(windows)]
+        let app_error = Self {
+            os_error: e.raw_os_error(),
+            ..app_error
+        };
+        app_error
     }
 }
 

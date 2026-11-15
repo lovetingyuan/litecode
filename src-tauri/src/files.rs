@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{fs, io::Write, path::Path};
 
+#[cfg(windows)]
+mod save_diagnostics;
+#[cfg(windows)]
+pub(crate) use save_diagnostics::retry as retry_save;
+
 pub const LARGE_FILE: u64 = 20 * 1024 * 1024;
 pub const MAX_FILE: u64 = 100 * 1024 * 1024;
 
@@ -121,7 +126,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| AppError::new("path", "Path has no parent"))?;
-    fs::create_dir_all(parent)?;
+    fs::create_dir_all(parent).map_err(AppError::io_at("create_parent_directory"))?;
     #[cfg(windows)]
     let (mut temp, replacing) = windows_atomic::prepare(path, parent)?;
     #[cfg(not(windows))]
@@ -134,8 +139,11 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
         }
         temp
     };
-    temp.write_all(bytes)?;
-    temp.as_file().sync_all()?;
+    temp.write_all(bytes)
+        .map_err(AppError::io_at("write_temporary_file"))?;
+    temp.as_file()
+        .sync_all()
+        .map_err(AppError::io_at("sync_temporary_file"))?;
     #[cfg(windows)]
     if replacing {
         let temp = temp.into_temp_path();
@@ -144,7 +152,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     }
     #[cfg(windows)]
     temp.persist_noclobber(path)
-        .map_err(|e| AppError::from(e.error))?;
+        .map_err(|e| AppError::io_at("commit_new_file")(e.error))?;
     #[cfg(not(windows))]
     temp.persist(path).map_err(|e| AppError::from(e.error))?;
     Ok(())
@@ -152,7 +160,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 
 #[cfg(windows)]
 mod windows_atomic {
-    use crate::error::windows_io;
+    use crate::error::{AppError, Result, windows_io};
     use std::{
         fs::File,
         io,
@@ -178,15 +186,14 @@ mod windows_atomic {
         path.as_os_str().encode_wide().chain(Some(0)).collect()
     }
 
-    pub(super) fn prepare(
-        path: &Path,
-        parent: &Path,
-    ) -> io::Result<(tempfile::NamedTempFile, bool)> {
+    pub(super) fn prepare(path: &Path, parent: &Path) -> Result<(tempfile::NamedTempFile, bool)> {
+        let create_temp_error = AppError::io_at("create_temporary_file");
         match std::fs::metadata(path) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Ok((tempfile::NamedTempFile::new_in(parent)?, false));
+                let temp = tempfile::NamedTempFile::new_in(parent).map_err(create_temp_error)?;
+                return Ok((temp, false));
             }
-            Err(error) => return Err(error),
+            Err(error) => return Err(AppError::io_at("inspect_destination")(error)),
             Ok(_) => (),
         }
         let name = wide(path);
@@ -195,7 +202,9 @@ mod windows_atomic {
         let mut needed = 0;
         let _ = unsafe { GetFileSecurityW(PCWSTR(name.as_ptr()), info.0, None, 0, &mut needed) };
         if needed == 0 {
-            return Err(io::Error::last_os_error());
+            return Err(AppError::io_at("read_destination_security")(
+                io::Error::last_os_error(),
+            ));
         }
         let mut storage = vec![0u32; (needed as usize).div_ceil(4)];
         let descriptor = PSECURITY_DESCRIPTOR(storage.as_mut_ptr().cast());
@@ -208,39 +217,42 @@ mod windows_atomic {
                 &mut needed,
             )
             .ok()
-            .map_err(windows_io)?;
+            .map_err(|error| AppError::io_at("read_destination_security")(windows_io(error)))?;
             // Do not inherit extra access from the temporary file's parent directory.
             SetSecurityDescriptorControl(descriptor, SE_DACL_PROTECTED, SE_DACL_PROTECTED)
-                .map_err(windows_io)?;
+                .map_err(|error| AppError::io_at("protect_temporary_file")(windows_io(error)))?;
         }
         let attributes = SECURITY_ATTRIBUTES {
             nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
             lpSecurityDescriptor: descriptor.0,
             bInheritHandle: false.into(),
         };
-        let temp = tempfile::Builder::new().make_in(parent, |path| {
-            let name = wide(path);
-            let handle = unsafe {
-                CreateFileW(
-                    PCWSTR(name.as_ptr()),
-                    0xC0000000,
-                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                    Some(&attributes),
-                    CREATE_NEW,
-                    FILE_ATTRIBUTE_NORMAL,
-                    None,
-                )
-            }
-            .map_err(windows_io)?;
-            Ok(unsafe { File::from_raw_handle(handle.0) })
-        })?;
+        let temp = tempfile::Builder::new()
+            .make_in(parent, |path| {
+                let name = wide(path);
+                let handle = unsafe {
+                    CreateFileW(
+                        PCWSTR(name.as_ptr()),
+                        0xC0000000,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                        Some(&attributes),
+                        CREATE_NEW,
+                        FILE_ATTRIBUTE_NORMAL,
+                        None,
+                    )
+                }
+                .map_err(windows_io)?;
+                Ok(unsafe { File::from_raw_handle(handle.0) })
+            })
+            .map_err(create_temp_error)?;
         Ok((temp, true))
     }
 
-    pub(super) fn replace(path: &Path, temp: &Path) -> io::Result<()> {
+    pub(super) fn replace(path: &Path, temp: &Path) -> Result<()> {
         let backup_dir = tempfile::Builder::new()
             .prefix(".litecode-save-")
-            .tempdir_in(path.parent().unwrap())?;
+            .tempdir_in(path.parent().unwrap())
+            .map_err(AppError::io_at("create_backup_directory"))?;
         let backup_path = backup_dir.path().join("original");
         let backup = wide(&backup_path);
         let destination = wide(path);
@@ -258,6 +270,7 @@ mod windows_atomic {
         }
         .map_err(windows_io);
         if let Err(error) = result {
+            let error = AppError::io_at("replace_file")(error);
             // Some ReplaceFile failures leave the original under the backup name.
             if backup_path.try_exists().unwrap_or(true) {
                 if !path.try_exists().unwrap_or(true)
@@ -266,10 +279,16 @@ mod windows_atomic {
                     return Err(error);
                 }
                 let preserved = backup_dir.keep().join("original");
-                return Err(io::Error::other(format!(
-                    "{error}; original preserved in {}",
-                    preserved.display()
-                )));
+                let mut preserved_error = AppError::new(
+                    "io",
+                    format!(
+                        "{}; original preserved in {}",
+                        error.message,
+                        preserved.display()
+                    ),
+                );
+                preserved_error.io_stage = Some("preserve_original_after_replace");
+                return Err(preserved_error);
             }
             return Err(error);
         }
@@ -281,7 +300,9 @@ pub fn save(path: &Path, text: &str, encoding: &str, expected: Option<&str>) -> 
     match (fs::read(path), expected) {
         (Ok(bytes), Some(revision)) if hash(&bytes) == revision => (),
         (Err(e), None) if e.kind() == std::io::ErrorKind::NotFound => (),
-        (Err(e), _) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+        (Err(e), _) if e.kind() != std::io::ErrorKind::NotFound => {
+            return Err(AppError::io_at("read_original")(e));
+        }
         _ => {
             return Err(AppError::new(
                 "conflict",

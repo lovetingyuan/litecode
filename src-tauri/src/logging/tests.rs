@@ -14,7 +14,16 @@ fn credentials_are_redacted_and_paths_remain_readable() {
 
 #[test]
 fn records_are_json_lines_with_a_strict_byte_limit() {
-    let input = json!({"event": "file_failed", "message": "\u{0001}".repeat(30_000), "stack": "中🙂".repeat(10_000), "text": "private document"});
+    let input = json!({
+        "event": "file_failed",
+        "message": "\u{0001}".repeat(30_000),
+        "stack": "中🙂".repeat(10_000),
+        "text": "private document",
+        "stage": "replace_file",
+        "osError": 32,
+        "attempts": 5,
+        "fileUsers": "Example (PID 123)",
+    });
     let line = encode(&input.to_string(), Level::Error);
     assert!(line.len() < MAX_RECORD, "{}", line.len());
     assert!(!line.contains('\n'));
@@ -24,4 +33,8 @@ fn records_are_json_lines_with_a_strict_byte_limit() {
     assert!(record["timestamp"].is_string());
     assert!(record["operationId"].is_string());
     assert!(record.get("text").is_none());
+    assert_eq!(record["stage"], "replace_file");
+    assert_eq!(record["osError"], 32);
+    assert_eq!(record["attempts"], 5);
+    assert_eq!(record["fileUsers"], "Example (PID 123)");
 }

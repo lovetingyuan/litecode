@@ -645,7 +645,8 @@ pub async fn save_document(
         let _disk = state.disk_lock.read_recover();
         let session_lock = state.disk_operation(format!("session:{}", window.label()));
         let _session = session_lock.lock_recover();
-        let path = state.authorize(window.label(), &path)?;
+        let authorize = || state.authorize(window.label(), &path);
+        let path = authorize()?;
         let path_lock = state.disk_operation(format!("path:{}", crate::file_moves::key(&path)));
         let _path = path_lock.lock_recover();
         {
@@ -666,7 +667,19 @@ pub async fn save_document(
                 ));
             }
         }
-        let saved = files::save(&path, &text, &encoding, revision.as_deref());
+        let save = || files::save(&path, &text, &encoding, revision.as_deref());
+        #[cfg(not(windows))]
+        let saved = save();
+        #[cfg(windows)]
+        let saved = files::retry_save(&path, window.label(), |retrying| {
+            if retrying && authorize()? != path {
+                return Err(AppError::new(
+                    "conflict",
+                    "The save destination changed. Reopen the file before saving.",
+                ));
+            }
+            save()
+        });
         #[cfg(windows)]
         let saved = match saved {
             Err(error) if error.code == "permissionDenied" => {

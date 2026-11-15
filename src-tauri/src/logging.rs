@@ -28,6 +28,14 @@ static AUTH: LazyLock<Regex> =
 
 pub struct LogStatus(pub Option<String>);
 
+pub(crate) fn operation_id() -> String {
+    format!(
+        "{}-{}",
+        std::process::id(),
+        NEXT_ID.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
 fn truncate(value: &str, limit: usize) -> String {
     let mut end = value.len().min(limit);
     while !value.is_char_boundary(end) {
@@ -52,7 +60,7 @@ fn encode(message: &str, level: Level) -> String {
         "pid": std::process::id(),
         "source": "backend",
         "event": "native_error",
-        "operationId": format!("{}-{}", std::process::id(), NEXT_ID.fetch_add(1, Ordering::Relaxed)),
+        "operationId": input["operationId"].as_str().map_or_else(operation_id, str::to_owned),
     });
     // Only these fields can enter the file; never serialize arbitrary error objects or IPC arguments.
     for field in [
@@ -65,16 +73,29 @@ fn encode(message: &str, level: Level) -> String {
         "code",
         "message",
         "stack",
+        "stage",
+        "fileUsers",
+        "lockProbe",
     ] {
         if let Some(value) = input[field].as_str() {
             record[field] = Value::String(truncate(
                 &redact(value),
-                if field == "message" { 8192 } else { 4096 },
+                match field {
+                    "message" => 8192,
+                    "stage" | "lockProbe" => 64,
+                    "fileUsers" => 1024,
+                    _ => 4096,
+                },
             ));
         }
     }
     if let Some(count) = input["suppressed"].as_u64() {
         record["suppressed"] = count.into();
+    }
+    for field in ["osError", "attempts", "lockProbeError"] {
+        if let Some(value) = input[field].as_i64() {
+            record[field] = value.into();
+        }
     }
     let mut encoded = record.to_string();
     // JSON escaping and UTF-8 can expand strings; cap the serialized record, including its newline.
@@ -89,6 +110,7 @@ fn encode(message: &str, level: Level) -> String {
             "window",
             "code",
             "source",
+            "fileUsers",
         ] {
             if let Some(value) = record[field].as_str() {
                 record[field] = truncate(value, 256).into();
@@ -235,7 +257,14 @@ pub fn record(level: Level, event: &str, window: Option<&str>, code: &str, messa
         recent.insert(key, (now, 0));
         suppressed
     };
-    let message = json!({"event": event, "window": window, "code": code, "message": message, "suppressed": suppressed}).to_string();
+    emit(
+        level,
+        json!({"event": event, "window": window, "code": code, "message": message, "suppressed": suppressed}),
+    );
+}
+
+pub(crate) fn emit(level: Level, record: Value) {
+    let message = record.to_string();
     if READY.load(Ordering::Acquire) {
         log::log!(target: "litecode", level, "{message}");
     } else {
