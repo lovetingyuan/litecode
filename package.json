@@ -16,7 +16,7 @@
     "format": "oxfmt --write .",
     "test": "vitest run",
     "test:e2e": "node tools/verify-desktop.mjs",
-    "release": "node tools/release.mjs"
+    "release": "npm run check && node tools/release.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
