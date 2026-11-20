@@ -31,9 +31,10 @@ export async function prepareWorkspaceOpen(
   const choice = await ask(
     "Do you trust the authors of this folder?",
     `Terminals, language services and formatters can execute code from this folder. Restricted Mode keeps text editing available.\n\n${info.path}`,
-    ["Restricted Mode", "Trust Workspace"],
+    ["Restricted Mode", "Trust Workspace", "Cancel"],
+    { disablePointerDismissal: true },
   );
-  if (!choice) {
+  if (!choice || choice === "Cancel") {
     return null;
   }
   return { ...info, trust: { root: info.path, trusted: choice === "Trust Workspace" } };
@@ -55,6 +56,7 @@ export async function manageWorkspaceTrust(root = useApp.getState().root) {
     `Only trust folders from authors you trust. Terminals, language services and formatters can execute code from this folder.\n\n${root}`,
     ["Restricted Mode", "Trust Workspace", "Cancel"],
     {
+      disablePointerDismissal: true,
       action: {
         choice: ["Restricted Mode", "Trust Workspace"],
         label: "Applying…",
@@ -91,6 +93,7 @@ function requestTrust(root: string) {
       `Terminals, language services and formatters can execute code from this folder. Restricted Mode keeps text editing available.\n\n${root}`,
       ["Restricted Mode", "Trust Workspace"],
       {
+        disablePointerDismissal: true,
         signal: controller.signal,
         action: {
           choice: "Trust Workspace",
@@ -130,6 +133,7 @@ function requestFormatterTrust(root: string | null, directory: string, path: unk
       `Formatters and their configuration can execute code with your user permissions. Only approve folders from authors you trust. This permission lasts for this window and workspace context.\n\n${directory}`,
       ["Trust Formatters", "Cancel"],
       {
+        disablePointerDismissal: true,
         signal: controller.signal,
         action: {
           choice: "Trust Formatters",

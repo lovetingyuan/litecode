@@ -6,6 +6,7 @@ export type DialogAction = {
 };
 
 export type DialogOptions = {
+  disablePointerDismissal?: boolean;
   items?: string[];
   itemsLabel?: string;
   signal?: AbortSignal;

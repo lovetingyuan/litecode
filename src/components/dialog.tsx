@@ -151,6 +151,7 @@ export function DialogHost() {
   return (
     <Dialog.Root
       open={!!request}
+      disablePointerDismissal={request?.disablePointerDismissal}
       onOpenChange={(open) => {
         if (!open) {
           request?.resolve(null);
