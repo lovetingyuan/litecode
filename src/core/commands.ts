@@ -1,6 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { call, desktop, errorMessage } from "./bridge";
 import { logError } from "./logging";
+import { recordWorkspaceOpen } from "./telemetry";
 import { activeDoc, useApp, setApp, notify, primarySearchId } from "../store/store";
 import {
   checkpoint,
@@ -205,6 +206,7 @@ export async function openFolder(newWindow = false, recentPath?: string, reuseEx
     if (same) {
       await activateWorkspace(path, switching, info);
     }
+    recordWorkspaceOpen();
   } finally {
     setApp({ openingWorkspace: null });
     openingFolder = false;

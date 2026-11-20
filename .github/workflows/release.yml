@@ -109,6 +109,9 @@ jobs:
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Sentry client keys are public and are embedded only in tagged builds.
+          VITE_SENTRY_DSN: ${{ github.event_name == 'push' && 'https://b9d106956339b2228dce7a65bcf8318b@o4512391155154944.ingest.us.sentry.io/4512464940367872' || '' }}
+          SENTRY_NATIVE_DSN: ${{ github.event_name == 'push' && 'https://b8110825aca6f06e1da0ac8caf2699fa@o4512391155154944.ingest.us.sentry.io/4512464940695552' || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ github.event_name == 'push' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         with:

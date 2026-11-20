@@ -30,6 +30,7 @@ mod search;
 mod startup;
 mod state;
 mod sync;
+mod telemetry;
 mod terminal;
 mod tools;
 mod transactions;
@@ -83,6 +84,7 @@ pub fn run() {
     if let Some(code) = elevated_save::run_helper() {
         std::process::exit(code);
     }
+    let _telemetry = telemetry::init();
     logging::install_panic_hook();
     startup::mark("process-started", std::time::Instant::now());
     let builder = media::register(tauri::Builder::default())

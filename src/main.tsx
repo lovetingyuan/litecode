@@ -1,6 +1,8 @@
 import { startupMark, waitForStartupPaint } from "./core/startup";
 import { installErrorLogging, logError } from "./core/logging";
+import { initTelemetry } from "./core/telemetry";
 
+initTelemetry();
 installErrorLogging();
 startupMark("entry-evaluated");
 

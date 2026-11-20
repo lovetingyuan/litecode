@@ -2,6 +2,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { error as writeError } from "@tauri-apps/plugin-log";
 import type { ErrorLogContext, NormalizedLogError } from "../types/logging";
+import { reportError } from "./telemetry";
 
 const recorded = new WeakSet<object>();
 const recent = new Map<string, { time: number; suppressed: number }>();
@@ -100,6 +101,7 @@ export function logError(event: string, error: unknown, context: ErrorLogContext
         console.error("Could not write LiteCode error logs.");
       }
     });
+    reportError(event, omitDetails ? undefined : error);
   } catch {
     // Hostile error getters and unavailable browser APIs cannot break error handling.
   }

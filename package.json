@@ -25,6 +25,7 @@
     "@codingame/monaco-vscode-files-service-override": "37.6.1",
     "@codingame/monaco-vscode-languages-service-override": "37.6.1",
     "@pierre/trees": "1.0.0",
+    "@sentry/react": "11.16.0",
     "@tauri-apps/api": "2.12.4",
     "@tauri-apps/plugin-clipboard-manager": "2.5.0",
     "@tauri-apps/plugin-log": "2.10.2",
