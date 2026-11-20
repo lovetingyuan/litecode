@@ -34,6 +34,7 @@ import {
   branchSwitchTarget,
   copyBranchName,
   createBranch,
+  sortBranches,
   switchBranch,
   type GitBranch,
 } from "./branches";
@@ -127,6 +128,30 @@ describe("branch targets", () => {
       expect(branchSwitchTarget(remote, [branch, remote]).kind).toBe("blocked");
       expect(branchReference(branch)).toBe("refs/heads/feature/demo");
     }
+  });
+  it("sorts current branch first, then local branches, then remote branches case-insensitively", () => {
+    const branches = [
+      local("origin/zeta", { remote: true }),
+      local("Beta"),
+      local("origin/alpha", { remote: true }),
+      local("zeta", { current: true }),
+      local("origin/Beta", { remote: true }),
+      local("alpha"),
+      local("feature"),
+      local("Feature"),
+    ];
+    expect(sortBranches(branches).map((b) => `${b.remote ? "remote" : "local"}:${b.name}`)).toEqual(
+      [
+        "local:zeta",
+        "local:alpha",
+        "local:Beta",
+        "local:Feature",
+        "local:feature",
+        "remote:origin/alpha",
+        "remote:origin/Beta",
+        "remote:origin/zeta",
+      ],
+    );
   });
 });
 

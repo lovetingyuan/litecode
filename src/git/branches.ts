@@ -15,6 +15,32 @@ type SwitchTarget =
 export const branchReference = (branch: GitBranch) =>
   `refs/${branch.remote ? "remotes" : "heads"}/${branch.name}`;
 
+function compareBranchNames(a: string, b: string) {
+  const aLower = a.toLowerCase();
+  const bLower = b.toLowerCase();
+  if (aLower !== bLower) {
+    return aLower < bLower ? -1 : 1;
+  }
+  if (a !== b) {
+    return a < b ? -1 : 1;
+  }
+  return 0;
+}
+
+function compareBranches(a: GitBranch, b: GitBranch) {
+  if (a.remote !== b.remote) {
+    return a.remote ? 1 : -1;
+  }
+  if (a.current !== b.current) {
+    return a.current ? -1 : 1;
+  }
+  return compareBranchNames(a.name, b.name);
+}
+
+export function sortBranches(branches: readonly GitBranch[]) {
+  return [...branches].sort(compareBranches);
+}
+
 export function branchSwitchTarget(branch: GitBranch, branches: GitBranch[]): SwitchTarget {
   const matches = branch.remote
     ? branches.filter((local) => !local.remote && local.upstream === branch.name)

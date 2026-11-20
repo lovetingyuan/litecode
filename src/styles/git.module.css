@@ -9,7 +9,8 @@
   min-width: 0;
   flex: 1;
   font-size: 12px;
-  padding: 0 8px;
+  padding: 0 6px;
+  white-space: nowrap;
 }
 .git-tabs [role="tab"][aria-selected="true"] {
   border-bottom-color: var(--lc-focus);
@@ -271,4 +272,13 @@
 }
 .git-diff-toolbar {
   padding: 0 8px 0 14px;
+}
+/* Keep the commit hash copy icon compact to match the 11px history metadata row. */
+.git-history-copy {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+}
+.git-history-copy :global(.codicon[class*="codicon-"]) {
+  font-size: 12px;
 }

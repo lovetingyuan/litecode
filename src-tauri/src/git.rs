@@ -16,6 +16,7 @@ use std::{
 use tauri::{State, WebviewWindow};
 
 pub mod blame;
+pub mod history;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -324,6 +325,21 @@ pub struct Branch {
     upstream: Option<String>,
     worktree: bool,
 }
+
+fn sort_branches(branches: &mut [Branch]) {
+    branches.sort_by(|a, b| {
+        a.remote
+            .cmp(&b.remote)
+            .then_with(|| b.current.cmp(&a.current))
+            .then_with(|| {
+                a.name
+                    .chars()
+                    .flat_map(char::to_lowercase)
+                    .cmp(b.name.chars().flat_map(char::to_lowercase))
+            })
+            .then_with(|| a.name.cmp(&b.name))
+    });
+}
 #[derive(Serialize)]
 pub struct Remote {
     name: String,
@@ -394,7 +410,7 @@ pub fn info(root: &Path) -> Result<Info> {
             });
         }
     }
-    branches.sort_by(|a, b| a.remote.cmp(&b.remote).then_with(|| a.name.cmp(&b.name)));
+    sort_branches(&mut branches);
     let remotes = repo
         .remotes()
         .map_err(git_error)?

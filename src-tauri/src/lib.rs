@@ -252,6 +252,7 @@ pub fn run() {
             commands::workspace_git_status,
             git::git_repository_info,
             git::git_commit_details,
+            git::history::git_commit_history,
             git::git_read_diff,
             git::blame::git_blame_file,
             git::git_open_source,

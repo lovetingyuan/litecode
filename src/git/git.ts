@@ -15,6 +15,7 @@ import {
 import { languageFor } from "../editor/monaco";
 import { refreshGit } from "../explorer/workspaceGit";
 import { workspaceDirectories } from "../explorer/workspaceTree";
+import type { GitHistoryPage, GitHistoryQuery } from "../types/gitHistory";
 import type {
   Doc,
   GitChange,
@@ -54,6 +55,13 @@ export function gitContext(repository: string) {
 export const refreshGitPanel = () => refreshGit(workspaceDirectories(), true);
 export const readGitInfo = (repository: string) =>
   call<GitInfo>("git_repository_info", gitContext(repository));
+export const readGitHistory = (repository: string, query: GitHistoryQuery) =>
+  call<GitHistoryPage>("git_commit_history", {
+    ...gitContext(repository),
+    head: query.head ?? null,
+    skip: query.skip,
+    limit: query.limit,
+  });
 export const readGitDiff = (diff: GitDiffResource) => {
   if (normalize(useApp.getState().root ?? "") !== normalize(diff.workspace)) {
     throw new Error("This comparison belongs to another workspace");

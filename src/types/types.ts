@@ -76,7 +76,7 @@ export type Location = { id: string; path?: string | null; line: number; column:
 export type Session = {
   gitDiffs?: Doc[];
   gitRepository?: string | null;
-  gitTab?: "changes" | "info";
+  gitTab?: import("./gitHistory").GitTab;
   gitLayout?: "list" | "tree";
   groups: Group[];
   activeGroup: string;

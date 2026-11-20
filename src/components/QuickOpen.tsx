@@ -541,7 +541,14 @@ export function QuickOpen() {
             />
             {!items.length && (
               <div className="quick-empty py-[6px] px-2">
-                {busy ? "Searching…" : "No matching results"}
+                {busy ? (
+                  <span className="inline-flex items-center gap-[6px]">
+                    <span>Searching…</span>
+                    <Icon name="loading" className="animate-spin" />
+                  </span>
+                ) : (
+                  "No matching results"
+                )}
               </div>
             )}
           </div>

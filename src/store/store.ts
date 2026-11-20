@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { stripErrorStack } from "../core/errorMessage";
+import type { GitTab } from "../types/gitHistory";
 import type {
   Doc,
   Group,
@@ -48,7 +49,7 @@ type State = {
   tabRevealRequests: Record<string, number>; // Transient UI requests; excluded from session().
   sidebar: "explorer" | "search" | "git" | null;
   gitRepository: string | null;
-  gitTab: "changes" | "info";
+  gitTab: GitTab;
   gitLayout: "list" | "tree";
   gitBusy: Record<string, string>;
   gitMessages: Record<string, string>;

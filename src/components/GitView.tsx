@@ -23,6 +23,7 @@ import { errorMessage } from "../core/bridge";
 import { openFolder } from "../core/commands";
 import { actionButtonClass, Icon, IconButton, FileIcon } from "./ui";
 import { GitCommitDialog } from "./GitCommitDialog";
+import { GitHistoryPanel } from "./GitHistoryPanel";
 import { PaneLayout } from "./EditorGrid";
 import {
   addPaneWeights,
@@ -36,6 +37,7 @@ import {
   branchSwitchTarget,
   copyBranchName,
   createBranch,
+  sortBranches,
   switchBranch,
 } from "../git/branches";
 import {
@@ -49,9 +51,15 @@ import {
   selectedRepository,
 } from "../git/git";
 import { filesUnder, groupChanges, visibleRange, type ChangeGroup } from "../git/changes";
+import type { GitTab } from "../types/gitHistory";
 import type { GitChange, GitInfo, GitOperation, GitRepository } from "../types/types";
 import sidebarScrollbarCSS from "../styles/sidebar-scrollbar.css?raw";
 
+const gitTabs: readonly [GitTab, string][] = [
+  ["changes", "Changes"],
+  ["history", "History"],
+  ["info", "Repository"],
+];
 const groups: [ChangeGroup, string][] = [
   ["conflicts", "Merge Changes"],
   ["staged", "Staged Changes"],
@@ -77,6 +85,23 @@ function gitStatusClass(status: string | undefined) {
   }
 
   return statusClass;
+}
+
+function nextGitTab(current: GitTab, key: string): GitTab | null {
+  const index = gitTabs.findIndex(([id]) => id === current);
+  if (key === "Home") {
+    return gitTabs[0][0];
+  }
+  if (key === "End") {
+    return gitTabs[gitTabs.length - 1][0];
+  }
+  if (key === "ArrowRight") {
+    return gitTabs[(index + 1) % gitTabs.length][0];
+  }
+  if (key === "ArrowLeft") {
+    return gitTabs[(index - 1 + gitTabs.length) % gitTabs.length][0];
+  }
+  return null;
 }
 
 function warnIfNoRemotes(remotes: GitInfo["remotes"]) {
@@ -214,8 +239,10 @@ export function GitView() {
     setBranchSearchOpen(false);
   }, [root, repositoryPath, git.session]);
   const branchQuery = branchSearch.trim().toLowerCase();
-  const visibleBranches =
-    info?.branches.filter((branch) => branch.name.toLowerCase().includes(branchQuery)) ?? [];
+  const matchedBranches = branchQuery
+    ? (info?.branches.filter((branch) => branch.name.toLowerCase().includes(branchQuery)) ?? [])
+    : (info?.branches ?? []);
+  const visibleBranches = sortBranches(matchedBranches);
   const branchWorking = useRef(false);
   useEffect(() => {
     if (repositoryPath && selected !== repositoryPath) {
@@ -332,7 +359,10 @@ export function GitView() {
     }
     const target = await choose(
       "Select Branch to Pull",
-      info.branches.filter((b) => b.remote).map((b) => ({ id: b.name, label: b.name })),
+      sortBranches(info.branches.filter((b) => b.remote)).map((b) => ({
+        id: b.name,
+        label: b.name,
+      })),
     );
     if (!valid()) {
       return null;
@@ -431,7 +461,11 @@ export function GitView() {
   const chooseBranch = (branches: GitInfo["branches"]) =>
     choose(
       "Select Local Tracking Branch",
-      branches.map((b) => ({ id: b.name, label: b.name, description: b.upstream ?? undefined })),
+      sortBranches(branches).map((b) => ({
+        id: b.name,
+        label: b.name,
+        description: b.upstream ?? undefined,
+      })),
     );
   function closeEmptyBranchSearch() {
     if (!branchQuery) {
@@ -515,29 +549,16 @@ export function GitView() {
               role="tablist"
               aria-label="Source Control tabs"
               onKeyDown={(e) => {
-                if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+                const next = nextGitTab(tab, e.key);
+                if (next) {
                   e.preventDefault();
-                  let next: "changes" | "info";
-                  if (e.key === "Home") {
-                    next = "changes";
-                  } else if (e.key === "End") {
-                    next = "info";
-                  } else if (tab === "changes") {
-                    next = "info";
-                  } else {
-                    next = "changes";
-                  }
                   setApp({ gitTab: next });
+                  scheduleBackup();
                   document.getElementById(`git-tab-${next}`)?.focus();
                 }
               }}
             >
-              {(
-                [
-                  ["changes", "Changes"],
-                  ["info", "Repository"],
-                ] as const
-              ).map(([id, label]) => (
+              {gitTabs.map(([id, label]) => (
                 <button
                   key={id}
                   id={`git-tab-${id}`}
@@ -682,7 +703,7 @@ export function GitView() {
                 )}
               </div>
             )}
-            {tab === "changes" ? (
+            {tab === "changes" && (
               <div
                 id="git-panel-changes"
                 role="tabpanel"
@@ -696,7 +717,18 @@ export function GitView() {
                   busy={!!busy}
                 />
               </div>
-            ) : (
+            )}
+            {tab === "history" && (
+              <GitHistoryPanel
+                repository={repository}
+                root={root}
+                session={git.session}
+                infoVersion={infoVersion}
+                active={active}
+                busy={!!busy}
+              />
+            )}
+            {tab === "info" && (
               <div
                 id="git-panel-info"
                 role="tabpanel"

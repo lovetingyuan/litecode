@@ -617,6 +617,52 @@ fn local_branch_operations_and_worktrees_are_reported() {
 }
 
 #[test]
+fn branches_sort_current_local_first_then_locals_then_remotes() {
+    let (_temp, root) = fixture();
+    let remote = tempfile::tempdir().unwrap();
+    run_git(remote.path(), &["init", "--bare"], None).unwrap();
+    run_git(
+        &root,
+        &["remote", "add", "origin", remote.path().to_str().unwrap()],
+        None,
+    )
+    .unwrap();
+    fs::write(root.join("file.txt"), "base").unwrap();
+    stage(&root, &["file.txt"]);
+    commit(&root, "initial");
+    for name in ["alpha", "Beta", "zeta"] {
+        run_git(&root, &["branch", name], None).unwrap();
+    }
+    run_git(
+        &root,
+        &["push", "origin", "main", "alpha", "Beta", "zeta"],
+        None,
+    )
+    .unwrap();
+    run_git(&root, &["switch", "zeta"], None).unwrap();
+
+    let ordered: Vec<(bool, bool, String)> = info(&root)
+        .unwrap()
+        .branches
+        .into_iter()
+        .map(|b| (b.remote, b.current, b.name))
+        .collect();
+    assert_eq!(
+        ordered,
+        vec![
+            (false, true, "zeta".into()),
+            (false, false, "alpha".into()),
+            (false, false, "Beta".into()),
+            (false, false, "main".into()),
+            (true, false, "origin/alpha".into()),
+            (true, false, "origin/Beta".into()),
+            (true, false, "origin/main".into()),
+            (true, false, "origin/zeta".into()),
+        ]
+    );
+}
+
+#[test]
 fn local_remote_fetch_push_pull_and_tracking() {
     let (_temp, root) = fixture();
     let remote = tempfile::tempdir().unwrap();

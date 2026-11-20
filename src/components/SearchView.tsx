@@ -631,7 +631,14 @@ function SearchPanel({ id }: Readonly<{ id: string }>) {
       >
         {renderSearchForm()}
         <div className="search-summary" aria-live="polite">
-          {summary}
+          {searching && !(id === primarySearchId && replacementPhase) ? (
+            <span className="inline-flex items-center gap-[6px]">
+              <span>{summary}</span>
+              <Icon name="loading" className="animate-spin" />
+            </span>
+          ) : (
+            summary
+          )}
         </div>
         {limited && (
           <p

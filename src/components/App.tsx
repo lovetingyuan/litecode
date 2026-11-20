@@ -512,7 +512,12 @@ export default function App() {
           {s.view === "editor" && doc && group && !doc.gitDiff && !isTextView(doc, group) && (
             <MediaStatus doc={doc} group={group} />
           )}
-          {s.searchSessions.some((search) => search.searching) && <span>Searching…</span>}
+          {s.searchSessions.some((search) => search.searching) && (
+            <span className={`status-item ${workbenchStyles["status-item"]}`}>
+              <span>Searching…</span>
+              <Icon name="loading" className="animate-spin" />
+            </span>
+          )}
           <span
             className={`status-item ${workbenchStyles["status-item"]}`}
             title={s.languageStatus}
