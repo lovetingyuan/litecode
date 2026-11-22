@@ -3,14 +3,14 @@ import { isTauri } from "@tauri-apps/api/core";
 
 export function initTelemetry(): void {
   const dsn = import.meta.env.VITE_SENTRY_DSN;
-  if (!dsn || !isTauri()) {
+  if (import.meta.env.DEV || !dsn || !isTauri()) {
     return;
   }
 
   init({
     dsn,
     release: `litecode@${__APP_VERSION__}`,
-    environment: import.meta.env.DEV ? "development" : "production",
+    environment: "production",
     defaultIntegrations: false,
     beforeSend(event) {
       // Error messages can include editor contents, paths, or command output.
@@ -34,5 +34,8 @@ export function reportError(kind: string, error: unknown): void {
 }
 
 export function recordWorkspaceOpen(): void {
+  if (!getClient()) {
+    return;
+  }
   metrics.count("litecode.workspace.open", 1);
 }

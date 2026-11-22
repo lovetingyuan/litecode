@@ -65,7 +65,9 @@ export function useExternalDrop(ready: boolean) {
           terminal: terminal.dataset.terminalPane,
         };
       }
-      if (path.some((e) => e instanceof HTMLElement && e.matches(".terminal-view"))) {
+      if (
+        path.some((e) => e instanceof HTMLElement && e.matches(".terminal-view, .notepad-view"))
+      ) {
         return null;
       }
       const tree = externalExplorer()?.resolve(path) ?? null;

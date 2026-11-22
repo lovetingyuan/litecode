@@ -290,6 +290,22 @@ export const commands: Command[] = [
     run: () => import("../terminal/runtime").then((t) => t.showTerminal(true)),
   },
   {
+    id: "workbench.view.notepad",
+    label: "Notepad: Toggle Notepad",
+    key: "Ctrl+Shift+M",
+    menu: "View",
+    run: () => import("../notepad/runtime").then((n) => n.showNotepad(true)),
+  },
+  {
+    id: "notepad.newNote",
+    label: "Notepad: New Note",
+    run: async () => {
+      const notepad = await import("../notepad/runtime");
+      notepad.showNotepad(false);
+      await notepad.createNote();
+    },
+  },
+  {
     id: "workbench.action.terminal.new",
     label: "Terminal: New Terminal",
     key: "Ctrl+Shift+`",
@@ -781,7 +797,12 @@ export const commands: Command[] = [
     label: "Toggle Primary Side Bar",
     key: "Ctrl+B",
     menu: "View",
-    run: () => setApp({ sidebar: useApp.getState().sidebar ? null : "explorer" }),
+    run: () => {
+      if (useApp.getState().view === "notepad") {
+        return import("../notepad/runtime").then((n) => n.toggleNotepadSidebar());
+      }
+      setApp({ sidebar: useApp.getState().sidebar ? null : "explorer" });
+    },
   },
   {
     id: "workbench.action.splitEditor",
@@ -1002,6 +1023,7 @@ export function keyContext(target: HTMLElement, editorContext?: EditorContext) {
     !target.closest(".monaco-editor");
   return {
     terminalFocus: !!target.closest(".terminal-pane"),
+    notepadFocus: !!target.closest(".notepad-view"),
     terminalHasSelection: terminalSelections.has(
       target.closest<HTMLElement>(".terminal-pane")?.dataset.terminalPane ?? "",
     ),
@@ -1112,6 +1134,7 @@ function runTerminalShortcut(
           "workbench.action.quickOpen",
           "workbench.view.explorer",
           "workbench.view.scm",
+          "workbench.view.notepad",
           "workbench.action.findInFiles",
         ].includes(c.command.id)),
   )?.command.id;
@@ -1119,6 +1142,90 @@ function runTerminalShortcut(
     e.preventDefault();
     e.stopPropagation();
     void execute(command);
+  }
+}
+
+function runNotepadShortcut(
+  e: KeyboardEvent,
+  defaults: ReturnType<typeof defaultBindings>,
+  sequence: string,
+  typing: boolean,
+  key: string,
+) {
+  const globalCommand = defaults.find(
+    (c) =>
+      normalizeKey(c.key) === sequence &&
+      [
+        "workbench.action.showCommands",
+        "workbench.action.quickOpen",
+        "workbench.view.explorer",
+        "workbench.view.scm",
+        "workbench.view.notepad",
+        "workbench.action.findInFiles",
+        "workbench.action.terminal.toggleTerminal",
+      ].includes(c.command.id),
+  )?.command.id;
+  if (globalCommand) {
+    e.preventDefault();
+    e.stopPropagation();
+    void execute(globalCommand);
+    return;
+  }
+  if (key === "Ctrl+S") {
+    e.preventDefault();
+    e.stopPropagation();
+    void import("../notepad/runtime").then((n) => n.flushNotepadSaves());
+    return;
+  }
+  if (key === "Ctrl+Shift+S") {
+    e.preventDefault();
+    e.stopPropagation();
+    void Promise.all([import("../notepad/state"), import("../notepad/runtime")]).then(
+      ([stateMod, runtime]) => {
+        const activeId = stateMod.useNotepad.getState().activeId;
+        if (activeId) {
+          void runtime.exportNotepadFile(activeId).catch((error) => notify(errorMessage(error)));
+        }
+      },
+    );
+    return;
+  }
+  if (typing) {
+    return;
+  }
+  if (key === "Ctrl+N") {
+    e.preventDefault();
+    e.stopPropagation();
+    void import("../notepad/runtime").then((n) =>
+      n.createNote().catch((error) => notify(errorMessage(error))),
+    );
+  } else if (key === "Ctrl+W" || key === "Ctrl+F4") {
+    e.preventDefault();
+    e.stopPropagation();
+    void Promise.all([import("../notepad/state"), import("../notepad/runtime")]).then(
+      ([stateMod, runtime]) => {
+        const activeId = stateMod.useNotepad.getState().activeId;
+        if (activeId) {
+          void runtime.closeNotepadTab(activeId).catch((error) => notify(errorMessage(error)));
+        }
+      },
+    );
+  } else if (key === "Ctrl+Tab" || key === "Ctrl+PageDown") {
+    e.preventDefault();
+    e.stopPropagation();
+    void import("../notepad/runtime").then((n) => n.switchNotepadTab(1));
+  } else if (key === "Ctrl+Shift+Tab" || key === "Ctrl+PageUp") {
+    e.preventDefault();
+    e.stopPropagation();
+    void import("../notepad/runtime").then((n) => n.switchNotepadTab(-1));
+  } else if (key === "Alt+Z") {
+    e.preventDefault();
+    e.stopPropagation();
+    void import("../notepad/runtime").then((n) => n.toggleNotepadWordWrap());
+  } else if (key === "Ctrl+B") {
+    e.preventDefault();
+    e.stopPropagation();
+    void import("../notepad/runtime").then((n) => n.toggleNotepadSidebar());
   }
 }
 
@@ -1156,6 +1263,26 @@ function runGlobalShortcut(
   }
 }
 
+function dispatchViewShortcut(
+  e: KeyboardEvent,
+  context: ReturnType<typeof keyContext>,
+  view: ReturnType<typeof useApp.getState>["view"],
+  defaults: ReturnType<typeof defaultBindings>,
+  sequence: string,
+  typing: boolean,
+  key: string,
+) {
+  if (context.terminalFocus) {
+    runTerminalShortcut(e, defaults, sequence);
+    return true;
+  }
+  if (context.notepadFocus || view === "notepad") {
+    runNotepadShortcut(e, defaults, sequence, typing, key);
+    return true;
+  }
+  return false;
+}
+
 let chord = "";
 export function installKeys() {
   function handler(e: KeyboardEvent) {
@@ -1190,7 +1317,9 @@ export function installKeys() {
     chord = "";
     if (
       binding.prefix ||
-      (!typing && defaults.some((c) => normalizeKey(c.key).startsWith(`${sequence} `)))
+      (!typing &&
+        state.view !== "notepad" &&
+        defaults.some((c) => normalizeKey(c.key).startsWith(`${sequence} `)))
     ) {
       e.preventDefault();
       e.stopPropagation();
@@ -1212,8 +1341,7 @@ export function installKeys() {
       }
       return;
     }
-    if (context.terminalFocus) {
-      runTerminalShortcut(e, defaults, sequence);
+    if (dispatchViewShortcut(e, context, state.view, defaults, sequence, typing, key)) {
       return;
     }
     runGlobalShortcut(e, defaults, sequence, typing, key);

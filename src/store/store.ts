@@ -53,7 +53,7 @@ type State = {
   gitLayout: "list" | "tree";
   gitBusy: Record<string, string>;
   gitMessages: Record<string, string>;
-  view: "editor" | "terminal";
+  view: "editor" | "terminal" | "notepad";
   sidebarWidth: number;
   gitState: GitSnapshot;
   gitInfoVersion: number;

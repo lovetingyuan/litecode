@@ -179,7 +179,7 @@ export function WorkbenchLayout({
   const visible = useApp((s) => !!s.sidebar && s.view === "editor");
   const sidebarWidth = useApp((s) => s.sidebarWidth);
   const layout = useApp((s) => s.editorLayout);
-  const terminal = useApp((s) => s.view === "terminal");
+  const editorView = useApp((s) => s.view === "editor");
   const host = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(window.innerWidth - 48);
   useEffect(() => {
@@ -216,7 +216,7 @@ export function WorkbenchLayout({
           {sidebar}
         </Allotment.Pane>
         <Allotment.Pane
-          minSize={!terminal && layout ? minimumLayoutSize(layout).width : 160}
+          minSize={editorView && layout ? minimumLayoutSize(layout).width : 160}
           priority={LayoutPriority.High}
         >
           {children}

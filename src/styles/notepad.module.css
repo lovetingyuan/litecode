@@ -1,0 +1,157 @@
+/* Scoped styles for the standalone Notepad view using LiteCode theme tokens. */
+.notepad-view[hidden] {
+  display: none;
+}
+
+.notepad-sidebar-list {
+  scrollbar-width: thin;
+}
+
+.notepad-note-item {
+  position: relative;
+  border-left: 2px solid transparent;
+}
+
+.notepad-note-item:hover {
+  background: var(--lc-hover);
+}
+
+.notepad-note-item:global(.active) {
+  background: var(--lc-selection);
+  border-left-color: var(--lc-focus);
+  color: var(--lc-foreground-strong);
+}
+
+.notepad-note-item:global(.active) .notepad-note-preview,
+.notepad-note-item:global(.active) .notepad-note-time {
+  color: var(--lc-subtle);
+}
+
+.notepad-dragging {
+  opacity: 0.45;
+}
+
+.notepad-note-drop-before::before,
+.notepad-note-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--lc-focus);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.notepad-note-drop-before::before {
+  top: -1px;
+}
+
+.notepad-note-drop-after::after {
+  bottom: -1px;
+}
+
+.notepad-toolbar {
+  flex: 0 0 35px;
+}
+
+.notepad-tabs {
+  scrollbar-width: none;
+}
+
+.notepad-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.notepad-tab {
+  padding: 0 26px 0 10px;
+  background: var(--lc-sidebar);
+  color: var(--lc-muted);
+}
+
+.notepad-tab:not(:global(.active)):hover {
+  background: var(--lc-editor);
+  color: var(--lc-foreground);
+}
+
+.notepad-tab:global(.active) {
+  background: var(--lc-editor);
+  border-top-color: var(--lc-focus);
+  color: var(--lc-foreground-strong);
+}
+
+.notepad-tab-drop-before::before,
+.notepad-tab-drop-after::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--lc-focus);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.notepad-tab-drop-before::before {
+  left: -1px;
+}
+
+.notepad-tab-drop-after::after {
+  right: -1px;
+}
+
+/* Override shared icon-button sizing for compact tab close controls. */
+.notepad-tab > :global(.notepad-tab-close) {
+  width: 20px;
+  height: 20px;
+  padding: 2px;
+}
+
+.notepad-tab > :global(.notepad-tab-close) > :global(.codicon[class*="codicon-"]) {
+  font-size: 14px;
+}
+
+.notepad-tab:hover :global(.notepad-tab-close),
+.notepad-tab:global(.active) :global(.notepad-tab-close),
+.notepad-tab:focus-within :global(.notepad-tab-close) {
+  opacity: 1;
+}
+
+.notepad-actions button[aria-pressed="true"] {
+  background: var(--lc-selection);
+  color: var(--lc-foreground-strong);
+}
+
+.notepad-footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 7px;
+  border-radius: 0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.notepad-footer :global(.codicon[class*="codicon-"]) {
+  font-size: 13px;
+}
+
+.notepad-format-menu {
+  max-height: min(360px, calc(100vh - 80px));
+  overflow-y: auto;
+}
+
+.notepad-empty > :global(.codicon[class*="codicon-"]) {
+  font-size: 42px;
+}
+
+.notepad-empty button {
+  color: var(--lc-foreground-strong);
+  background: var(--lc-button);
+  padding: 5px 12px;
+}
+
+.notepad-empty button:hover {
+  background: var(--lc-button-hover);
+}

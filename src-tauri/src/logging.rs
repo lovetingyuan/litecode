@@ -261,7 +261,8 @@ pub fn record(level: Level, event: &str, window: Option<&str>, code: &str, messa
         level,
         json!({"event": event, "window": window, "code": code, "message": message, "suppressed": suppressed}),
     );
-    if level == Level::Error
+    if !cfg!(debug_assertions)
+        && level == Level::Error
         && !matches!(
             event,
             "rust_panic" | "application_setup_failed" | "application_failed"

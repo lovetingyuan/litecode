@@ -88,7 +88,7 @@ export function QuickOpen() {
   const list = useRef<HTMLDivElement>(null);
   const [symbolItems, setSymbolItems] = useState<SymbolItem[]>([]);
   const saved = useRef<ReturnType<typeof session> | null>(null);
-  const savedView = useRef<"editor" | "terminal">("editor");
+  const savedView = useRef<"editor" | "terminal" | "notepad">("editor");
   const activePosition = useRef<{ lineNumber: number; column: number } | null>(null);
   const committed = useRef(false);
   const pendingChoice = useRef<{
@@ -375,6 +375,10 @@ export function QuickOpen() {
           void import("../terminal/runtime").then((t) => t.focusTerminal());
           return;
         }
+        if (useApp.getState().view === "notepad") {
+          void import("../notepad/runtime").then((n) => n.focusNotepadEditor());
+          return;
+        }
         if (position) {
           editor()?.setPosition(position);
         }
@@ -388,6 +392,8 @@ export function QuickOpen() {
       requestAnimationFrame(() => {
         if (useApp.getState().view === "terminal") {
           void import("../terminal/runtime").then((t) => t.focusTerminal());
+        } else if (useApp.getState().view === "notepad") {
+          void import("../notepad/runtime").then((n) => n.focusNotepadEditor());
         } else {
           editor()?.focus();
         }

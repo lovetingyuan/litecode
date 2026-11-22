@@ -52,6 +52,7 @@ import { recoverInterruptedReplacements } from "../search/replacements";
 import { changeIndent, changeEncoding, changeEol } from "../editor/editorStatus";
 import { startupMark, startupStep } from "../core/startup";
 const TerminalView = lazy(() => import("./TerminalView"));
+const NotepadView = lazy(() => import("./NotepadView"));
 const GitView = lazy(() => import("./GitView").then((module) => ({ default: module.GitView })));
 
 function workspaceChanged(payload: WorkspaceChanges) {
@@ -209,6 +210,20 @@ function start() {
   return startup;
 }
 
+function handleWindowFocus(focused: boolean) {
+  if (focused) {
+    void refreshDocuments().catch((e) => notify(errorMessage(e)));
+    if (useApp.getState().view === "notepad") {
+      void import("../notepad/runtime")
+        .then((n) => n.ensureNotepadLoaded(true))
+        .catch((e) => notify(errorMessage(e)));
+    }
+    return;
+  }
+  void autoSave("onWindowChange");
+  void import("../notepad/runtime").then((n) => n.flushNotepadSaves()).catch(() => {});
+}
+
 export default function App() {
   const s = useApp();
   const openingWorkspace = s.openingWorkspace !== null;
@@ -261,7 +276,7 @@ export default function App() {
       return;
     }
     const markers = monaco.editor.onDidChangeMarkers(() => {
-      const all = monaco.editor.getModelMarkers({});
+      const all = monaco.editor.getModelMarkers({}).filter((m) => m.resource.scheme !== "notepad");
       setDiagnostics({
         errors: all.filter((m) => m.severity === monaco.MarkerSeverity.Error).length,
         warnings: all.filter((m) => m.severity === monaco.MarkerSeverity.Warning).length,
@@ -319,11 +334,7 @@ export default function App() {
       }
       const onFocus = await win.onFocusChanged(({ payload: focused }) => {
         if (!disposed) {
-          if (focused) {
-            void refreshDocuments().catch((e) => notify(errorMessage(e)));
-          } else {
-            void autoSave("onWindowChange");
-          }
+          handleWindowFocus(focused);
         }
       });
       if (disposed) {
@@ -334,6 +345,7 @@ export default function App() {
       const onClose = await win.onCloseRequested(async (event) => {
         event.preventDefault();
         try {
+          await import("../notepad/runtime").then((n) => n.flushNotepadSaves());
           await closeWindowWithRecovery(() => win.destroy());
         } catch (e) {
           notify(`Could not save recovery data. Window remains open: ${errorMessage(e)}`);
@@ -590,44 +602,12 @@ export default function App() {
           <div className="title-updates relative z-[2] ml-auto mr-2" inert={openingWorkspace}>
             <UpdateButton />
           </div>
-          <div
-            className={`title-layout ml-0 flex gap-1 mr-2 ${workbenchStyles["title-layout"]}`}
+          <TitleLayoutActions
             inert={openingWorkspace}
-          >
-            <IconButton
-              icon="arrow-left"
-              label="Go Back (Alt+Left)"
-              onClick={() => void execute("workbench.action.navigateBack")}
-              disabled={s.historyIndex <= 0}
-            />
-            <IconButton
-              icon="arrow-right"
-              label="Go Forward (Alt+Right)"
-              onClick={() => void execute("workbench.action.navigateForward")}
-              disabled={s.historyIndex >= s.history.length - 1}
-            />
-            <IconButton
-              icon="search"
-              label="Search (Ctrl+P)"
-              onClick={() => setApp({ quick: "" })}
-            />
-            <IconButton
-              icon="layout-sidebar-left"
-              label="Toggle Primary Side Bar"
-              onClick={() => void execute("workbench.action.toggleSidebarVisibility")}
-            />
-            <IconButton
-              icon="layout"
-              label={s.view === "terminal" ? "Split Terminal" : "Split Editor"}
-              onClick={() =>
-                void execute(
-                  s.view === "terminal"
-                    ? "workbench.action.terminal.split"
-                    : "workbench.action.splitEditor",
-                )
-              }
-            />
-          </div>
+            view={s.view}
+            canBack={s.historyIndex > 0}
+            canForward={s.historyIndex < s.history.length - 1}
+          />
           <div className={`window-controls flex h-full ${workbenchStyles["window-controls"]}`}>
             <button aria-label="Minimize" onClick={() => windowAction("minimize")}>
               <Icon name="chrome-minimize" />
@@ -701,6 +681,15 @@ export default function App() {
               >
                 <Icon name="terminal" />
               </button>
+              <button
+                disabled={!s.ready}
+                className={s.view === "notepad" ? "active" : ""}
+                aria-label="Notepad (Ctrl+Shift+M)"
+                title="Notepad (Ctrl+Shift+M)"
+                onClick={() => void execute("workbench.view.notepad")}
+              >
+                <Icon name="note" />
+              </button>
             </div>
             <ManageMenu />
           </nav>
@@ -748,9 +737,9 @@ export default function App() {
                 aria-label="Editors"
               >
                 <div
-                  className={`editor-groups flex flex-1 min-w-0 overflow-hidden ${editorStyles["editor-groups"]}${showWelcome ? " welcome-hidden" : ""}${s.view === "terminal" ? " workbench-editor-hidden ".concat(terminalStyles["workbench-editor-hidden"]) : ""}`}
-                  inert={showWelcome || s.view === "terminal"}
-                  aria-hidden={showWelcome || s.view === "terminal" || undefined}
+                  className={`editor-groups flex flex-1 min-w-0 overflow-hidden ${editorStyles["editor-groups"]}${showWelcome ? " welcome-hidden" : ""}${s.view !== "editor" ? " workbench-editor-hidden ".concat(terminalStyles["workbench-editor-hidden"]) : ""}`}
+                  inert={showWelcome || s.view !== "editor"}
+                  aria-hidden={showWelcome || s.view !== "editor" || undefined}
                 >
                   {s.editorLayout && <EditorLayoutView node={s.editorLayout} />}
                 </div>
@@ -766,6 +755,19 @@ export default function App() {
                     }
                   >
                     <TerminalView />
+                  </Suspense>
+                )}
+                {s.view === "notepad" && (
+                  <Suspense
+                    fallback={
+                      <div
+                        className={`startup flex-1 flex items-center justify-center flex-col p-10 ${workbenchStyles["startup"]}`}
+                      >
+                        Loading Notepad…
+                      </div>
+                    }
+                  >
+                    <NotepadView />
                   </Suspense>
                 )}
               </main>
@@ -872,6 +874,57 @@ export default function App() {
       </div>
       <UpdateDialog />
     </>
+  );
+}
+
+function TitleLayoutActions({
+  inert,
+  view,
+  canBack,
+  canForward,
+}: Readonly<{
+  inert: boolean;
+  view: "editor" | "terminal" | "notepad";
+  canBack: boolean;
+  canForward: boolean;
+}>) {
+  return (
+    <div
+      className={`title-layout ml-0 flex gap-1 mr-2 ${workbenchStyles["title-layout"]}`}
+      inert={inert}
+    >
+      <IconButton
+        icon="arrow-left"
+        label="Go Back (Alt+Left)"
+        onClick={() => void execute("workbench.action.navigateBack")}
+        disabled={!canBack}
+      />
+      <IconButton
+        icon="arrow-right"
+        label="Go Forward (Alt+Right)"
+        onClick={() => void execute("workbench.action.navigateForward")}
+        disabled={!canForward}
+      />
+      <IconButton icon="search" label="Search (Ctrl+P)" onClick={() => setApp({ quick: "" })} />
+      <IconButton
+        icon="layout-sidebar-left"
+        label={view === "notepad" ? "Toggle Notes List" : "Toggle Primary Side Bar"}
+        onClick={() => void execute("workbench.action.toggleSidebarVisibility")}
+      />
+      {view !== "notepad" && (
+        <IconButton
+          icon="layout"
+          label={view === "terminal" ? "Split Terminal" : "Split Editor"}
+          onClick={() =>
+            void execute(
+              view === "terminal"
+                ? "workbench.action.terminal.split"
+                : "workbench.action.splitEditor",
+            )
+          }
+        />
+      )}
+    </div>
   );
 }
 

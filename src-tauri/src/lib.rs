@@ -21,6 +21,7 @@ mod launch;
 mod logging;
 mod lsp;
 mod media;
+mod notepad;
 mod packages;
 mod quick_files;
 mod recovery;
@@ -300,6 +301,17 @@ pub fn run() {
             terminal::terminal_close,
             terminal::terminal_has_child_processes,
             terminal::terminal_update_cwd,
+            notepad::notepad_load,
+            notepad::notepad_read,
+            notepad::notepad_create,
+            notepad::notepad_save_content,
+            notepad::notepad_update_meta,
+            notepad::notepad_delete,
+            notepad::notepad_set_tabs,
+            notepad::notepad_reorder,
+            notepad::notepad_set_sort,
+            notepad::notepad_import_file,
+            notepad::notepad_export_file,
             tools::tool_status,
             tools::format_document,
             formatter_trust::trust_formatter,
