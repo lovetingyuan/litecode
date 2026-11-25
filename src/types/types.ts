@@ -29,13 +29,17 @@ export type DiffRequest = {
   conflict?: ConflictContext;
   error?: string;
 };
-type FileKind = "text" | "image" | "svg" | "video" | "audio" | "binary";
+type FileKind = "text" | "image" | "svg" | "video" | "audio" | "pdf" | "binary";
 export type FileInfo = { kind: FileKind; size: number; stamp: string };
+export type PdfScale = number | "fit-width" | "fit-page";
+export type PdfRotation = 0 | 90 | 180 | 270;
 export type MediaView = {
   mode?: "text" | "image" | "markdown" | "package";
-  scale?: number | "fit";
+  scale?: number | "fit" | "fit-width" | "fit-page";
   scrollLeft?: number;
   scrollTop?: number;
+  page?: number;
+  rotation?: PdfRotation;
 };
 export type Mirror = {
   id: string;
@@ -61,6 +65,7 @@ export type Doc = Omit<Mirror, "text"> & {
   deleted?: boolean;
   searchQuery?: Query;
   imageSize?: { width: number; height: number };
+  pdfInfo?: { pageCount: number };
 };
 export type DocumentSnapshot = Omit<Mirror, "text"> & { text?: string };
 export type Group = {
@@ -73,6 +78,15 @@ export type Group = {
   mediaViews?: Record<string, MediaView>;
 };
 export type Location = { id: string; path?: string | null; line: number; column: number };
+export type EditorReveal = {
+  id: string;
+  line: number;
+  column: number;
+  endLine?: number;
+  endColumn?: number;
+  center?: boolean;
+  preserveFocus?: boolean;
+};
 export type Session = {
   gitDiffs?: Doc[];
   gitRepository?: string | null;

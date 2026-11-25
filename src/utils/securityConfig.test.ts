@@ -20,6 +20,14 @@ describe("application CSP", () => {
       expect(images).not.toContain("http:");
       expect(images).toContain("http://media.localhost");
       expect(images).toContain("https:");
+      const connect = policy
+        .split(";")
+        .find((directive) => directive.trim().startsWith("connect-src"))!
+        .trim()
+        .split(/\s+/);
+      expect(connect).not.toContain("http:");
+      expect(connect).toContain("media:");
+      expect(connect).toContain("http://media.localhost");
     }
   });
 });

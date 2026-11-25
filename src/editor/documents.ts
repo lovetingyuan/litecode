@@ -5,6 +5,7 @@ import { ask } from "../components/dialog";
 import type {
   DiskDocument,
   Doc,
+  EditorReveal,
   Group,
   Mirror,
   Location,
@@ -14,7 +15,7 @@ import type {
   ConflictContext,
   DiffRequest,
 } from "../types/types";
-import { isMarkdownDocument, isTextDocument, isTextView } from "../utils/media";
+import { isTextDocument, isTextView } from "../utils/media";
 import { ensureLanguage, releaseLanguageDocument, formatModel, canFormat } from "./languages";
 import { organizeSettings, parseConfiguration, settingValue } from "../utils/settings";
 import { applyModelSettings, modelSettingKeys } from "./settings";
@@ -54,6 +55,7 @@ const savedEncodings = new Map<string, string>();
 const subscriptions = new Map<string, monaco.IDisposable>();
 const saveQueues = new Map<string, Promise<void>>();
 const refreshRequests = new Map<string, symbol>();
+const pendingReveals = new Map<string, EditorReveal>();
 let backupTimer: ReturnType<typeof setTimeout>;
 const backups = new DocumentBackups();
 let sessionBackupDue: number | undefined;
@@ -242,7 +244,7 @@ export function focusDocument(groupId = useApp.getState().activeGroup) {
     const preview = document.querySelector<HTMLElement>(
       `[data-group-id="${CSS.escape(groupId)}"] :is(.media-preview, .markdown-preview, .package-manager)`,
     );
-    (preview?.querySelector<HTMLElement>(".image-viewport") ?? preview)?.focus({
+    (preview?.querySelector<HTMLElement>(".image-viewport, .pdf-viewport") ?? preview)?.focus({
       preventScroll: true,
     });
   }
@@ -534,6 +536,8 @@ type OpenPathOptions = {
   group?: string;
   line?: number;
   column?: number;
+  endLine?: number;
+  endColumn?: number;
   background?: boolean;
   preserveFocus?: boolean;
   force?: boolean;
@@ -772,6 +776,169 @@ export function setSticky(id: string, groupId: string, sticky: boolean) {
   scheduleBackup();
 }
 
+export function hasPendingReveal(groupId: string, documentId: string) {
+  return pendingReveals.get(groupId)?.id === documentId;
+}
+
+function revealPositionFor(targetModel: monaco.editor.ITextModel, line: number, column: number) {
+  const position = { lineNumber: line, column };
+  return typeof targetModel.validatePosition === "function"
+    ? targetModel.validatePosition(position)
+    : position;
+}
+
+function revealRangeFor(
+  targetModel: monaco.editor.ITextModel,
+  line: number,
+  column: number,
+  endLine: number,
+  endColumn: number,
+) {
+  const range = new monaco.Range(line, column, endLine, endColumn);
+  return typeof targetModel.validateRange === "function" ? targetModel.validateRange(range) : range;
+}
+
+function applyRevealSelection(
+  editorInstance: monaco.editor.IStandaloneCodeEditor,
+  targetModel: monaco.editor.ITextModel,
+  reveal: EditorReveal,
+  scroll: boolean,
+) {
+  if (reveal.endLine !== undefined && reveal.endColumn !== undefined) {
+    const range = revealRangeFor(
+      targetModel,
+      reveal.line,
+      reveal.column,
+      reveal.endLine,
+      reveal.endColumn,
+    );
+    editorInstance.setSelection(range);
+    if (!scroll) {
+      return;
+    }
+    editorInstance.revealRangeInCenterIfOutsideViewport(range, monaco.editor.ScrollType.Immediate);
+    if (range.startLineNumber === range.endLineNumber) {
+      const start = editorInstance.getOffsetForColumn(range.startLineNumber, range.startColumn);
+      const end = editorInstance.getOffsetForColumn(range.endLineNumber, range.endColumn);
+      const layout = editorInstance.getLayoutInfo();
+      if (
+        start >= 0 &&
+        end >= 0 &&
+        Math.max(start, end) <= layout.contentWidth - layout.verticalScrollbarWidth
+      ) {
+        editorInstance.setScrollLeft(0, monaco.editor.ScrollType.Immediate);
+      }
+    }
+    return;
+  }
+  const position = revealPositionFor(targetModel, reveal.line, reveal.column);
+  editorInstance.setPosition(position);
+  if (!scroll) {
+    return;
+  }
+  if (reveal.center) {
+    editorInstance.revealPositionInCenter(position, monaco.editor.ScrollType.Immediate);
+  } else {
+    editorInstance.revealPositionInCenterIfOutsideViewport(
+      position,
+      monaco.editor.ScrollType.Immediate,
+    );
+  }
+}
+
+function syncEditorLayoutForReveal(
+  groupId: string,
+  editorInstance: monaco.editor.IStandaloneCodeEditor,
+): "hidden" | "replaced" | "ready" {
+  const container =
+    typeof editorInstance.getContainerDomNode === "function"
+      ? editorInstance.getContainerDomNode()
+      : null;
+  if (!container) {
+    return "ready";
+  }
+  if (container.clientWidth === 0 || container.clientHeight === 0) {
+    return "hidden";
+  }
+  const layout =
+    typeof editorInstance.getLayoutInfo === "function" ? editorInstance.getLayoutInfo() : null;
+  if (
+    layout &&
+    (layout.width !== container.clientWidth || layout.height !== container.clientHeight)
+  ) {
+    pendingReveals.delete(groupId);
+    if (typeof editorInstance.layout === "function") {
+      editorInstance.layout({ width: container.clientWidth, height: container.clientHeight });
+    }
+    if (pendingReveals.has(groupId)) {
+      return "replaced";
+    }
+  }
+  return "ready";
+}
+
+function recordPendingReveal(
+  groupId: string,
+  id: string,
+  options: {
+    line?: number;
+    column?: number;
+    endLine?: number;
+    endColumn?: number;
+    background?: boolean;
+    preserveFocus?: boolean;
+  },
+) {
+  if (options.background) {
+    return;
+  }
+  if (!options.line || !models.has(id)) {
+    pendingReveals.delete(groupId);
+    return;
+  }
+  pendingReveals.set(groupId, {
+    id,
+    line: Math.max(1, options.line),
+    column: Math.max(1, options.column ?? 1),
+    endLine: options.endLine ? Math.max(1, options.endLine) : undefined,
+    endColumn: options.endColumn ? Math.max(1, options.endColumn) : undefined,
+    preserveFocus: options.preserveFocus,
+  });
+}
+
+export function applyPendingReveal(
+  groupId: string,
+  documentId: string,
+  editorInstance: monaco.editor.IStandaloneCodeEditor,
+  options: { center?: boolean } = {},
+): boolean {
+  const reveal = pendingReveals.get(groupId);
+  if (!reveal || reveal.id !== documentId) {
+    return false;
+  }
+  const targetModel = models.get(documentId);
+  if (!targetModel || editorInstance.getModel() !== targetModel) {
+    return false;
+  }
+  if (options.center) {
+    reveal.center = true;
+  }
+  const layoutStatus = syncEditorLayoutForReveal(groupId, editorInstance);
+  if (layoutStatus === "hidden") {
+    applyRevealSelection(editorInstance, targetModel, reveal, false);
+    return true;
+  }
+  if (layoutStatus === "replaced") {
+    return false;
+  }
+  pendingReveals.delete(groupId);
+  applyRevealSelection(editorInstance, targetModel, reveal, true);
+  if (!reveal.preserveFocus) {
+    focusDocument(groupId);
+  }
+  return true;
+}
+
 export function showDocument(
   id: string,
   options: {
@@ -779,6 +946,8 @@ export function showDocument(
     group?: string;
     line?: number;
     column?: number;
+    endLine?: number;
+    endColumn?: number;
     background?: boolean;
     preserveFocus?: boolean;
   } = {},
@@ -786,12 +955,16 @@ export function showDocument(
   const s = useApp.getState();
   const groupId = options.group ?? s.activeGroup;
   const pinned = options.pinned || !settingValue(s.settings, "workbench.editor.enablePreview");
+  const targetGroup = s.groups.find((g) => g.id === groupId);
   if (
     options.line &&
-    (s.docs[id]?.kind === "svg" || (s.docs[id] && isMarkdownDocument(s.docs[id])))
+    s.docs[id] &&
+    isTextDocument(s.docs[id]) &&
+    !isTextView(s.docs[id], targetGroup)
   ) {
     patchMediaView(groupId, id, { mode: "text" });
   }
+  recordPendingReveal(groupId, id, options);
   const groups = useApp.getState().groups;
   setApp({
     groups: groups.map((g) => {
@@ -855,8 +1028,7 @@ export function showDocument(
       // eslint-disable-next-line sonarjs/no-empty-collection -- EditorGroup and GitDiffEditor populate these exported maps in other modules.
       const e = editors.get(groupId);
       if (e && options.line) {
-        e.setPosition({ lineNumber: options.line, column: options.column ?? 1 });
-        e.revealLineInCenterIfOutsideViewport(options.line);
+        applyPendingReveal(groupId, id, e);
       }
       if (!options.preserveFocus) {
         focusDocument(groupId);
@@ -1236,6 +1408,7 @@ export async function confirmDocumentClose(id: string): Promise<boolean> {
 
 export async function resetEditors() {
   documentEpoch++;
+  pendingReveals.clear();
   for (const timer of autoTimers.values()) {
     clearTimeout(timer);
   }
@@ -1411,6 +1584,11 @@ function disposeDocument(id: string) {
 
 function detachModel(id: string) {
   refreshRequests.delete(id);
+  for (const [groupId, reveal] of pendingReveals) {
+    if (reveal.id === id) {
+      pendingReveals.delete(groupId);
+    }
+  }
   releaseLanguageDocument(id);
   subscriptions.get(id)?.dispose();
   subscriptions.delete(id);
@@ -1539,6 +1717,7 @@ export function moveTab(id: string, from: string, to: string, before?: string) {
 }
 
 export function closeGroup(groupId: string) {
+  pendingReveals.delete(groupId);
   saveEditorViews();
   const s = useApp.getState();
   const source = s.groups.find((g) => g.id === groupId);
@@ -1596,7 +1775,12 @@ export async function navigate(direction: number) {
     if (!path) {
       return;
     }
-    const id = await openPath(path, { pinned: true, line: location.line, column: location.column });
+    const id = await openPath(path, {
+      reveal: false,
+      pinned: true,
+      line: location.line,
+      column: location.column,
+    });
     if (id) {
       location.id = id;
     }
@@ -1643,6 +1827,7 @@ async function refreshPreviewDocument(
         deleted: false,
         conflict: false,
         imageSize: undefined,
+        pdfInfo: undefined,
       });
     }
   } else {
@@ -1668,6 +1853,7 @@ async function refreshTextDocument(
       deleted: false,
       conflict: false,
       imageSize: undefined,
+      pdfInfo: undefined,
     });
     return;
   }
@@ -1724,7 +1910,7 @@ function handleRefreshError(doc: Doc, e: unknown, isCurrent: () => boolean) {
       patchDoc(doc.id, { conflict: true, deleted: false });
     } else {
       detachModel(doc.id);
-      patchDoc(doc.id, { kind: "binary", imageSize: undefined });
+      patchDoc(doc.id, { kind: "binary", imageSize: undefined, pdfInfo: undefined });
     }
   } else {
     notify(`Could not refresh ${doc.name}: ${errorMessage(e)}`);

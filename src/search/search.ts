@@ -15,10 +15,7 @@ import {
   showDocument,
   normalize,
   patchDoc,
-  editors,
-  patchMediaView,
 } from "../editor/documents";
-import { monaco } from "../editor/monaco";
 import type { SearchMatch, DiskDocument, Query } from "../types/types";
 import { isTextDocument } from "../utils/media";
 import { cancelReplacementPlan } from "./replacements";
@@ -183,41 +180,18 @@ export function cancelSearch(id = useApp.getState().activeSearchId) {
 
 export async function openMatch(match: SearchMatch, side = false, group?: string) {
   const groupId = group ?? useApp.getState().activeGroup;
-  if (match.documentId && useApp.getState().docs[match.documentId]?.kind === "svg") {
-    patchMediaView(groupId, match.documentId, { mode: "text" });
-  }
+  const target = {
+    pinned: side,
+    group: groupId,
+    line: match.line,
+    column: match.column,
+    endLine: match.endLine,
+    endColumn: match.endColumn,
+  };
   if (match.documentId && models.has(match.documentId)) {
-    showDocument(match.documentId, {
-      pinned: side,
-      group: groupId,
-      line: match.line,
-      column: match.column,
-    });
+    showDocument(match.documentId, target);
   } else {
-    await openPath(match.path, {
-      pinned: side,
-      group: groupId,
-      line: match.line,
-      column: match.column,
-    });
-  }
-  // showDocument reveals the position next frame; apply the range after that reveal.
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  const e = editors.get(groupId);
-  const range = new monaco.Range(match.line, match.column, match.endLine, match.endColumn);
-  e?.setSelection(range);
-  e?.revealRangeInCenterIfOutsideViewport(range, monaco.editor.ScrollType.Immediate);
-  if (e && match.line === match.endLine) {
-    const start = e.getOffsetForColumn(match.line, match.column);
-    const end = e.getOffsetForColumn(match.endLine, match.endColumn);
-    const layout = e.getLayoutInfo();
-    if (
-      start >= 0 &&
-      end >= 0 &&
-      Math.max(start, end) <= layout.contentWidth - layout.verticalScrollbarWidth
-    ) {
-      e.setScrollLeft(0, monaco.editor.ScrollType.Immediate);
-    }
+    await openPath(match.path, target);
   }
 }
 

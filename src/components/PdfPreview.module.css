@@ -1,0 +1,77 @@
+.pdf-toolbar {
+  height: 32px;
+  min-height: 32px;
+}
+
+.pdf-page-input {
+  width: 44px;
+  height: 22px;
+  padding: 0 4px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-page {
+  background: #ffffff;
+  box-shadow: 0 2px 10px var(--lc-shadow);
+  contain: layout style;
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+}
+
+.pdf-page canvas {
+  display: block;
+}
+
+/* PDF.js TextLayer styling scoped to our viewer so text selection aligns with rendered glyphs. */
+.pdf-text-layer {
+  color-scheme: only light;
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 1;
+  user-select: text;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor, 1) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.pdf-text-layer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+
+.pdf-text-layer > :not(:global(.markedContent)),
+.pdf-text-layer :global(.markedContent) span:not(:global(.markedContent)) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.pdf-text-layer :global(.markedContent) {
+  display: contents;
+}
+
+.pdf-text-layer span[role="img"] {
+  user-select: none;
+  cursor: default;
+}
+
+.pdf-text-layer ::selection {
+  background: rgba(38, 79, 120, 0.45);
+  color: transparent;
+}

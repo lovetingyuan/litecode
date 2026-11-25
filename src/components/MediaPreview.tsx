@@ -1,12 +1,26 @@
 import mediaPreviewStyles from "./MediaPreview.module.css";
 import workbenchStyles from "../styles/workbench.module.css";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { mediaSource } from "../core/bridge";
 import { models, patchDoc, patchMediaView } from "../editor/documents";
 import { clampScale, stepScale } from "../utils/media";
 import { Icon } from "./ui";
 import type { Doc, Group } from "../types/types";
 import { useApp } from "../store/store";
+
+const PdfPreview = lazy(() =>
+  import("./PdfPreview").then((module) => ({ default: module.PdfPreview })),
+);
+
+function previewKindLabel(kind: Doc["kind"]) {
+  if (kind === "svg") {
+    return "image";
+  }
+  if (kind === "pdf") {
+    return "PDF";
+  }
+  return kind ?? "media";
+}
 
 export function MediaPreview({ doc, group }: Readonly<{ doc: Doc; group: Group }>) {
   const [retry, setRetry] = useState(0);
@@ -51,7 +65,7 @@ export function MediaPreview({ doc, group }: Readonly<{ doc: Doc; group: Group }
   const failure = () => {
     setError(true);
     setReady(false);
-    patchDoc(doc.id, { imageSize: undefined });
+    patchDoc(doc.id, { imageSize: undefined, pdfInfo: undefined });
   };
   let content;
   if (doc.deleted) {
@@ -84,7 +98,7 @@ export function MediaPreview({ doc, group }: Readonly<{ doc: Doc; group: Group }
         role="alert"
       >
         <Icon name="warning" />
-        <p>An error occurred while loading the {doc.kind === "svg" ? "image" : doc.kind} file.</p>
+        <p>An error occurred while loading the {previewKindLabel(doc.kind)} file.</p>
         <button
           className="media-retry text-link underline"
           onClick={() => setRetry((value) => value + 1)}
@@ -106,6 +120,19 @@ export function MediaPreview({ doc, group }: Readonly<{ doc: Doc; group: Group }
             onReady={() => setReady(true)}
             onError={failure}
           />
+        );
+      } else if (doc.kind === "pdf") {
+        preview = (
+          <Suspense fallback={null}>
+            <PdfPreview
+              key={source}
+              doc={doc}
+              group={group}
+              source={source}
+              onReady={() => setReady(true)}
+              onError={failure}
+            />
+          </Suspense>
         );
       } else if (doc.kind === "video") {
         preview = (
@@ -184,7 +211,7 @@ function ImagePreview({
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const view = group.mediaViews?.[doc.id];
-  const scale = view?.scale ?? "fit";
+  const scale = typeof view?.scale === "number" ? view.scale : "fit";
   const fitted = natural
     ? Math.min(
         1,

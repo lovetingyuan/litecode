@@ -688,7 +688,7 @@ export default function App() {
                 title="Notepad (Ctrl+Shift+M)"
                 onClick={() => void execute("workbench.view.notepad")}
               >
-                <Icon name="note" />
+                <Icon name="new-session" />
               </button>
             </div>
             <ManageMenu />

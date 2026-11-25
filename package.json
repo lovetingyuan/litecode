@@ -43,6 +43,7 @@
     "monaco-languageclient": "11.0.3",
     "monaco-languages": "npm:monaco-editor@0.57.0",
     "patch-package": "8.0.1",
+    "pdfjs-dist": "6.5.438",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",

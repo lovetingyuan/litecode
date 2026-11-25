@@ -19,6 +19,8 @@ import {
   closeDocument,
   closeGroup,
   showDocument,
+  hasPendingReveal,
+  applyPendingReveal,
   keepOpen,
   addHistory,
   moveTab,
@@ -60,6 +62,7 @@ const PackageManager = lazy(() =>
 export function EditorGroup({ group }: Readonly<{ group: Group }>) {
   const docs = useApp((s) => s.docs);
   const activeGroup = useApp((s) => s.activeGroup);
+  const view = useApp((s) => s.view);
   const settings = useApp((s) => s.settings);
   const root = useApp((s) => s.root);
   const workspaceEpoch = useApp((s) => s.workspaceEpoch);
@@ -181,6 +184,19 @@ export function EditorGroup({ group }: Readonly<{ group: Group }>) {
           }
         }
       }),
+      e.onDidLayoutChange((info) => {
+        if (info.width <= 0 || info.height <= 0) {
+          return;
+        }
+        const state = useApp.getState();
+        if (state.view !== "editor") {
+          return;
+        }
+        const active = state.groups.find((g) => g.id === group.id)?.active;
+        if (active && hasPendingReveal(group.id, active)) {
+          applyPendingReveal(group.id, active, e);
+        }
+      }),
     ];
     return () => {
       subscriptions.forEach((s) => s.dispose());
@@ -192,10 +208,14 @@ export function EditorGroup({ group }: Readonly<{ group: Group }>) {
     };
   }, [group.id]);
   useEffect(() => {
+    instance.current?.updateOptions(editorOptions(settings, doc?.large));
+  }, [group.id, settings, doc?.large]);
+  useEffect(() => {
     const e = instance.current;
     if (!e) {
       return;
     }
+    const switched = previous.current !== group.active || !previousTextView.current;
     if (
       previous.current &&
       (previous.current !== group.active || !textView) &&
@@ -206,34 +226,27 @@ export function EditorGroup({ group }: Readonly<{ group: Group }>) {
         void autoSave("onFocusChange", previous.current);
       }
     }
-    e.setModel(textView && group.active ? (models.get(group.active) ?? null) : null);
+    const targetModel = textView && group.active ? (models.get(group.active) ?? null) : null;
+    if (e.getModel() !== targetModel) {
+      e.setModel(targetModel);
+    }
     if (!gitDiff) {
       editors.set(group.id, e);
     }
-    if (
-      textView &&
-      group.active &&
-      (previous.current !== group.active || !previousTextView.current)
-    ) {
-      const state = group.views[group.active];
-      if (state) {
-        e.restoreViewState(state as monaco.editor.ICodeEditorViewState);
-      }
+    if (textView && group.active) {
+      restoreAndRevealEditor(e, group.id, group.active, group.views[group.active], view, switched);
     }
     if (previous.current === group.active && previousTextView.current !== textView) {
       requestAnimationFrame(() => focusDocument(group.id));
     }
     previous.current = group.active;
     previousTextView.current = textView;
-  }, [group.id, group.active, group.views, doc?.path, textView, gitDiff]);
+  }, [group.id, group.active, group.views, doc?.path, textView, gitDiff, view, revealRequest]);
   useEffect(() => {
     if (textView && instance.current) {
       syncCursor(instance.current, group.id);
     }
   }, [activeGroup, group.active, group.id, textView]);
-  useEffect(() => {
-    instance.current?.updateOptions(editorOptions(settings, doc?.large));
-  }, [group.id, settings, doc?.large]);
   async function openTreeDrop(raw: string) {
     const { root, treeRoot } = useApp.getState();
     if (!root || treeRoot !== root) {
@@ -546,6 +559,22 @@ export function EditorGroup({ group }: Readonly<{ group: Group }>) {
       )}
     </section>
   );
+}
+
+function restoreAndRevealEditor(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  groupId: string,
+  documentId: string,
+  savedView: unknown,
+  view: "editor" | "terminal" | "notepad",
+  switched: boolean,
+) {
+  if (switched && savedView) {
+    editor.restoreViewState(savedView as monaco.editor.ICodeEditorViewState);
+  }
+  if (view === "editor" && hasPendingReveal(groupId, documentId)) {
+    applyPendingReveal(groupId, documentId, editor, { center: switched });
+  }
 }
 
 function syncCursor(editor: monaco.editor.IStandaloneCodeEditor, groupId: string) {

@@ -8,23 +8,37 @@ import { notify, useApp } from "../store/store";
 import { isWorkspacePackageDocument } from "../packages/document";
 import {
   formatFileSize,
+  formatPdfScale,
   isHtmlDocument,
   isImageView,
   isMarkdownDocument,
   isMarkdownView,
   isPackageView,
+  isPdfView,
   isTextView,
+  normalizePdfScale,
+  pdfZoomPresets,
 } from "../utils/media";
 import { Icon } from "./ui";
-import type { Doc, Group, MediaView } from "../types/types";
+import type { Doc, Group, MediaView, PdfScale } from "../types/types";
 
 export function MediaStatus({ doc, group }: Readonly<{ doc: Doc; group: Group }>) {
-  const scale = group.mediaViews?.[doc.id]?.scale ?? "fit";
+  const rawScale = group.mediaViews?.[doc.id]?.scale;
+  const scale = typeof rawScale === "number" ? rawScale : "fit";
+  const pdfScale = normalizePdfScale(rawScale);
+  const currentPdfPage = Math.max(
+    1,
+    Math.min(doc.pdfInfo?.pageCount ?? 1, group.mediaViews?.[doc.id]?.page ?? 1),
+  );
   const label = (value: number | "fit") =>
     value === "fit" ? "Whole Image" : `${Math.round(value * 100)}%`;
   const sizes: (number | "fit")[] = [10, 5, 2, 1, 0.5, 0.2, "fit"];
   if (!sizes.includes(scale)) {
     sizes.unshift(scale);
+  }
+  const pdfSizes: PdfScale[] = [...pdfZoomPresets];
+  if (!pdfSizes.includes(pdfScale)) {
+    pdfSizes.unshift(pdfScale);
   }
   return (
     <>
@@ -55,6 +69,36 @@ export function MediaStatus({ doc, group }: Readonly<{ doc: Doc; group: Group }>
           </Menu.Root>
           <span className={`status-item ${workbenchStyles["status-item"]}`} title="Image Size">
             {doc.imageSize.width}x{doc.imageSize.height}
+          </span>
+        </>
+      )}
+      {isPdfView(doc) && !doc.deleted && doc.pdfInfo && (
+        <>
+          <Menu.Root>
+            <Menu.Trigger title="PDF Zoom" aria-label={`PDF Zoom: ${formatPdfScale(pdfScale)}`}>
+              {formatPdfScale(pdfScale)}
+            </Menu.Trigger>
+            <Menu.Portal>
+              <Menu.Positioner className="z-90" side="top" align="end" sideOffset={4}>
+                <Menu.Popup
+                  className={`context-menu text-foreground border border-strong z-[90] ${workbenchStyles["context-menu"]} media-menu min-w-45 p-1 bg-menu rounded-[6px] ${mediaPreviewStyles["media-menu"]}`}
+                  aria-label="Select PDF zoom level"
+                >
+                  {pdfSizes.map((value) => (
+                    <Menu.Item
+                      key={String(value)}
+                      onClick={() => patchMediaView(group.id, doc.id, { scale: value })}
+                    >
+                      <Icon name={value === pdfScale ? "check" : "blank"} />
+                      <span>{formatPdfScale(value)}</span>
+                    </Menu.Item>
+                  ))}
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          </Menu.Root>
+          <span className={`status-item ${workbenchStyles["status-item"]}`} title="PDF Page">
+            Page {currentPdfPage} / {doc.pdfInfo.pageCount}
           </span>
         </>
       )}

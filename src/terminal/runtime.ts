@@ -889,7 +889,7 @@ async function openFileLink(id: string, text: string) {
   if (!pane) {
     return;
   }
-  const match = /^(.*?)(?::(\d+))?(?::(\d+))?$/.exec(text)!;
+  const match = /^(.*?)(?::(\d+)(?::(\d+))?:?)?$/.exec(text)!;
   const file = match[1];
   const path = /^[a-z]:[\\/]|^[/\\]/i.test(file)
     ? file
@@ -898,8 +898,8 @@ async function openFileLink(id: string, text: string) {
   const { openPath } = await import("../editor/documents");
   await openPath(granted, {
     pinned: true,
-    line: match[2] ? Number(match[2]) : undefined,
-    column: match[3] ? Number(match[3]) : undefined,
+    line: match[2] ? Math.max(1, Number(match[2])) : undefined,
+    column: match[3] ? Math.max(1, Number(match[3])) : undefined,
   });
 }
 

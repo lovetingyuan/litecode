@@ -23,6 +23,7 @@ pub enum FileKind {
     Svg,
     Video,
     Audio,
+    Pdf,
     Binary,
 }
 
@@ -56,6 +57,7 @@ pub fn media_type(path: &Path) -> Option<(FileKind, &'static str)> {
             "mp3" => (FileKind::Audio, "audio/mpeg"),
             "wav" => (FileKind::Audio, "audio/wav"),
             "ogg" | "oga" => (FileKind::Audio, "audio/ogg"),
+            "pdf" => (FileKind::Pdf, "application/pdf"),
             _ => return None,
         },
     )
@@ -153,8 +155,6 @@ pub fn response(path: &Path, request: &Request<Vec<u8>>) -> Result<Response<Vec<
     let origin = app_origin(request)?;
     let (kind, mime) =
         media_type(path).ok_or_else(|| AppError::new("media", "Unsupported media type"))?;
-    let mut file = File::open(path)?;
-    let len = file.metadata()?.len();
     let mut builder = Response::builder()
         .header("Content-Type", mime)
         .header("Accept-Ranges", "bytes")
@@ -163,7 +163,24 @@ pub fn response(path: &Path, request: &Request<Vec<u8>>) -> Result<Response<Vec<
         .header("Vary", "Origin")
         .header("Content-Security-Policy", "default-src 'none'; sandbox");
     if let Some(origin) = origin {
-        builder = builder.header("Access-Control-Allow-Origin", origin);
+        builder = builder
+            .header("Access-Control-Allow-Origin", origin)
+            .header(
+                "Access-Control-Expose-Headers",
+                "Accept-Ranges, Content-Length, Content-Range",
+            );
+    }
+    if request.method() == "OPTIONS" {
+        if origin.is_some() {
+            builder = builder
+                .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                .header("Access-Control-Allow-Headers", "Range")
+                .header("Access-Control-Max-Age", "600");
+        }
+        return Ok(builder
+            .status(StatusCode::NO_CONTENT)
+            .body(Vec::new())
+            .unwrap());
     }
     if request.method() != "GET" && request.method() != "HEAD" {
         return Ok(builder
@@ -171,6 +188,8 @@ pub fn response(path: &Path, request: &Request<Vec<u8>>) -> Result<Response<Vec<
             .body(Vec::new())
             .unwrap());
     }
+    let mut file = File::open(path)?;
+    let len = file.metadata()?.len();
     let range = request.headers().get("range");
     let (start, count) = if let Some(range) = range {
         let Some((start, end)) = range.to_str().ok().and_then(|r| byte_range(r, len)) else {
@@ -252,10 +271,15 @@ pub fn register<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder
                 let _permit = permit;
                 let result = authorized_response(&app.state::<AppState>(), &label, &request);
                 responder.respond(result.unwrap_or_else(|e| {
-                    Response::builder()
+                    let mut response = Response::builder()
                         .status(if e.code == "access" { 403 } else { 404 })
-                        .body(Vec::new())
-                        .unwrap()
+                        .header("Cache-Control", "no-store");
+                    if let Ok(Some(origin)) = app_origin(&request) {
+                        response = response
+                            .header("Access-Control-Allow-Origin", origin)
+                            .header("Vary", "Origin");
+                    }
+                    response.body(Vec::new()).unwrap()
                 }));
             });
         },
@@ -279,6 +303,21 @@ mod tests {
         assert_eq!(
             result.headers()["Access-Control-Allow-Origin"],
             "http://tauri.localhost"
+        );
+        assert_eq!(
+            result.headers()["Access-Control-Expose-Headers"],
+            "Accept-Ranges, Content-Length, Content-Range"
+        );
+        let preflight = Request::builder()
+            .method("OPTIONS")
+            .header("Origin", "http://tauri.localhost")
+            .body(vec![])
+            .unwrap();
+        let preflight_result = response(&path, &preflight).unwrap();
+        assert_eq!(preflight_result.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            preflight_result.headers()["Access-Control-Allow-Headers"],
+            "Range"
         );
         let foreign = Request::builder()
             .header("Origin", "https://example.com")
@@ -326,6 +365,13 @@ mod tests {
         assert_eq!(inspect(&text).unwrap().kind, FileKind::Text);
         fs::write(&text, b"%PDF-1.4").unwrap();
         assert_eq!(inspect(&text).unwrap().kind, FileKind::Binary);
+        let pdf = dir.path().join("report.PDF");
+        fs::write(&pdf, b"%PDF-1.4").unwrap();
+        assert_eq!(inspect(&pdf).unwrap().kind, FileKind::Pdf);
+        assert_eq!(
+            media_type(&pdf).unwrap(),
+            (FileKind::Pdf, "application/pdf")
+        );
         let video = dir.path().join("large.mp4");
         File::create(&video)
             .unwrap()

@@ -4,6 +4,14 @@ import type { Doc, DiskDocument, DiffRequest } from "../types/types";
 
 vi.mock("./monaco", () => ({
   monaco: {
+    Range: class {
+      constructor(
+        public startLineNumber: number,
+        public startColumn: number,
+        public endLineNumber: number,
+        public endColumn: number,
+      ) {}
+    },
     languages: { getLanguages: () => [{ id: "plaintext" }], register: vi.fn() },
     Uri: { file: (path: string) => path, parse: (id: string) => id },
     editor: {
@@ -11,6 +19,7 @@ vi.mock("./monaco", () => ({
       createModel: vi.fn(),
       setModelLanguage: vi.fn(),
       EndOfLineSequence: { LF: 0, CRLF: 1 },
+      ScrollType: { Smooth: 0, Immediate: 1 },
     },
   },
   loadSyntax: vi.fn().mockResolvedValue(undefined),
@@ -79,6 +88,8 @@ import {
   saveAll,
   session,
   showDocument,
+  hasPendingReveal,
+  applyPendingReveal,
   visiblePath,
   closeDocument,
   closeGroup,
@@ -2652,5 +2663,197 @@ describe("External edits and conflict choices", () => {
     await refreshing;
     expect(buffer.getValue()).toBe("saved newer edits");
     expect(useApp.getState().docs[id]).toMatchObject({ dirty: false, revision: "saved-choice" });
+  });
+});
+
+describe("Pending editor reveal on navigation", () => {
+  function createMockEditor(
+    initialModel: unknown,
+    container: { clientWidth: number; clientHeight: number } = {
+      clientWidth: 800,
+      clientHeight: 600,
+    },
+    layout = { width: 800, height: 600, contentWidth: 760, verticalScrollbarWidth: 14 },
+  ) {
+    let currentModel = initialModel;
+    let currentLayout = { ...layout };
+    const editor = {
+      getModel: vi.fn(() => currentModel),
+      setModel: vi.fn((next: unknown) => {
+        currentModel = next;
+      }),
+      getContainerDomNode: vi.fn(() => container),
+      getLayoutInfo: vi.fn(() => currentLayout),
+      layout: vi.fn((dim?: { width: number; height: number }) => {
+        if (dim) {
+          currentLayout = { ...currentLayout, ...dim };
+        }
+      }),
+      setPosition: vi.fn(),
+      setSelection: vi.fn(),
+      revealPositionInCenter: vi.fn(),
+      revealPositionInCenterIfOutsideViewport: vi.fn(),
+      revealRangeInCenterIfOutsideViewport: vi.fn(),
+      getOffsetForColumn: vi.fn(() => 20),
+      setScrollLeft: vi.fn(),
+      focus: vi.fn(),
+    };
+    return editor;
+  }
+
+  function setupGroup(active: string | null = null) {
+    const groupId = "group-1";
+    setApp({
+      groups: [
+        {
+          id: groupId,
+          tabs: active ? [active] : [],
+          active,
+          preview: null,
+          views: {},
+        },
+      ],
+      activeGroup: groupId,
+    });
+    return groupId;
+  }
+
+  it("defers reveal until the newly opened document model is attached to the editor", async () => {
+    const first = addDocument({ path: "C:/workspace/a.txt", name: "a.txt" });
+    const groupId = setupGroup(first.id);
+    const mockEditor = createMockEditor(models.get(first.id));
+    editors.set(groupId, mockEditor as unknown as Monaco.editor.IStandaloneCodeEditor);
+
+    const frameCallbacks: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      frameCallbacks.push(cb);
+      return frameCallbacks.length;
+    });
+    vi.mocked(monaco.editor.createModel).mockImplementationOnce(
+      (text: string) => new Buffer(text) as unknown as Monaco.editor.ITextModel,
+    );
+    vi.mocked(call).mockImplementation(async (command) => {
+      if (command === "inspect_file") {
+        return { kind: "text", size: 100, stamp: "1" } as never;
+      }
+      if (command === "read_document") {
+        return {
+          path: "C:/workspace/b.txt",
+          text: Array.from({ length: 200 }, (_, i) => `line ${i + 1}`).join("\n"),
+          revision: "rev-b",
+          encoding: "utf8",
+          eol: "LF",
+        } as never;
+      }
+      return undefined as never;
+    });
+
+    const openedId = await openPath("C:/workspace/b.txt", {
+      pinned: true,
+      line: 120,
+      column: 5,
+    });
+    expect(hasPendingReveal(groupId, openedId)).toBe(true);
+
+    // Simulate rAF firing before EditorGroup attaches the newly opened model.
+    frameCallbacks.splice(0).forEach((cb) => cb(0));
+    expect(mockEditor.setPosition).not.toHaveBeenCalled();
+    expect(mockEditor.revealPositionInCenter).not.toHaveBeenCalled();
+    expect(hasPendingReveal(groupId, openedId)).toBe(true);
+
+    // Once EditorGroup attaches the target model, the pending reveal applies and clears.
+    mockEditor.setModel(models.get(openedId));
+    expect(
+      applyPendingReveal(
+        groupId,
+        openedId,
+        mockEditor as unknown as Monaco.editor.IStandaloneCodeEditor,
+        { center: true },
+      ),
+    ).toBe(true);
+    expect(mockEditor.setPosition).toHaveBeenCalledWith({ lineNumber: 120, column: 5 });
+    expect(mockEditor.revealPositionInCenter).toHaveBeenCalledWith(
+      { lineNumber: 120, column: 5 },
+      monaco.editor.ScrollType.Immediate,
+    );
+    expect(hasPendingReveal(groupId, openedId)).toBe(false);
+    editors.delete(groupId);
+  });
+
+  it("defers scrolling while hidden and syncs stale layout before revealing", () => {
+    const doc = addDocument({ path: "C:/workspace/h.txt", name: "h.txt" });
+    const groupId = setupGroup(doc.id);
+    const container = { clientWidth: 0, clientHeight: 0 };
+    const mockEditor = createMockEditor(models.get(doc.id), container, {
+      width: 0,
+      height: 0,
+      contentWidth: 0,
+      verticalScrollbarWidth: 14,
+    });
+    editors.set(groupId, mockEditor as unknown as Monaco.editor.IStandaloneCodeEditor);
+    vi.stubGlobal("requestAnimationFrame", vi.fn());
+
+    showDocument(doc.id, { pinned: true, line: 80, column: 3 });
+
+    // While container is 0x0 (e.g. switching from Terminal or mounting a split), keep scroll pending.
+    applyPendingReveal(
+      groupId,
+      doc.id,
+      mockEditor as unknown as Monaco.editor.IStandaloneCodeEditor,
+      { center: true },
+    );
+    expect(mockEditor.setPosition).toHaveBeenCalledWith({ lineNumber: 80, column: 3 });
+    expect(mockEditor.revealPositionInCenter).not.toHaveBeenCalled();
+    expect(hasPendingReveal(groupId, doc.id)).toBe(true);
+
+    // Once visible with real dimensions, layout syncs synchronously before scrolling.
+    container.clientWidth = 1000;
+    container.clientHeight = 700;
+    applyPendingReveal(
+      groupId,
+      doc.id,
+      mockEditor as unknown as Monaco.editor.IStandaloneCodeEditor,
+    );
+    expect(mockEditor.layout).toHaveBeenCalledWith({ width: 1000, height: 700 });
+    expect(mockEditor.revealPositionInCenter).toHaveBeenCalledWith(
+      { lineNumber: 80, column: 3 },
+      monaco.editor.ScrollType.Immediate,
+    );
+    expect(hasPendingReveal(groupId, doc.id)).toBe(false);
+    editors.delete(groupId);
+  });
+
+  it("applies range selections and cancels pending reveals when switching without a line", () => {
+    const first = addDocument({ path: "C:/workspace/1.txt", name: "1.txt" });
+    const second = addDocument({ path: "C:/workspace/2.txt", name: "2.txt" });
+    const groupId = setupGroup(first.id);
+    const mockEditor = createMockEditor(models.get(first.id));
+    editors.set(groupId, mockEditor as unknown as Monaco.editor.IStandaloneCodeEditor);
+    vi.stubGlobal("requestAnimationFrame", vi.fn());
+
+    showDocument(first.id, { pinned: true, line: 10, column: 2, endLine: 10, endColumn: 8 });
+    expect(hasPendingReveal(groupId, first.id)).toBe(true);
+    applyPendingReveal(
+      groupId,
+      first.id,
+      mockEditor as unknown as Monaco.editor.IStandaloneCodeEditor,
+    );
+    expect(mockEditor.setSelection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startLineNumber: 10,
+        startColumn: 2,
+        endLineNumber: 10,
+        endColumn: 8,
+      }),
+    );
+    expect(mockEditor.revealRangeInCenterIfOutsideViewport).toHaveBeenCalled();
+    expect(mockEditor.setScrollLeft).toHaveBeenCalledWith(0, monaco.editor.ScrollType.Immediate);
+
+    showDocument(first.id, { pinned: true, line: 50, column: 1 });
+    expect(hasPendingReveal(groupId, first.id)).toBe(true);
+    showDocument(second.id, { pinned: true });
+    expect(hasPendingReveal(groupId, first.id)).toBe(false);
+    expect(hasPendingReveal(groupId, second.id)).toBe(false);
+    editors.delete(groupId);
   });
 });
