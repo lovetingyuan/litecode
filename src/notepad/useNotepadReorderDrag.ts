@@ -1,9 +1,5 @@
 import { useState, type DragEvent } from "react";
-import type {
-  NoteMeta,
-  NotepadDropIndicator,
-  NotepadDropPosition,
-} from "../types/notepad";
+import type { NoteMeta, NotepadDropIndicator, NotepadDropPosition } from "../types/notepad";
 import { canReorderNotes, isReorderNoOp } from "./state";
 
 type UseNotepadReorderDragOptions = {
@@ -14,10 +10,7 @@ type UseNotepadReorderDragOptions = {
   onReorder: (sourceId: string, targetId: string, position: NotepadDropPosition) => void;
 };
 
-function resolveDropPosition(
-  event: DragEvent<HTMLElement>,
-  axis: "x" | "y",
-): NotepadDropPosition {
+function resolveDropPosition(event: DragEvent<HTMLElement>, axis: "x" | "y"): NotepadDropPosition {
   const rect = event.currentTarget.getBoundingClientRect();
   if (axis === "y") {
     return event.clientY < rect.top + rect.height / 2 ? "before" : "after";
@@ -68,10 +61,7 @@ export function useNotepadReorderDrag({
 
   function updateIndicator(next: NotepadDropIndicator | null) {
     setDropIndicator((current) => {
-      if (
-        current?.targetId === next?.targetId &&
-        current?.position === next?.position
-      ) {
+      if (current?.targetId === next?.targetId && current?.position === next?.position) {
         return current;
       }
       return next;

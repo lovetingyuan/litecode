@@ -204,9 +204,7 @@ export function reconcileSnapshot(
     validIds,
     (enabled) => !enabled,
   );
-  const sort = snapshot.sort
-    ? normalizeNotepadSort(snapshot.sort)
-    : (current.sort ?? "manual");
+  const sort = snapshot.sort ? normalizeNotepadSort(snapshot.sort) : (current.sort ?? "manual");
   const orderedIds = sortNotes(snapshot.notes, sort).map((n) => n.id);
   const sourceTabs = options.adoptTabs ? snapshot.openTabs : current.openTabs;
   const preferredActive = options.adoptTabs ? snapshot.activeId : current.activeId;
