@@ -99,8 +99,39 @@ export function tagNotes(cwd, tag) {
   return normalizeNotes(message.slice(title.length));
 }
 
+function normalizeLineEndings(contents) {
+  return contents.replaceAll("\r\n", "\n");
+}
+
+function inspectReleaseTag(cwd, base, version, current) {
+  const tag = `v${version}`;
+  const ref = `refs/tags/${tag}`;
+  const onSameVersion = version === current;
+  const localTag = git(cwd, ["tag", "--list", tag]).trim();
+  const remoteRefs = git(cwd, ["ls-remote", "--tags", "origin", ref, `${ref}^{}`]);
+  const remoteTags = new Map(
+    remoteRefs
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => line.trim().split(/\s+/).reverse()),
+  );
+  const remoteTarget = remoteTags.get(`${ref}^{}`) ?? remoteTags.get(ref);
+  if (remoteTarget) {
+    if (onSameVersion && remoteTarget === base) {
+      return { tag, ref, onSameVersion, localTag, alreadyPushed: true };
+    }
+    throw new Error(`远端标签 ${tag} 已存在。`);
+  }
+  if (localTag && (!onSameVersion || git(cwd, ["rev-parse", `${ref}^{commit}`]).trim() !== base)) {
+    throw new Error(`本地标签 ${tag} 已指向其他发布。`);
+  }
+  return { tag, ref, onSameVersion, localTag, alreadyPushed: false };
+}
+
 export async function readReleaseInput(cwd, input = process.stdin, output = process.stdout) {
   const current = await currentVersion(cwd);
+  const base = git(cwd, ["rev-parse", "HEAD"]).trim();
   const reader = createInterface({ input, output, terminal: Boolean(input.isTTY) });
   const lines = reader[Symbol.asyncIterator]();
   try {
@@ -109,11 +140,15 @@ export async function readReleaseInput(cwd, input = process.stdin, output = proc
     if (first.done) throw new Error("Release input cancelled.");
     const requested = first.value.trim().replace(/^v/, "");
     const version = requested === current ? current : normalizeVersion(requested, current);
-    const tag = `v${version}`;
-    if (git(cwd, ["tag", "--list", tag]).trim()) {
+    const { tag, localTag, alreadyPushed } = inspectReleaseTag(cwd, base, version, current);
+    if (localTag) {
       const notes = tagNotes(cwd, tag);
       output.write(`Reusing release notes from ${tag}.\n`);
       return { version, notes };
+    }
+    if (alreadyPushed) {
+      output.write(`Release tag ${tag} is already on origin.\n`);
+      return { version, notes: "" };
     }
     output.write("Release notes (Markdown; enter . on its own line to finish):\n");
     const notes = [];
@@ -156,50 +191,42 @@ async function checkReleaseTree(cwd) {
   }
 }
 
-export async function pushRelease(cwd, input, notes) {
+export async function checkReleasePreflight(cwd) {
   await checkReleaseTree(cwd);
   const base = git(cwd, ["rev-parse", "HEAD"]).trim();
-  git(cwd, ["fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"]);
-  if (git(cwd, ["rev-parse", "refs/remotes/origin/main"]).trim() !== base) {
-    throw new Error("本地 main 与 origin/main 不一致，请先同步后再发布。");
-  }
   const committed = new Map(
     versionFiles.map((name) => [name, git(cwd, ["show", `${base}:${name}`])]),
   );
   const current = readVersions(committed);
+  const working = await readVersionFiles(cwd);
+  for (const [name, before] of committed) {
+    if (normalizeLineEndings(working.get(name)) !== normalizeLineEndings(before)) {
+      throw new Error(`${name} 含有其他改动，请先提交开发改动。`);
+    }
+  }
+  git(cwd, ["fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"]);
+  if (git(cwd, ["rev-parse", "refs/remotes/origin/main"]).trim() !== base) {
+    throw new Error("本地 main 与 origin/main 不一致，请先同步后再发布。");
+  }
+  return { base, committed, current, working };
+}
+
+export async function pushRelease(cwd, input, notes) {
+  const { base, committed, current, working } = await checkReleasePreflight(cwd);
   const requested = input.trim().replace(/^v/, "");
   const version = requested === current ? current : normalizeVersion(input, current);
-  const tag = `v${version}`;
-  const ref = `refs/tags/${tag}`;
-  const onSameVersion = version === current;
-  const localTag = git(cwd, ["tag", "--list", tag]).trim();
-  const remoteRefs = git(cwd, ["ls-remote", "--tags", "origin", ref, `${ref}^{}`]);
-  const remoteTags = new Map(
-    remoteRefs
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => line.trim().split(/\s+/).reverse()),
+  const { tag, ref, onSameVersion, localTag, alreadyPushed } = inspectReleaseTag(
+    cwd,
+    base,
+    version,
+    current,
   );
-  const remoteTarget = remoteTags.get(`${ref}^{}`) ?? remoteTags.get(ref);
-  if (remoteTarget) {
-    if (onSameVersion && remoteTarget === base) return tag;
-    throw new Error(`远端标签 ${tag} 已存在。`);
-  }
-  if (localTag && (!onSameVersion || git(cwd, ["rev-parse", `${ref}^{commit}`]).trim() !== base)) {
-    throw new Error(`本地标签 ${tag} 已指向其他发布。`);
-  }
+  if (alreadyPushed) return tag;
   const releaseNotes = localTag ? tagNotes(cwd, tag) : normalizeNotes(notes);
 
-  const working = await readVersionFiles(cwd);
-  const normalize = (contents) => contents.replaceAll("\r\n", "\n");
   const expected = new Map();
   for (const [name, before] of committed) {
     const after = onSameVersion ? before : versionContents(name, before, version);
-    const actual = normalize(working.get(name));
-    if (actual !== normalize(before)) {
-      throw new Error(`${name} 含有其他改动，请先提交开发改动。`);
-    }
     expected.set(name, after);
   }
   if (git(cwd, ["rev-parse", "HEAD"]).trim() !== base) {
@@ -207,7 +234,7 @@ export async function pushRelease(cwd, input, notes) {
   }
   if (!onSameVersion) {
     for (const [name, contents] of expected) {
-      if (normalize(working.get(name)) !== normalize(contents)) {
+      if (normalizeLineEndings(working.get(name)) !== normalizeLineEndings(contents)) {
         await writeFile(path.join(cwd, name), contents);
       }
     }
@@ -223,7 +250,8 @@ export async function pushRelease(cwd, input, notes) {
         .some((name) => !versionFiles.includes(name)) ||
       [...expected].some(
         ([name, contents]) =>
-          normalize(git(cwd, ["show", `${commit}:${name}`])) !== normalize(contents),
+          normalizeLineEndings(git(cwd, ["show", `${commit}:${name}`])) !==
+          normalizeLineEndings(contents),
       ))
   ) {
     throw new Error("发布提交含有意外改动，请检查本地提交后重试。");
@@ -251,6 +279,26 @@ export async function pushRelease(cwd, input, notes) {
     );
   }
   return tag;
+}
+
+function runProjectCheck(cwd) {
+  const npmExecPath = process.env.npm_execpath;
+  try {
+    if (npmExecPath && /\.[cm]?js$/i.test(npmExecPath)) {
+      execFileSync(process.execPath, [npmExecPath, "run", "check"], {
+        cwd,
+        stdio: "inherit",
+      });
+      return;
+    }
+    execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "check"], {
+      cwd,
+      stdio: "inherit",
+      shell: process.platform === "win32",
+    });
+  } catch {
+    throw new Error("发布前检查失败（npm run check）。");
+  }
 }
 
 async function main(args) {
@@ -282,7 +330,8 @@ async function main(args) {
     throw new Error("另一个发布命令正在运行。若进程已退出，请移除 tmp/release.lock 后重试。");
   });
   try {
-    await checkReleaseTree(root);
+    await checkReleasePreflight(root);
+    runProjectCheck(root);
     const { version, notes } = await readReleaseInput(root);
     const tag = await pushRelease(root, version, notes);
     console.log(

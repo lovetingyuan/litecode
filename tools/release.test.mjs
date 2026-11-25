@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
 import {
+  checkReleasePreflight,
   currentVersion,
   normalizeVersion,
   pushRelease,
@@ -95,6 +96,27 @@ describe("release inputs", { timeout: 60000 }, () => {
     expect(await currentVersion(cwd)).toBe("0.1.0");
     expect(git(cwd, "tag", "--list")).toBe("");
     expect(git(cwd, "rev-parse", "main")).toBe(git(remote, "rev-parse", "main"));
+  });
+
+  it("fails preflight before prompting when local main diverges from origin/main", async () => {
+    const { cwd } = await fixture();
+    await writeFile(path.join(cwd, "ahead.txt"), "local commit\n");
+    git(cwd, "add", "ahead.txt");
+    git(cwd, "commit", "-m", "Ahead of origin");
+    await expect(checkReleasePreflight(cwd)).rejects.toThrow("本地 main 与 origin/main 不一致");
+  });
+
+  it("rejects conflicting local or remote tags immediately after version input", async () => {
+    const { cwd } = await fixture();
+    git(cwd, "tag", "-a", "v0.2.0", "-m", "LiteCode v0.2.0\n\nExisting");
+    await expect(readReleaseInput(cwd, Readable.from(["0.2.0\n"]), output())).rejects.toThrow(
+      "本地标签 v0.2.0 已指向其他发布",
+    );
+    git(cwd, "push", "origin", "refs/tags/v0.2.0");
+    git(cwd, "tag", "-d", "v0.2.0");
+    await expect(readReleaseInput(cwd, Readable.from(["0.2.0\n"]), output())).rejects.toThrow(
+      "远端标签 v0.2.0 已存在",
+    );
   });
 });
 
