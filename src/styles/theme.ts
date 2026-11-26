@@ -56,6 +56,8 @@ export function editorTheme(): editor.IStandaloneThemeData {
       "editor.lineHighlightBorder": color("line-highlight-border"),
       "editorWidget.background": color("widget"),
       "editorWidget.border": color("border-strong"),
+      "widget.border": color("border-strong"),
+      "widget.shadow": color("shadow-widget"),
       focusBorder: color("focus"),
       "editorIndentGuide.background1": color("indent-guide"),
       "editorIndentGuide.activeBackground1": color("indent-guide-active"),

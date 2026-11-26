@@ -4,6 +4,30 @@
 .monaco-editor .sticky-line-number-inner {
   box-sizing: content-box;
 }
+/* Standalone Monaco omits workbench shadow/radius tokens; provide matching dark-theme defaults
+ * so floating editor widgets (find, hover, suggest) separate clearly from the editor surface. */
+.monaco-editor,
+.monaco-diff-editor,
+.monaco-component {
+  --vscode-shadow-lg: 0 4px 14px var(--lc-shadow-widget);
+  --vscode-cornerRadius-small: 4px;
+  --vscode-cornerRadius-medium: 6px;
+  --vscode-cornerRadius-large: 6px;
+}
+/* Prevent the hidden find widget's shadow from peeking below the editor's top edge. */
+.monaco-editor .find-widget:not(.visible) {
+  box-shadow: none;
+}
+/* Global `box-sizing: border-box` shrinks Monaco's 16px+3px find-widget buttons from 22px to 16px,
+ * making the close button smaller than neighboring controls and shifting it upward out of alignment. */
+.monaco-editor .find-widget .button:not(.toggle) {
+  box-sizing: content-box;
+}
+/* Suppress the inner textarea focus ring when its parent `.monaco-inputbox` already paints `.synthetic-focus`. */
+.monaco-editor.standalone .synthetic-focus :focus,
+.monaco-diff-editor.standalone .synthetic-focus :focus {
+  outline: 0;
+}
 .pane-layout .sash:focus-visible {
   outline: 1px solid var(--lc-focus);
   outline-offset: -1px;
