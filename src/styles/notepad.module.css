@@ -3,10 +3,6 @@
   display: none;
 }
 
-.notepad-sidebar-list {
-  scrollbar-width: thin;
-}
-
 .notepad-note-item {
   position: relative;
   border-left: 2px solid transparent;

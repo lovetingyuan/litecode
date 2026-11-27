@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { rankPath } from "../utils/fuzzy";
 import {
   prepareQuickFiles,
   searchQuickFiles,
@@ -41,78 +40,120 @@ describe("Quick file index", () => {
         path: "src/Alpha.ts",
         label: "Alpha.ts",
         description: "src",
-        positions: [0, 1, 2, 3, 4, 5, 6, 7],
+        labelMatches: [{ start: 0, end: 8 }],
+        descriptionMatches: [],
       },
       {
         path: "src/Alpha.test.ts",
         label: "Alpha.test.ts",
         description: "src",
-        positions: [0, 1, 2, 3, 4, 5, 6, 8],
+        labelMatches: [
+          { start: 0, end: 7 },
+          { start: 12, end: 13 },
+        ],
+        descriptionMatches: [],
       },
     ]);
     expect(searchQuickFiles(workspace, [], "*.ts")).toHaveLength(100);
     expect(searchQuickFiles(workspace, [], "*")).toHaveLength(100);
   });
 
-  it("matches the stable full-sort reference, including ties, opened files and highlight positions", () => {
-    const paths = Array.from(
-      { length: 1800 },
-      (_, i) => `packages/module-${i % 37}/src/Component${i}.tsx`,
+  it("prioritizes filename matches over path-spanning matches and highlights label and description accurately", () => {
+    const root = "D:\\repo";
+    const workspace = prepareQuickFiles(
+      [
+        "D:\\repo/apps/tianxi/src/components/CustomConversation/mixins/agentCoreSession.js",
+        "D:\\repo/apps/aipkb/src/pages/ainote/lexical-editor/nodes/InlineImageNode/InlineImageComponent.jsx",
+        "D:\\repo/skills/tianxi-ppt/templates/icons/chunk-filled/align-center-vertical.svg",
+        "D:\\repo/apps/tianxi/src/components/CustomConversation/mixins/skillAgent.js",
+        "D:\\repo/apps/tianxi/src/components/CustomConversation/mixins/mainAgent.js",
+        "D:\\repo/apps/tianxi/src/components/CustomConversation/mixins/MAIN_AGENT_DOCS.md",
+      ],
+      root,
     );
-    paths.push("src/App.tsx", "src/日本語.ts", "src/中文组件.tsx", "src/a-b.ts", "src/a_b.ts");
-    const open = ["outside/ComponentExtra.tsx", paths[1300], paths[3], paths[3]];
-    const workspace = prepareQuickFiles(paths, null);
-    const opened = prepareQuickFiles(open, null);
-    const candidates = [...new Set([...open, ...paths])];
-    for (const query of [
-      "",
-      "c",
-      "comp",
-      "sc",
-      "module-3/c",
-      "中文",
-      "tsx",
-      "A_B",
-      "src\\app",
-      "no-match",
-    ]) {
-      const expected = candidates
-        .map((path) => rankPath(path, query, open.includes(path)))
-        .filter((r) => r !== null)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 100)
-        .map((rank) => {
-          const offset = rank.path.lastIndexOf("/") + 1;
-          return {
-            path: rank.path,
-            label: rank.path.slice(offset),
-            description: rank.path.slice(0, Math.max(0, offset - 1)),
-            positions: rank.positions.filter((p) => p >= offset).map((p) => p - offset),
-          };
-        });
-      expect(searchQuickFiles(workspace, opened, query)).toEqual(expected);
-    }
-  });
-  it("uses workspace-relative Windows paths and keeps absolute paths for outside files", () => {
     const open = prepareQuickFiles(
-      ["C:\\project\\src\\App.tsx", "D:\\other\\App.tsx", "\\\\?\\C:\\project\\src\\Entry.ts"],
+      ["D:\\repo\\apps\\tianxi\\src\\components\\CustomConversation\\mixins\\agentCoreSession.js"],
+      root,
+    );
+
+    const results = searchQuickFiles(workspace, open, "mainAgent");
+    expect(results.map((file) => file.label)).toEqual([
+      "mainAgent.js",
+      "MAIN_AGENT_DOCS.md",
+      "agentCoreSession.js",
+      "skillAgent.js",
+      "InlineImageComponent.jsx",
+      "align-center-vertical.svg",
+    ]);
+    expect(results[0]).toMatchObject({
+      label: "mainAgent.js",
+      labelMatches: [{ start: 0, end: 9 }],
+      descriptionMatches: [],
+    });
+    expect(results[1]).toMatchObject({
+      label: "MAIN_AGENT_DOCS.md",
+      labelMatches: [
+        { start: 0, end: 4 },
+        { start: 5, end: 10 },
+      ],
+      descriptionMatches: [],
+    });
+    expect(results[2].labelMatches).toEqual([{ start: 0, end: 5 }]);
+    expect(results[2].descriptionMatches.length).toBeGreaterThan(0);
+
+    const pathQuery = searchQuickFiles(workspace, open, "mixins/mainAgent");
+    expect(pathQuery[0]).toMatchObject({
+      label: "mainAgent.js",
+      labelMatches: [{ start: 0, end: 9 }],
+      descriptionMatches: [{ start: 46, end: 52 }],
+    });
+
+    const multiTerm = searchQuickFiles(workspace, open, "agent mixins");
+    expect(multiTerm[0].label).toBe("agentCoreSession.js");
+    expect(multiTerm[0].labelMatches).toEqual([{ start: 0, end: 5 }]);
+    expect(multiTerm[0].descriptionMatches).toEqual([{ start: 46, end: 52 }]);
+  });
+
+  it("deduplicates Windows paths across separators and casing while preserving relative descriptions", () => {
+    const workspace = prepareQuickFiles(
+      [
+        "C:\\project/src/App.tsx",
+        "c:/PROJECT/src/Entry.ts",
+        "C:\\project/src/Other.ts",
+      ],
       "c:/PROJECT",
     );
-    expect(searchQuickFiles([], open, "app")).toEqual([
+    const open = prepareQuickFiles(
+      [
+        "C:\\project\\src\\App.tsx",
+        "D:\\other\\App.tsx",
+        "\\\\?\\C:\\project\\src\\Entry.ts",
+      ],
+      "c:/PROJECT",
+    );
+    expect(searchQuickFiles(workspace, open, "app")).toEqual([
       {
         path: "C:\\project\\src\\App.tsx",
         label: "App.tsx",
         description: "src",
-        positions: [0, 1, 2],
+        labelMatches: [{ start: 0, end: 3 }],
+        descriptionMatches: [],
       },
       {
         path: "D:\\other\\App.tsx",
         label: "App.tsx",
         description: "D:/other",
-        positions: [0, 1, 2],
+        labelMatches: [{ start: 0, end: 3 }],
+        descriptionMatches: [],
       },
     ]);
-    expect(searchQuickFiles([], open, "entry")[0].description).toBe("src");
+    expect(searchQuickFiles(workspace, open, "").map((file) => file.label)).toEqual([
+      "App.tsx",
+      "App.tsx",
+      "Entry.ts",
+      "Other.ts",
+    ]);
+    expect(searchQuickFiles(workspace, open, "entry")[0].description).toBe("src");
     expect(
       searchQuickFiles([], prepareQuickFiles(["C:\\Entry.ts"], "C:\\"), "entry")[0].description,
     ).toBe("");

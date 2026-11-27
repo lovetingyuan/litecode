@@ -66,16 +66,25 @@ export function NotepadSidebar() {
     ? `${filtered.length} of ${notes.length} ${noun}`
     : `${notes.length} ${noun}`;
 
+  const badgeCount = query ? `${filtered.length}/${notes.length}` : String(notes.length);
+
   return (
     <aside
-      className="notepad-sidebar flex flex-col w-full h-full min-w-0 min-h-0 bg-sidebar border-r border-r-panel overflow-hidden select-none"
+      className="notepad-sidebar flex flex-col w-full h-full min-w-0 min-h-0 bg-sidebar text-foreground overflow-hidden select-none"
       aria-label="Notepad notes"
     >
-      <div
-        className={`view-title flex items-center justify-between h-[35px] min-h-[35px] text-[11px] font-semibold uppercase text-muted border-b border-b-panel ${workbenchStyles["view-title"]}`}
-      >
-        <span>Notepad</span>
-        <div className="actions flex items-center gap-[2px]">
+      <div className="view-title flex items-center justify-between h-[35px] min-h-[35px] px-3 text-[14px] font-semibold tracking-normal text-foreground">
+        <div className="flex items-center gap-[6px] min-w-0 mr-2">
+          <span className="truncate">Notepad</span>
+          <span
+            className="inline-flex items-center justify-center shrink-0 h-[18px] min-w-[18px] px-[5px] rounded-full bg-badge text-badge-foreground text-[11px] leading-none font-normal"
+            title={countLabel}
+            aria-label={countLabel}
+          >
+            {badgeCount}
+          </span>
+        </div>
+        <div className="actions flex items-center gap-1 shrink-0 font-normal -mr-1">
           <IconButton
             icon="add"
             label="New Note (Ctrl+N)"
@@ -87,7 +96,15 @@ export function NotepadSidebar() {
             onClick={() => runNotepadAction(importNotepadFile())}
           />
           <Menu.Root>
-            <Menu.Trigger render={<IconButton icon="list-flat" label="Sort Notes" />} />
+            <Menu.Trigger
+              render={
+                <IconButton
+                  icon="list-flat"
+                  label="Sort Notes"
+                  className="data-popup-open:bg-overlay-hover"
+                />
+              }
+            />
             <Menu.Portal>
               <Menu.Positioner className="z-90" side="bottom" align="end">
                 <Menu.Popup
@@ -109,11 +126,11 @@ export function NotepadSidebar() {
         </div>
       </div>
 
-      <div className="p-2 border-b border-b-panel">
-        <div className="relative flex items-center">
+      <div className="px-3 pt-[6px] pb-2 shrink-0">
+        <div className="flex items-center min-w-0 min-h-[30px] bg-input-border border border-transparent rounded-[5px] focus-within:border-focus">
           <input
             type="text"
-            className="w-full pr-6 text-[12px] h-[26px]"
+            className="flex-1 w-full min-w-0 border-0 outline-none bg-transparent py-1 px-[7px] text-[13px] leading-[20px] rounded-[inherit] placeholder:text-file-default"
             placeholder="Filter notes…"
             aria-label="Filter notes"
             value={search}
@@ -126,21 +143,18 @@ export function NotepadSidebar() {
             }}
           />
           {search && (
-            <button
-              type="button"
-              className="absolute right-[2px] w-5 h-5 p-0 inline-flex items-center justify-center text-muted hover:text-foreground"
-              aria-label="Clear filter"
-              title="Clear filter"
+            <IconButton
+              icon="close"
+              label="Clear filter"
+              className="mr-[3px] shrink-0 text-muted hover:text-foreground"
               onClick={() => useNotepad.setState({ search: "" })}
-            >
-              <Icon name="close" className="text-[13px]!" />
-            </button>
+            />
           )}
         </div>
       </div>
 
       <div
-        className={`flex-1 min-h-0 overflow-y-auto py-1 ${notepadStyles["notepad-sidebar-list"]}`}
+        className="notepad-sidebar-list flex-1 min-h-0 overflow-y-auto py-1"
         role="listbox"
         aria-label="Notes"
         onDragOver={drag.handleContainerDragOver}
@@ -173,17 +187,6 @@ export function NotepadSidebar() {
             {notes.length === 0 ? "No notes yet." : "No matching notes."}
           </div>
         )}
-      </div>
-
-      <div className="h-[24px] min-h-[24px] px-3 flex items-center justify-between text-[11px] text-muted border-t border-t-panel">
-        <span>{countLabel}</span>
-        <span
-          className="inline-flex items-center gap-1"
-          title="Notes sync globally across all windows"
-        >
-          <Icon name="sync" className="text-[12px]!" />
-          Global
-        </span>
       </div>
     </aside>
   );

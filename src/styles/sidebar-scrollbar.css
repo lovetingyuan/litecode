@@ -11,6 +11,7 @@
   .search-results,
   .git-panel-content,
   .git-changes-list,
+  .notepad-sidebar-list,
   [data-file-tree-virtualized-scroll],
   [data-file-tree-scrollbar-measure]
 ) {
@@ -23,6 +24,7 @@
   .search-results,
   .git-panel-content,
   .git-changes-list,
+  .notepad-sidebar-list,
   [data-file-tree-virtualized-scroll]
 ):hover {
   --lc-sidebar-scrollbar-color: var(--lc-scrollbar-thumb);
@@ -31,6 +33,7 @@
   .search-results,
   .git-panel-content,
   .git-changes-list,
+  .notepad-sidebar-list,
   [data-file-tree-virtualized-scroll],
   [data-file-tree-scrollbar-measure]
 )::-webkit-scrollbar {
@@ -41,6 +44,7 @@
   .search-results,
   .git-panel-content,
   .git-changes-list,
+  .notepad-sidebar-list,
   [data-file-tree-virtualized-scroll],
   [data-file-tree-scrollbar-measure]
 )::-webkit-scrollbar-track {
@@ -50,6 +54,7 @@
   .search-results,
   .git-panel-content,
   .git-changes-list,
+  .notepad-sidebar-list,
   [data-file-tree-virtualized-scroll],
   [data-file-tree-scrollbar-measure]
 )::-webkit-scrollbar-thumb {
@@ -63,6 +68,7 @@
     .search-results,
     .git-panel-content,
     .git-changes-list,
+    .notepad-sidebar-list,
     [data-file-tree-virtualized-scroll],
     [data-file-tree-scrollbar-measure]
   )::-webkit-scrollbar-thumb:hover {
@@ -72,6 +78,7 @@
   .search-results,
   .git-panel-content,
   .git-changes-list,
+  .notepad-sidebar-list,
   [data-file-tree-virtualized-scroll],
   [data-file-tree-scrollbar-measure]
 )::-webkit-scrollbar-button {
@@ -81,6 +88,7 @@
   .search-results,
   .git-panel-content,
   .git-changes-list,
+  .notepad-sidebar-list,
   [data-file-tree-virtualized-scroll],
   [data-file-tree-scrollbar-measure]
 )::-webkit-scrollbar-corner {
@@ -92,6 +100,7 @@
     .search-results,
     .git-panel-content,
     .git-changes-list,
+    .notepad-sidebar-list,
     [data-file-tree-virtualized-scroll],
     [data-file-tree-scrollbar-measure]
   ) {

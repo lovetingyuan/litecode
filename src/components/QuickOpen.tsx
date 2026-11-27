@@ -1,5 +1,14 @@
 import quickStyles from "./QuickOpen.module.css";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { useApp, setApp, notify, searchSession } from "../store/store";
 import { commands, execute, openFolder } from "../core/commands";
@@ -20,6 +29,7 @@ import { call, channel, errorMessage } from "../core/bridge";
 import { runSearch, openMatch } from "../search/search";
 import { FileIcon, Icon } from "./ui";
 import { symbols, type SymbolItem } from "../editor/languages";
+import type { MatchRange } from "../types/quickOpen";
 import type { SearchBatch, SearchMatch } from "../types/types";
 
 type Item = {
@@ -28,7 +38,8 @@ type Item = {
   description?: string;
   key?: string;
   path?: string;
-  positions?: number[];
+  labelMatches?: readonly MatchRange[];
+  descriptionMatches?: readonly MatchRange[];
   run: (side: boolean, background: boolean) => unknown;
 };
 function locationItems(query: string): Item[] {
@@ -564,6 +575,36 @@ export function QuickOpen() {
   );
 }
 
+function HighlightedText({
+  text,
+  matches,
+}: {
+  readonly text: string;
+  readonly matches?: readonly MatchRange[];
+}) {
+  if (!matches?.length) {
+    return <>{text}</>;
+  }
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  for (const match of matches) {
+    const start = Math.max(cursor, match.start);
+    const end = Math.min(text.length, match.end);
+    if (start >= end) {
+      continue;
+    }
+    if (start > cursor) {
+      parts.push(text.slice(cursor, start));
+    }
+    parts.push(<mark key={start}>{text.slice(start, end)}</mark>);
+    cursor = end;
+  }
+  if (cursor < text.length) {
+    parts.push(text.slice(cursor));
+  }
+  return <>{parts}</>;
+}
+
 const QuickResults = memo(function QuickResults({
   items,
   selected,
@@ -594,14 +635,10 @@ const QuickResults = memo(function QuickResults({
         <Icon name={command ? "terminal" : "arrow-right"} />
       )}
       <span className="quick-label shrink-0 max-w-[70%] overflow-hidden text-ellipsis">
-        {item.positions
-          ? [...item.label].map((char, index) =>
-              item.positions!.includes(index) ? <mark key={index}>{char}</mark> : char,
-            )
-          : item.label}
+        <HighlightedText text={item.label} matches={item.labelMatches} />
       </span>
       <span className="muted text-muted quick-description text-[13px] overflow-hidden text-ellipsis">
-        {item.description}
+        <HighlightedText text={item.description ?? ""} matches={item.descriptionMatches} />
       </span>
       {item.key && <kbd>{item.key}</kbd>}
     </div>
